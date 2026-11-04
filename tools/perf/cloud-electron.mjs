@@ -12,7 +12,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import { _electron } from "playwright";
-import { freePort, options, ready } from "./cloud-process.mjs";
+import { disablePayloadMirroring, freePort, options, ready } from "./cloud-process.mjs";
 const cli = options();
 const mode = cli.positionals[0] ?? "file",
   seconds = Number(cli.positionals[1] ?? 180),
@@ -93,6 +93,7 @@ try {
     }
   });
   const hub = app.windows().find((w) => w.url().endsWith("hub.html"));
+  await disablePayloadMirroring(hub);
   hub.on("pageerror", (e) => console.error("PAGE", String(e)));
   if (mode !== "file") {
     await hub.evaluate(() => {

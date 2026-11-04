@@ -46,3 +46,11 @@ export async function ready(child, port) {
   }
   throw Error("Child readiness timed out on port " + port);
 }
+
+// Test instrumentation only: avoid copying every lidar payload through CDP.
+// Playwright exposes no public option for disabling Network on its own session.
+export async function disablePayloadMirroring(page) {
+  const session = page._connection.toImpl?.(page)?.delegate?._mainFrameSession?._client;
+  if (!session) throw Error("Cannot disable CDP payload mirroring; install the repository lockfile Playwright version");
+  await session.send("Network.disable");
+}

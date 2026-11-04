@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import { chromium } from "playwright";
-import { freePort, options, ready } from "./cloud-process.mjs";
+import { disablePayloadMirroring, freePort, options, ready } from "./cloud-process.mjs";
 const cli = options(),
   port = Number(cli.values.port),
   litePort = Number(cli.values["lite-port"]);
@@ -48,6 +48,7 @@ try {
   await ready(children[1], litePort);
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  await disablePayloadMirroring(page);
   await page.goto(`http://127.0.0.1:${litePort}`);
   const hub = page.frameLocator(".hub-frame");
   await hub.locator(".connect-source").waitFor({ state: "attached" });
