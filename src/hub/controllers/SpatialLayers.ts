@@ -244,7 +244,7 @@ export class SpatialLayers {
     const history = log.getField(key);
     const indexes = history ? cloudWindow(history, time, decay) : [];
     if (!indexes.length) throw new Error("waiting for cloud");
-    const maxPoints = Math.floor(2_000_000 / decay);
+    const maxPoints = Math.max(1, Math.floor(Number(options.cloudBudget ?? 2_000_000) / decay));
     const field = options.field ?? "intensity";
     const cacheKey = (t: number) => JSON.stringify([key, t, field, maxPoints]);
     let cache = SpatialLayers.clouds.get(log);
@@ -277,7 +277,10 @@ export class SpatialLayers {
         const bytes = log.getRaw(key, t, t)?.values[0];
         const request =
           bytes &&
-          CloudDecoder.request({ encoding: meta.encoding, definition: meta.definition, bytes, field, maxPoints });
+          CloudDecoder.request(
+            { encoding: meta.encoding, definition: meta.definition, bytes, field, maxPoints },
+            owner
+          );
         if (request) {
           this.pending.add(id);
           const generation = this.generation;
@@ -285,7 +288,7 @@ export class SpatialLayers {
             .then((result) => {
               this.pending.delete(id);
               if (generation === this.generation && !cache!.set(id, result))
-                this.cloudStatus = "cloud cache budget exceeded";
+                cache!.set(id, { error: "cloud cache budget exceeded" });
             })
             .catch(() => {
               this.pending.delete(id);

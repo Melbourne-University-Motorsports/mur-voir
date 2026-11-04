@@ -448,7 +448,13 @@ export default class Field3dController implements TabController {
       }
       if (source.type === "spatial" && time !== null) {
         try {
-          const result = this.spatial.objects(window.log, source.logKey, time, fixed, source.options);
+          const cloudLayers = sources.filter(
+            (s) => s.visible && window.log.getStructuredType(s.logKey) === "sensor_msgs/PointCloud2"
+          ).length;
+          const result = this.spatial.objects(window.log, source.logKey, time, fixed, {
+            ...source.options,
+            cloudBudget: String(Math.floor(2_000_000 / Math.max(1, cloudLayers)))
+          });
           const fields = this.spatial.cloudFields.get(source.logKey);
           if (fields)
             this.sourceList.setItemOptionValues(

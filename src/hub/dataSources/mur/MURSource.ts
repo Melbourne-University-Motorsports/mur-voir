@@ -441,6 +441,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
             const time = this.timeBase.sampleTime({ t_ns: header.t_ns, received_ns: "", time_quality: "synchronised" });
             if (time) {
               this.log.putRaw("/" + cloudPath, time.seconds, bytes);
+              this.log.discardLiveData(time.seconds, -1);
               this.shouldRunOutputCallback = true;
             }
           } catch (error) {

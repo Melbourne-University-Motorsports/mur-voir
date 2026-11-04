@@ -24,6 +24,14 @@ const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 let app, backend;
 try {
+  if (mode === "ros") {
+    backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
+      cwd: root,
+      env: { ...env, ROS_MOCK_PORT: "18094", ROS_MOCK_RESET: "1" },
+      stdio: "ignore"
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+  }
   if (mode === "live") {
     backend = spawn(
       process.execPath,
@@ -46,6 +54,7 @@ try {
     executablePath: root + "/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
     args: [
       "bundles/main.js",
+      "--enable-precise-memory-info",
       "--user-data-dir=" + dir,
       ...(mode === "file" ? ["/tmp/mur-point-clouds/reference.mcap"] : [])
     ],
@@ -60,7 +69,17 @@ try {
   });
   const hub = app.windows().find((w) => w.url().endsWith("hub.html"));
   hub.on("pageerror", (e) => console.error("PAGE", String(e)));
-  if (mode === "live") {
+  if (mode !== "file") {
+    await hub.evaluate(() => {
+      const Native = window.WebSocket;
+      window.__cloudSockets = [];
+      window.WebSocket = class extends Native {
+        constructor(...args) {
+          super(...args);
+          window.__cloudSockets.push(this);
+        }
+      };
+    });
     await hub.evaluate(() => window.dispatchEvent(new Event("welcome-connect")));
     console.log(
       await hub
@@ -71,12 +90,12 @@ try {
     await hub
       .locator("select")
       .filter({ has: hub.locator('option[value="mur"]') })
-      .selectOption("mur");
+      .selectOption(mode === "ros" ? "foxglove" : "mur");
     await hub
       .locator("input[placeholder]")
       .evaluateAll((es) => es.map((e) => ({ placeholder: e.placeholder, type: e.type })))
       .then(console.log);
-    await hub.getByPlaceholder("http://localhost:8090").fill("http://127.0.0.1:18093");
+    await hub.locator(".connect-address").fill(mode === "ros" ? "ws://127.0.0.1:18094" : "http://127.0.0.1:18093");
     await hub.getByRole("button", { name: "Connect", exact: true }).click();
     await new Promise((r) => setTimeout(r, 3000));
   }
@@ -94,7 +113,7 @@ try {
           sources: [
             {
               type: "spatial",
-              logKey: mode === "file" ? "/lidar/points" : "/vehicles/mur27/perception/points",
+              logKey: mode !== "live" ? "/lidar/points" : "/vehicles/mur27/perception/points",
               logType: "sensor_msgs/PointCloud2",
               visible: true,
               options: { field: "intensity", size: "3", map: "turbo", decay }
@@ -108,6 +127,15 @@ try {
           frames.push(t - last);
           last = t;
           if (frames.length > 10000) frames.shift();
+          // Keep moving live scans in the frustum so the soak actually exercises GPU drawing.
+          const impl = tab.renderer.implementation,
+            points = impl?.objectManagers.find((e) => e.type === "cloud")?.manager.points;
+          if (points) {
+            if (!points.geometry.boundingSphere) points.geometry.computeBoundingSphere();
+            const center = points.geometry.boundingSphere.center.clone();
+            points.localToWorld(center);
+            impl.controls.setLookAt(center.x + 14, center.y + 14, center.z + 14, center.x, center.y, center.z, false);
+          }
           requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
@@ -128,6 +156,8 @@ try {
   console.log("machine", os.cpus()[0].model, await app.evaluate(async ({ app }) => await app.getGPUInfo("complete")));
   const sample = () =>
     hub.evaluate(() => {
+      const modeKey = () =>
+        window.log.getFieldKeys().find((k) => window.log.getStructuredType(k) === "sensor_msgs/PointCloud2");
       const t = window.tabs.tabList.find((t) => t.type === 3),
         impl = t.renderer.implementation,
         render = impl?.renderer;
@@ -142,7 +172,14 @@ try {
         scans: entries.length,
         points: entries.reduce((n, e) => n + (e.manager.positions?.length ?? 0) / 3, 0),
         status: [...t.controller.sourceList.itemStatus.values()],
-        decodeMs: entries.map((e) => e.manager.decodeMs)
+        decodeMs: entries.map((e) => e.manager.decodeMs),
+        retainedClouds: window.log.getRaw(modeKey(), -Infinity, Infinity)?.values.length,
+        rawBytes: window.log.getRaw(modeKey(), -Infinity, Infinity)?.values.reduce((n, v) => n + v.byteLength, 0),
+        sockets: window.__cloudSockets?.map((s) => ({ url: s.url, state: s.readyState })),
+        attributeBytes: entries.reduce(
+          (n, e) => n + Object.values(e.manager.points.geometry.attributes).reduce((n, a) => n + a.array.byteLength, 0),
+          0
+        )
       };
     });
   for (let elapsed = 0; elapsed < seconds; elapsed += 10) {
@@ -151,6 +188,9 @@ try {
   }
   await hub.screenshot({ path: shots + `/r1-${mode}-decay${decay}.png` });
   console.log("final", JSON.stringify(await sample()));
+  await hub.evaluate(() => window.tabs.tabList.find((t) => t.type === 3).controller.sourceList.setState([]));
+  await new Promise((r) => setTimeout(r, 2000));
+  console.log("removed", JSON.stringify(await sample()));
 } finally {
   await app?.close();
   backend?.kill("SIGTERM");

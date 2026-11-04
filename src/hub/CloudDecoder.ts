@@ -8,13 +8,23 @@
 /** Two reusable workers shared across 3D tabs. No unbounded waiting queue. */
 export class CloudDecoder {
   private static slots: { worker: Worker; busy: boolean }[] = [];
-  static request(payload: any): Promise<any> | null {
+  private static waiters = new Map<object, number>();
+  static request(payload: any, owner?: object): Promise<any> | null {
+    for (const [key, time] of this.waiters) if (Date.now() - time > 100) this.waiters.delete(key);
+    if (owner && this.waiters.size && this.waiters.keys().next().value !== owner) {
+      this.waiters.set(owner, Date.now());
+      return null;
+    }
     let slot = this.slots.find((s) => !s.busy);
     if (!slot && this.slots.length < 2) {
       slot = { worker: new Worker("../bundles/pointCloudWorker.js", { type: "module" }), busy: false };
       this.slots.push(slot);
     }
-    if (!slot) return null;
+    if (!slot) {
+      if (owner) this.waiters.set(owner, Date.now());
+      return null;
+    }
+    if (owner) this.waiters.delete(owner);
     const target = slot;
     target.busy = true;
     return new Promise((resolve, reject) => {

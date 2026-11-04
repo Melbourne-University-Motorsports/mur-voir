@@ -30,12 +30,11 @@ export function cloudPacket(timeNs: bigint, run: number, center = { x: 0, y: 0 }
   for (let i = 0; i < count; i++) {
     const a = ((i % 120) / 120) * Math.PI * 2;
     const r = 3 + Math.floor((i / count) * 10) * 0.45 + 0.1 * Math.sin(a * 5 + t);
-    [
-      center.x + r * Math.cos(a),
-      center.y + r * Math.sin(a),
-      0.1 + 0.08 * Math.floor((i / count) * 10),
-      (i * 17) % 256
-    ].forEach((v, j) => view.setFloat32(4 + header.length + i * 16 + j * 4, v, true));
+    const offset = 4 + header.length + i * 16;
+    view.setFloat32(offset, center.x + r * Math.cos(a), true);
+    view.setFloat32(offset + 4, center.y + r * Math.sin(a), true);
+    view.setFloat32(offset + 8, 0.1 + 0.08 * Math.floor((i / count) * 10), true);
+    view.setFloat32(offset + 12, (i * 17) % 256, true);
   }
   return bytes;
 }

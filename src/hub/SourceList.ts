@@ -865,7 +865,16 @@ export default class SourceList {
       let index = Array.from(this.LIST.children).indexOf(item);
       window.sendMainMessage("source-list-type-prompt", {
         uuid: this.UUID,
-        config: this.config,
+        config: {
+          ...this.config,
+          types: this.config.types.map((t) => ({
+            ...t,
+            options: t.options.map((o) => ({
+              ...o,
+              values: this.itemOptionValues.get(JSON.stringify([this.state[index].logKey, o.key])) ?? o.values
+            }))
+          }))
+        },
         state: this.state[index],
         rect: rect
       });
