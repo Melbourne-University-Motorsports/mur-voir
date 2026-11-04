@@ -128,6 +128,7 @@ for (const [topic, type] of [
 const active = new Set();
 server.on("subscribe", (id) => active.add(id));
 server.on("unsubscribe", (id) => active.delete(id));
+const invalidScalars = Boolean(process.env.ROS_MOCK_INVALID_SCALARS);
 let tick = 0;
 const timer = setInterval(
   () => {
@@ -148,7 +149,7 @@ const timer = setInterval(
       view.setFloat32(i * 16, r * Math.cos(a), true);
       view.setFloat32(i * 16 + 4, r * Math.sin(a), true);
       view.setFloat32(i * 16 + 8, -0.55 + 0.08 * Math.floor(i / (pointCount / 10)) + 0.1 * Math.sin(3 * a), true);
-      view.setFloat32(i * 16 + 12, process.env.ROS_MOCK_INVALID_SCALARS ? NaN : (i * 17) % 256, true);
+      view.setFloat32(i * 16 + 12, invalidScalars ? NaN : (i * 17) % 256, true);
     }
     const messages = {
       "/clock": { clock: stamp },
