@@ -55,6 +55,8 @@ try {
     args: [
       "bundles/main.js",
       "--enable-precise-memory-info",
+      "--disable-renderer-backgrounding",
+      "--disable-background-timer-throttling",
       "--user-data-dir=" + dir,
       ...(mode === "file" ? ["/tmp/mur-point-clouds/reference.mcap"] : [])
     ],
@@ -65,7 +67,10 @@ try {
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows())
       if (w.webContents.getURL().includes("betaWelcome")) w.close();
-      else if (w.webContents.getURL().endsWith("hub.html")) w.setContentSize(1440, 960);
+      else if (w.webContents.getURL().endsWith("hub.html")) {
+        w.webContents.setBackgroundThrottling(false);
+        w.setContentSize(1440, 960);
+      }
   });
   const hub = app.windows().find((w) => w.url().endsWith("hub.html"));
   hub.on("pageerror", (e) => console.error("PAGE", String(e)));
@@ -186,6 +191,32 @@ try {
     console.log("sample", elapsed, JSON.stringify(await sample()));
     await new Promise((r) => setTimeout(r, Math.min(10, seconds - elapsed) * 1000));
   }
+  if (mode === "file") {
+    const sets = [];
+    for (const time of [2.9, 0.5, 2.9, 1, 2, 2.9]) {
+      await hub.evaluate((time) => window.selection.setSelectedTime(time), time);
+      await new Promise((r) => setTimeout(r, 1000));
+      if (time === 2.9)
+        sets.push(
+          await hub.evaluate(() =>
+            window.tabs.tabList
+              .find((t) => t.type === 3)
+              .renderer.implementation.objectManagers.filter((e) => e.type === "cloud")
+              .map((e) => e.cloudId)
+              .sort()
+          )
+        );
+    }
+    if (!sets.every((set) => JSON.stringify(set) === JSON.stringify(sets[0]))) throw Error("Seek scan sets differ");
+    console.log("seek route sets match", JSON.stringify(sets));
+  }
+  await hub.waitForFunction(
+    () =>
+      window.tabs.tabList
+        .find((t) => t.type === 3)
+        .renderer.implementation.objectManagers.some((e) => e.type === "cloud"),
+    { timeout: 60000 }
+  );
   await hub.screenshot({ path: shots + `/r1-${mode}-decay${decay}.png` });
   console.log("final", JSON.stringify(await sample()));
   await hub.evaluate(() => window.tabs.tabList.find((t) => t.type === 3).controller.sourceList.setState([]));
