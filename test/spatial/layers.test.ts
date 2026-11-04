@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CloudDecoder } from "../../src/hub/CloudDecoder";
 import { SpatialLayers } from "../../src/hub/controllers/SpatialLayers";
+import { getHeaderStamp } from "../../src/hub/dataSources/mcap/RosMessages";
 import Log from "../../src/shared/log/Log";
 import { identity } from "../../src/shared/spatial/Transform";
 
@@ -481,4 +482,73 @@ test("TF continuity accepts delayed batches and 8x, recovers poisoned first and 
     const result = (layers as any).scanPose("lidar", "map", { sec: stamps.at(-1), nanosec: 0 }, receipts.at(-1), []);
     assert.equal(result.translation[0], 4);
   }
+});
+
+test("worker transport retries stop after three failures", async () => {
+  const log = new Log(),
+    layers = new SpatialLayers(),
+    original = CloudDecoder.request;
+  log.putRaw("/cloud", 1, new Uint8Array([1]));
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  let calls = 0;
+  CloudDecoder.request = async () => {
+    calls++;
+    throw new Error("worker transport");
+  };
+  try {
+    layers.begin(log, 1);
+    for (let i = 0; i < 3; i++) {
+      assert.throws(() => layers.objects(log, "/cloud", 1, "map"));
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    assert.throws(() => layers.objects(log, "/cloud", 1, "map"), /failed after 3 attempts/);
+    assert.equal(calls, 3);
+  } finally {
+    CloudDecoder.request = original;
+  }
+});
+
+test("delayed TF fixture displays acquisition pose x29 and changed static edges bypass stamp rejection", () => {
+  const log = new Log(),
+    layers = new SpatialLayers();
+  for (const key of ["/tf", "/tf_static"]) {
+    log.putRaw(key, 0, new Uint8Array());
+    log.setStructuredType(key, "tf2_msgs/TFMessage");
+  }
+  const tf = (sec: number, nanosec: number, x: number, frame = "map", child = "lidar") => ({
+    header: { frame_id: frame, stamp: { sec, nanosec } },
+    child_frame_id: child,
+    transform: { translation: { x, y: 0, z: 0 }, rotation: { w: 1 } }
+  });
+  for (let i = 0; i < 30; i++)
+    log.putString(
+      "/tf/spatial",
+      i / 10 + (i >= 15 ? 3 : 0),
+      JSON.stringify({ transforms: [tf(Math.floor(i / 10), (i % 10) * 1e8, i)] })
+    );
+  for (const [receipt, stamp, x] of [
+    [0, 1, 0],
+    [1, 9000, 0],
+    [2, 2, 1]
+  ])
+    log.putString("/tf_static/spatial", receipt, JSON.stringify({ transforms: [tf(stamp, 0, x, "lidar", "sensor")] }));
+  layers.begin(log, 1);
+  layers.begin(log, 5.9);
+  assert.equal((layers as any).scanPose("lidar", "map", { sec: 2, nanosec: 900000000 }, 2.9, []).translation[0], 29);
+  assert.equal((layers as any).scanPose("sensor", "map", { sec: 2, nanosec: 900000000 }, 2.9, []).translation[0], 30);
+  assert.equal((layers as any).badStamps, 0);
+});
+
+test("header stamps reject malformed ROS times and accept both nanosecond spellings", () => {
+  for (const stamp of [
+    { sec: -1, nanosec: 0 },
+    { sec: 1.5, nanosec: 0 },
+    { sec: 1, nanosec: 1e9 },
+    { sec: 1, nanosec: -1 },
+    { sec: 0, nanosec: 0 }
+  ])
+    assert.equal(getHeaderStamp({ header: { stamp } }), null);
+  assert.equal(getHeaderStamp({ header: { stamp: { sec: 2, nsec: 500000000 } } }), 2.5);
+  assert.equal(getHeaderStamp({ header: { stamp: { sec: 2, nanosec: 500000000 } } }), 2.5);
 });

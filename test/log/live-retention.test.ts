@@ -210,3 +210,24 @@ test("32-byte padded reference lidar retains requested maximum within total cap"
   assert.ok(raw.timestamps.length >= 20);
   assert.ok(raw.values.reduce((n, v) => n + v.byteLength, 0) <= 256 * 1024 * 1024);
 });
+
+test("retention demand survives hidden or paused silence until explicit layer removal", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 0 });
+  const log = new Log(),
+    owner = {};
+  log.putRaw("/cloud", 0, new Uint8Array());
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  log.setLiveRetention("/cloud", 60);
+  log.setRetainedCloudLayers(owner, [{ key: "/cloud", decay: 20 }]);
+  t.mock.timers.tick(10000); // hidden or paused view makes no demand refresh calls
+  for (let i = 1; i <= 30; i++) {
+    log.putRaw("/cloud", i / 10, new Uint8Array(10 * 1024 * 1024));
+    log.discardLiveData(i / 10, 1200);
+  }
+  assert.ok(log.getRaw("/cloud", -Infinity, Infinity)!.timestamps.length >= 20);
+  log.setRetainedCloudLayers(owner, []);
+  log.discardLiveData(3, 1200);
+  assert.ok(log.getRaw("/cloud", -Infinity, Infinity)!.timestamps.length <= 6);
+  log.setRetainedCloudLayers(owner, [{ key: "/cloud", decay: 20 }]);
+  assert.equal((log as any).retainedCloudLayers.size, 1);
+});

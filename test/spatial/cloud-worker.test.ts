@@ -51,3 +51,40 @@ test("decoder bounds concurrency, copies only the message view and yields to wai
     globalThis.Worker = original;
   }
 });
+
+test("watchdog frees failed workers and a retry completes without real waiting", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const original = globalThis.Worker;
+  const workers: any[] = [];
+  class WorkerStub {
+    onmessage: any;
+    onerror: any;
+    terminated = false;
+    constructor() {
+      workers.push(this);
+    }
+    postMessage() {}
+    terminate() {
+      this.terminated = true;
+    }
+  }
+  (CloudDecoder as any).slots = [];
+  (CloudDecoder as any).waiters.clear();
+  globalThis.Worker = WorkerStub as unknown as typeof Worker;
+  try {
+    const first = CloudDecoder.request({ bytes: new Uint8Array([1]) })!;
+    const failed = assert.rejects(first, /timed out/);
+    t.mock.timers.tick(10000);
+    await failed;
+    assert.equal(workers[0].terminated, true);
+    assert.equal((CloudDecoder as any).slots.length, 0);
+    const retry = CloudDecoder.request({ bytes: new Uint8Array([1]) })!;
+    workers[1].onmessage({ data: { payload: { ok: true } } });
+    assert.deepEqual(await retry, { ok: true });
+    t.mock.timers.tick(10000);
+    assert.equal(workers[1].terminated, false, "successful request cancels watchdog");
+  } finally {
+    (CloudDecoder as any).slots = [];
+    globalThis.Worker = original;
+  }
+});

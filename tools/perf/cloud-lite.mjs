@@ -100,6 +100,7 @@ try {
         ?.renderer.implementation?.objectManagers.some(
           (e) => e.type === "cloud" && e.manager.positions.length === 900000
         ) && window.tabs.tabList.find((t) => t.type === 3).renderer.implementation.renderer.info.memory.textures > 0,
+    undefined,
     { timeout: 60000 }
   );
   console.log(
@@ -111,7 +112,7 @@ try {
       return { renderer: debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL), memory: impl.renderer.info.memory };
     })
   );
-  await page.waitForTimeout(2000);
+  await frame.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.screenshot({
     path: cli.values.output + "/" + cli.values.prefix + "-lite-cloud.png"
   });

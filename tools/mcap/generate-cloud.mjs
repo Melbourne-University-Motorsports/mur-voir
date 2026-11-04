@@ -10,6 +10,7 @@ import { parse } from "@foxglove/rosmsg";
 import { MessageWriter } from "@foxglove/rosmsg2-serialization";
 import { McapWriter } from "@mcap/core";
 import fs from "node:fs/promises";
+const dynamic = process.argv.includes("--dynamic-tf");
 const points = Number(process.argv[2] ?? 300000),
   scans = Number(process.argv[3] ?? 30);
 if (!Number.isSafeInteger(points) || points < 1 || points > 10000000 || !Number.isSafeInteger(scans) || scans < 1)
@@ -92,7 +93,7 @@ async function channel(topic, name, definition) {
   };
 }
 const cloud = await channel("/lidar/points", "sensor_msgs/msg/PointCloud2", header),
-  tree = await channel("/tf_static", "tf2_msgs/msg/TFMessage", tf);
+  tree = await channel(dynamic ? "/tf" : "/tf_static", "tf2_msgs/msg/TFMessage", tf);
 await writer.addMessage({
   channelId: tree.id,
   sequence: 0,
@@ -125,6 +126,22 @@ for (let scan = 0; scan < scans; scan++) {
     v.setFloat32(o + 12, i % 256, true);
   }
   const time = BigInt(scan) * 100000000n;
+  if (dynamic)
+    await writer.addMessage({
+      channelId: tree.id,
+      sequence: scan + 1,
+      logTime: time,
+      publishTime: time,
+      data: tree.encoder.writeMessage({
+        transforms: [
+          {
+            header: { stamp: { sec: Math.floor(scan / 10), nanosec: (scan % 10) * 100000000 }, frame_id: "map" },
+            child_frame_id: "lidar",
+            transform: { translation: { x: scan / 10, y: 0, z: 1 }, rotation: { x: 0, y: 0, z: 0, w: 1 } }
+          }
+        ]
+      })
+    });
   await writer.addMessage({
     channelId: cloud.id,
     sequence: scan,

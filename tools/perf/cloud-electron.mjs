@@ -44,7 +44,13 @@ try {
     await freePort(rosPort);
     backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
       cwd: root,
-      env: { ...env, ROS_MOCK_PORT: String(rosPort), ROS_MOCK_RESET: "1" },
+      env: {
+        ...env,
+        ROS_MOCK_PORT: String(rosPort),
+        ROS_MOCK_RESET: cli.values["dynamic-tf"] ? "" : "1",
+        ROS_MOCK_POINTS: cli.values["dynamic-tf"] ? "300000" : "2400",
+        ROS_MOCK_PERIOD_MS: cli.values["dynamic-tf"] ? "100" : "50"
+      },
       stdio: ["ignore", "ignore", "inherit"]
     });
     await ready(backend, rosPort);
@@ -139,7 +145,7 @@ try {
   console.log(
     "setup",
     await hub.evaluate(
-      ({ mode, decay }) => {
+      ({ mode, decay, map }) => {
         window.__cloudPerfEnabled = true;
         window.preferences.field3dModeAc = "standard";
         window.preferences.field3dModeBattery = "standard";
@@ -156,7 +162,7 @@ try {
               logKey: mode !== "live" ? "/lidar/points" : "/vehicles/mur27/perception/points",
               logType: "sensor_msgs/PointCloud2",
               visible: true,
-              options: { field: "intensity", size: "3", map: "turbo", decay }
+              options: { field: "intensity", size: "3", map, decay }
             }
           ]
         });
@@ -203,7 +209,7 @@ try {
         window.__cloudFrames = frames;
         return { keys: window.log.getFieldKeys().slice(0, 20), state: tab.controller.saveState() };
       },
-      { mode, decay }
+      { mode, decay, map: process.env.CLOUD_MAP ?? "turbo" }
     )
   );
   await hub.waitForFunction(
@@ -211,6 +217,7 @@ try {
       window.tabs.tabList
         .find((t) => t.type === 3)
         ?.renderer.implementation?.objectManagers.some((e) => e.type === "cloud"),
+    undefined,
     { timeout: 60000 }
   );
   console.log("machine", os.cpus()[0].model, await app.evaluate(async ({ app }) => await app.getGPUInfo("complete")));
@@ -224,6 +231,8 @@ try {
       const times = window.__cloudFrames.splice(0).sort((a, b) => a - b);
       const entries = impl?.objectManagers.filter((e) => e.active && e.type === "cloud") ?? [];
       return {
+        treeSamples: t.controller.spatial.tree.getSampleCount(),
+        scanTreeSamples: t.controller.spatial.scanTree.getSampleCount(),
         presentationAge: { ...window.__cloudReady },
         frameMedianMs: times[Math.floor(times.length * 0.5)],
         frameP95Ms: times[Math.floor(times.length * 0.95)],
@@ -279,7 +288,7 @@ try {
       setTimeout(r, Math.min(10000, Math.max(0, seconds * 1000 - (Date.now() - measurementStart))))
     );
     const snapshot = await sample();
-    console.log("sample", (Date.now() - measurementStart) / 1000, JSON.stringify(snapshot));
+    console.log("sample", (Date.now() - measurementStart) / 1000, "load", os.loadavg(), JSON.stringify(snapshot));
   }
   if (mode === "file") {
     await hub.evaluate(() => window.selection.pause());
@@ -341,6 +350,7 @@ try {
       window.tabs.tabList
         .find((t) => t.type === 3)
         .renderer.implementation.objectManagers.some((e) => e.type === "cloud"),
+    undefined,
     { timeout: 60000 }
   );
   await hub.screenshot({ path: shots + `/${cli.values.prefix}-${mode}-decay${decay}.png` });

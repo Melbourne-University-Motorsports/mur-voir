@@ -11,6 +11,7 @@ export function options() {
   return parseArgs({
     allowPositionals: true,
     options: {
+      "dynamic-tf": { type: "boolean", default: false },
       input: { type: "string" },
       "temp-root": { type: "string", default: "/tmp/mur-point-clouds" },
       output: { type: "string", default: "/tmp/mur-point-clouds/screenshots" },
