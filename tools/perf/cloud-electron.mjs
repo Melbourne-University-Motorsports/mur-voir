@@ -130,6 +130,12 @@ try {
       window.log.getFieldKeys().some((k) => window.log.getStructuredType(k) === "sensor_msgs/PointCloud2")
     );
   }
+  if (mode === "file")
+    await hub.waitForFunction(
+      () => window.log.getRaw("/lidar/points", -Infinity, Infinity)?.values.length > 0,
+      undefined,
+      { timeout: 120000 }
+    );
   console.log(
     "setup",
     await hub.evaluate(
