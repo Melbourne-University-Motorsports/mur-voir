@@ -363,13 +363,14 @@ export class SpatialLayers {
     }
     const complete = ready === indexes.length;
     const wantedKey = JSON.stringify(wanted);
-    const range =
+    let range =
       !complete && previous?.wanted === wantedKey
         ? previous.range
         : cloudRange(objects as { min: number; max: number }[]);
     for (const object of objects) Object.assign(object, range);
     const held = this.continuous && !objects.length && !complete && !issues.length && previous?.objects.length;
     if (held) {
+      range = previous!.range;
       for (const old of previous!.objects as any[]) {
         try {
           objects.push({

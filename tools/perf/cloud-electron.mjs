@@ -145,12 +145,14 @@ try {
         window.__cloudReady = { frames: 0, ready: 0 };
         let last = performance.now();
         function tick(t) {
-          frames.push(t - last);
-          window.__cloudReady.frames++;
-          if (
-            tab.renderer.implementation?.objectManagers.some((e) => e.type === "cloud" && e.manager.positions?.length)
-          )
-            window.__cloudReady.ready++;
+          if (!window.__cloudMeasureUntil || t <= window.__cloudMeasureUntil) {
+            frames.push(t - last);
+            window.__cloudReady.frames++;
+            if (
+              tab.renderer.implementation?.objectManagers.some((e) => e.type === "cloud" && e.manager.positions?.length)
+            )
+              window.__cloudReady.ready++;
+          }
           last = t;
           if (frames.length > 10000) frames.shift();
           // Keep moving live scans in the frustum so the soak actually exercises GPU drawing.
@@ -210,13 +212,17 @@ try {
         )
       };
     });
-  await hub.evaluate(() => {
+  await hub.evaluate((seconds) => {
     window.__cloudReady = { frames: 0, ready: 0 };
     window.__cloudFrames.splice(0);
-  });
-  for (let elapsed = 0; elapsed < seconds; elapsed += 10) {
-    console.log("sample", elapsed, JSON.stringify(await sample()));
-    await new Promise((r) => setTimeout(r, Math.min(10, seconds - elapsed) * 1000));
+    window.__cloudMeasureUntil = performance.now() + seconds * 1000;
+  }, seconds);
+  const measurementStart = Date.now();
+  while (Date.now() - measurementStart < seconds * 1000) {
+    await new Promise((r) =>
+      setTimeout(r, Math.min(10000, Math.max(0, seconds * 1000 - (Date.now() - measurementStart))))
+    );
+    console.log("sample", (Date.now() - measurementStart) / 1000, JSON.stringify(await sample()));
   }
   if (mode === "file") {
     const sets = [];
@@ -250,7 +256,9 @@ try {
     const oldArgs = backend.spawnargs.slice(1);
     backend.kill("SIGTERM");
     await new Promise((r) => setTimeout(r, 2000));
+    await freePort(port);
     backend = spawn(process.execPath, oldArgs, { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
+    await ready(backend, port);
     await new Promise((r) => setTimeout(r, 12000));
     console.log("backend restart", JSON.stringify(await sample()));
     const rewound = await hub.evaluate(() =>
@@ -259,6 +267,7 @@ try {
     if (!(rewound < 20)) throw Error("Restart left stale cloud clock: " + rewound);
     backend.kill("SIGTERM");
     await new Promise((r) => setTimeout(r, 1000));
+    await freePort(rosPort);
     backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
       cwd: root,
       env: { ...env, ROS_MOCK_PORT: String(rosPort) },
