@@ -48,6 +48,8 @@ export interface BackendOptions {
   simClock: boolean;
   lapCounter: boolean;
   pointCloud: boolean;
+  pointCloudPoints: number;
+  pointCloudHz: number;
   history: boolean;
   historySeconds: number;
   /** Fixes the Unix start time (ns) and boot nonce, making output bit-reproducible. */
@@ -68,6 +70,8 @@ export const DEFAULT_OPTIONS: BackendOptions = {
   simClock: false,
   lapCounter: false,
   pointCloud: false,
+  pointCloudPoints: 1200,
+  pointCloudHz: 10,
   history: true,
   historySeconds: 360,
   startTimeNs: null

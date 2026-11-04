@@ -130,10 +130,15 @@ export async function startServer(
         if (backend.simStatus().state === "paused") return;
         const pose = backend.latest.get("vehicles/mur27/autonomy/pose")?.value;
         const center = pose && typeof pose === "object" && "position" in pose ? pose.position : undefined;
-        const packet = cloudPacket(backend.nowNs(), backend.simStatus().reset_count, center);
+        const packet = cloudPacket(
+          backend.nowNs(),
+          backend.simStatus().reset_count,
+          center,
+          backend.opts.pointCloudPoints
+        );
         for (const client of clouds.clients)
           if (client.readyState === client.OPEN && client.bufferedAmount < 1_000_000) client.send(packet);
-      }, 100)
+      }, 1000 / backend.opts.pointCloudHz)
     : null;
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://localhost");

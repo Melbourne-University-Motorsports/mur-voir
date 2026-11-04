@@ -30,6 +30,8 @@ Usage: node tools/mock-backend/src/main.ts [options]
   --unsync-source <src>   source for --unsync (default ennoid-bms)
   --sim-clock             sim time domain (t_ns from 0) + /api/v1/sim/{pause,resume,reset,status}
   --point-cloud          enable optional binary lidar at /api/v1/points
+  --point-cloud-points <n> point count (default 1200)
+  --point-cloud-hz <n>     scan rate (default 10)
   --lap-counter           add vehicles/mur27/timing/{lap_count,last_lap_time} (beacon lap source)
   --no-history            GET /api/v1/history returns 501 not_implemented
   --history-seconds <n>   rolling history length (default 360)
@@ -53,6 +55,8 @@ const { values } = parseArgs({
     unsync: { type: "boolean", default: false },
     "unsync-source": { type: "string", default: "ennoid-bms" },
     "sim-clock": { type: "boolean", default: false },
+    "point-cloud-points": { type: "string", default: "1200" },
+    "point-cloud-hz": { type: "string", default: "10" },
     "point-cloud": { type: "boolean", default: false },
     "lap-counter": { type: "boolean", default: false },
     "no-history": { type: "boolean", default: false },
@@ -98,6 +102,8 @@ const opts = {
   unsyncSource: source("unsync-source", values["unsync-source"]!),
   simClock: values["sim-clock"]!,
   lapCounter: values["lap-counter"]!,
+  pointCloudPoints: Math.trunc(num("point-cloud-points", values["point-cloud-points"]!, 1, 10000000)),
+  pointCloudHz: num("point-cloud-hz", values["point-cloud-hz"]!, 0.1, 100),
   pointCloud: values["point-cloud"]!,
   history: !values["no-history"],
   historySeconds: num("history-seconds", values["history-seconds"]!, 10, 3600),
