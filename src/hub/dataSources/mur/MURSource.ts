@@ -6,7 +6,7 @@
 // at the root directory of this project.
 
 // Live source for the MUR telemetry backend (spec 01 §5: HTTP catalogue/history + WebSocket live), with the
-// sim clock extensions from spec 02 §4/§6. Contract types come from tools/mock-backend/src/contract.ts.
+// sim clock extensions from spec 02 §4/§6. Contract types come from the pinned shared MUR schema.
 //
 // - Catalogue: hello -> catalogue_snapshot builds the tree; upserts/removes update it live. The descriptor
 //   unit goes into field metadata so Log.getUnit and unit conversion work (MURLogAdapter).
@@ -18,6 +18,7 @@
 //   resets the selection, so the new run never mixes with the old one.
 // - Reconnect: automatic with backoff; fresh snapshot, then the subscription is replayed by periodic().
 
+import Log from "../../../shared/log/Log";
 import type {
   AvailabilityState,
   CatalogueSnapshotOp,
@@ -28,8 +29,7 @@ import type {
   SimStatus,
   SimStatusOp,
   TelemetrySample
-} from "../../../../tools/mock-backend/src/contract";
-import Log from "../../../shared/log/Log";
+} from "../../../shared/mur/contract";
 import { LiveDataSource, LiveDataSourceStatus } from "../LiveDataSource";
 import { BackendState, Freshness, LiveOutage, LiveStatusProvider, LiveStatusSummary, SimAction } from "../LiveStatus";
 import { SampleDeduplicator } from "./MURDedup";

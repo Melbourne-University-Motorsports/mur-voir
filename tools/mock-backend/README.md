@@ -1,6 +1,7 @@
 # mur-voir mock telemetry backend
 
-A deterministic mock of the MUR base-station backend. It implements the dashboard-facing contract in
+A deterministic mock of the MUR base-station backend. Wire types are generated from the
+pinned mur-msgs schema in `src/shared/mur/api/`; see its README for updates and drift checks. It implements the dashboard-facing contract in
 `specs/01-live-telemetry-interface.md` §5 (HTTP catalogue, HTTP history, live WebSocket), plus the
 simulation-clock extensions from `specs/02-ros2-simulation-scope.md` §4/§6.
 

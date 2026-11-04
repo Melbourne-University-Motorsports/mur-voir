@@ -27,16 +27,9 @@
 // Cones are Translation3d[] for now so the existing 3D/2D tabs can show them as points; the class is a sibling
 // child field so a later cone renderer can colour them.
 
-import type {
-  ConeArray,
-  Pose3,
-  Quaternion,
-  SignalDescriptor,
-  Trajectory,
-  Vector3
-} from "../../../../tools/mock-backend/src/contract";
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
+import type { ConeArray, Pose3, Quaternion, SignalDescriptor, Trajectory, Vector3 } from "../../../shared/mur/contract";
 
 /** Converts a catalogue path to a Log key. */
 export function pathToKey(path: string): string {
