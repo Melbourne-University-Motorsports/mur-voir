@@ -340,10 +340,25 @@ test("sim stamps and skew pose scans without changing receipt-time layers; outli
       }
       log.putRaw("/cloud", 101 + offset, new Uint8Array([1]));
       log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+      log.putRaw("/tf_static", 0, new Uint8Array());
+      log.setStructuredType("/tf_static", "tf2_msgs/TFMessage");
+      log.putString(
+        "/tf_static/spatial",
+        100 + offset,
+        JSON.stringify({
+          transforms: [
+            {
+              header: { frame_id: "lidar", stamp: { sec: 0, nsec: 0 } },
+              child_frame_id: "sensor",
+              transform: { translation: { x: 0, y: 0, z: 0 }, rotation: { w: 1, x: 0, y: 0, z: 0 } }
+            }
+          ]
+        })
+      );
       layers.begin(log, 101 + offset);
       assert.equal(layers.resolve("lidar", "map", 101 + offset).translation[0], 10);
       CloudDecoder.request = async () => ({
-        frame: "lidar",
+        frame: "sensor",
         stamp: { sec: 100, nsec: 500000000 },
         positions: new Float32Array([0, 0, 0]),
         min: 0,
@@ -358,7 +373,7 @@ test("sim stamps and skew pose scans without changing receipt-time layers; outli
       assert.match(layers.cloudStatus, /1 TF stamp outliers/);
       log.putRaw("/cloud", 101.2 + offset, new Uint8Array([2]));
       CloudDecoder.request = async () => ({
-        frame: "lidar",
+        frame: "sensor",
         stamp: { sec: 5000, nsec: 0 },
         positions: new Float32Array([0, 0, 0]),
         min: 0,

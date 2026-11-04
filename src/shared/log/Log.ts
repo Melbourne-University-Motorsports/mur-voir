@@ -203,12 +203,12 @@ export default class Log {
     // Drop bounded payloads first: clearBeforeTime otherwise holds an expired value at the boundary.
     let changed = false;
     for (const [key, retention] of this.liveRetention) {
-      changed =
-        (this.fields[key]?.discardBeforeTime(
+      const discarded =
+        this.fields[key]?.discardBeforeTime(
           time - Math.min(retention, seconds === undefined || seconds === -1 ? Infinity : seconds)
-        ) ??
-          false) ||
-        changed;
+        ) ?? false;
+      if (discarded && this.getStructuredType(key) === "sensor_msgs/PointCloud2") this.cloudRetentionShortage.add(key);
+      changed = discarded || changed;
     }
     for (const key of this.liveRetention.keys())
       if (this.getStructuredType(key) === "sensor_msgs/PointCloud2") {
