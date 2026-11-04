@@ -21,6 +21,11 @@ test("satellites transmit arrays once, preserve receiver identity, and resend on
   const first = receiver.apply(structuredClone(sender.apply({ objects: [object] }, true)), false).objects[0];
   const delta = sender.apply({ objects: [{ ...object, min: 2 }] }, true);
   assert.equal(delta.objects[0].positions, undefined);
+  assert.deepEqual(
+    new CloudTransport().apply(structuredClone(delta), false).objects,
+    [],
+    "new satellite waits for full buffers"
+  );
   const next = receiver.apply(structuredClone(delta), false).objects[0];
   assert.equal(first.positions, next.positions);
   assert.equal(next.min, 2);

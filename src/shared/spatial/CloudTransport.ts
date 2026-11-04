@@ -27,9 +27,10 @@ export class CloudTransport {
       }
       if (object.positions)
         this.buffers.set(id, { positions: object.positions, values: object.values, colors: object.colors });
+      if (!this.buffers.has(id)) return null;
       return { ...object, ...this.buffers.get(id) };
     });
     for (const id of this.buffers.keys()) if (!active.has(id)) this.buffers.delete(id);
-    return { ...command, objects };
+    return { ...command, objects: objects.filter((object: any) => object !== null) };
   }
 }
