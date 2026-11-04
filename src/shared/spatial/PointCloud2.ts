@@ -20,11 +20,11 @@ export interface PointCloud2 {
   row_step: number;
   data: Uint8Array;
   is_dense: boolean;
-  header?: { frame_id: string };
+  header?: { frame_id: string; stamp?: { sec: number; nanosec: number } };
 }
 const SIZES = [0, 1, 1, 2, 2, 4, 4, 4, 8];
 /** Decodes padded organized clouds without expanding points into Log fields. Non-finite points are dropped even if a producer incorrectly sets is_dense. */
-export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity") {
+export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", maxPoints = 10_000_000) {
   const { width, height, point_step, row_step } = cloud;
   if (
     ![width, height, point_step, row_step].every((v) => Number.isSafeInteger(v) && v >= 0) ||
@@ -40,6 +40,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity") 
       !SIZES[field.datatype] ||
       !Number.isInteger(field.offset) ||
       field.offset < 0 ||
+      !Number.isSafeInteger(field.count) ||
       field.count < 1 ||
       field.offset + SIZES[field.datatype] * field.count > point_step
     )
@@ -71,38 +72,58 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity") 
         return NaN;
     }
   };
-  const positions = new Float32Array(width * height * 3),
-    values = new Float32Array(width * height),
-    colors = new Float32Array(width * height * 3);
+  const field = fields.get(colorField);
+  if (!field) throw new Error("Missing colour field: " + colorField + "; available: " + [...fields.keys()].join(", "));
+  for (const f of [fields.get("x")!, fields.get("y")!, fields.get("z")!, field])
+    if (f.count !== 1) throw new Error("Expected scalar point field: " + f.name);
+  const rgb = colorField === "rgb" || colorField === "rgba";
+  if (rgb && ![5, 6, 7].includes(field.datatype)) throw new Error("Packed RGB requires a 32-bit field");
+  if (!Number.isSafeInteger(maxPoints) || maxPoints < 1) throw new Error("Invalid point budget");
+  const stride = Math.max(1, Math.ceil((width * height) / maxPoints));
+  const capacity = Math.ceil((width * height) / stride);
+  const positions = new Float32Array(capacity * 3),
+    values = new Float32Array(capacity),
+    colors = rgb ? new Float32Array(capacity * 3) : null;
+  const xf = fields.get("x")!,
+    yf = fields.get("y")!,
+    zf = fields.get("z")!;
   let count = 0,
     min = Infinity,
     max = -Infinity;
-  const field = fields.get(colorField);
-  const rgb = colorField === "rgb" || colorField === "rgba";
-  for (let row = 0; row < height; row++)
-    for (let col = 0; col < width; col++) {
-      const base = row * row_step + col * point_step;
-      const xyz = ["x", "y", "z"].map((name) => read(base, fields.get(name)!));
-      if (!xyz.every(Number.isFinite)) continue;
-      positions.set(xyz, count * 3);
-      const value = field ? read(base, field) : xyz[2];
-      values[count] = Number.isFinite(value) ? value : 0;
-      if (rgb && field) {
-        const packed = view.getUint32(base + field.offset, little);
-        colors.set([((packed >>> 16) & 255) / 255, ((packed >>> 8) & 255) / 255, (packed & 255) / 255], count * 3);
-      }
-      if (Number.isFinite(value)) {
-        min = Math.min(min, value);
-        max = Math.max(max, value);
-      }
-      count++;
+  for (let i = 0; i < width * height; i += stride) {
+    const base = Math.floor(i / width) * row_step + (i % width) * point_step;
+    const x = read(base, xf),
+      y = read(base, yf),
+      z = read(base, zf);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const offset = count * 3;
+    positions[offset] = x;
+    positions[offset + 1] = y;
+    positions[offset + 2] = z;
+    const value = rgb ? 0 : read(base, field);
+    values[count] = Number.isFinite(value) ? value : 0;
+    if (colors) {
+      const packed = view.getUint32(base + field.offset, little);
+      colors[offset] = ((packed >>> 16) & 255) / 255;
+      colors[offset + 1] = ((packed >>> 8) & 255) / 255;
+      colors[offset + 2] = (packed & 255) / 255;
     }
+    if (Number.isFinite(value)) {
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    count++;
+  }
   return {
-    positions: positions.slice(0, count * 3),
-    values: values.slice(0, count),
-    colors: rgb ? colors.slice(0, count * 3) : null,
+    positions: count === capacity ? positions : positions.slice(0, count * 3),
+    values: count === capacity ? values : values.slice(0, count),
+    colors: colors ? (count === capacity ? colors : colors.slice(0, count * 3)) : null,
     min: Number.isFinite(min) ? min : 0,
     max: Number.isFinite(max) ? max : 1,
-    frame: cloud.header?.frame_id ?? ""
+    frame: cloud.header?.frame_id ?? "",
+    stamp: cloud.header?.stamp,
+    fields: cloud.fields.filter((f) => f.count === 1).map((f) => f.name),
+    sourcePoints: width * height,
+    stride
   };
 }
