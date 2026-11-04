@@ -29,9 +29,9 @@ if (
 const port = Number(cli.values.port),
   rosPort = port + 1;
 if (mode === "file" && !cli.values.input) throw Error("file mode requires --input path/to/cloud.mcap");
-await fs.mkdir("/tmp/mur-point-clouds/r2", { recursive: true });
+await fs.mkdir("/tmp/mur-point-clouds/r3", { recursive: true });
 const root = process.cwd(),
-  dir = await fs.mkdtemp("/tmp/mur-point-clouds/r2/profile-"),
+  dir = await fs.mkdtemp("/tmp/mur-point-clouds/r3/profile-"),
   shots = cli.values.output;
 await fs.mkdir(dir, { recursive: true });
 await fs.mkdir(shots, { recursive: true });
@@ -81,7 +81,7 @@ try {
     cwd: root,
     env
   });
-  await new Promise((r) => setTimeout(r, 5000));
+  while (!app.windows().some((w) => w.url().endsWith("hub.html"))) await app.waitForEvent("window");
   await app.evaluate(({ BrowserWindow }) => {
     for (const w of BrowserWindow.getAllWindows()) {
       w.webContents.closeDevTools();
@@ -114,7 +114,7 @@ try {
         .catch(() => hub.locator("body").innerText())
     );
     await hub
-      .locator("select")
+      .locator("dialog[open] select")
       .filter({ has: hub.locator('option[value="mur"]') })
       .selectOption(mode === "ros" ? "foxglove" : "mur");
     await hub
@@ -125,7 +125,9 @@ try {
       .locator(".connect-address")
       .fill(mode === "ros" ? `ws://127.0.0.1:${rosPort}` : `http://127.0.0.1:${port}`);
     await hub.getByRole("button", { name: "Connect", exact: true }).click();
-    await new Promise((r) => setTimeout(r, 3000));
+    await hub.waitForFunction(() =>
+      window.log.getFieldKeys().some((k) => window.log.getStructuredType(k) === "sensor_msgs/PointCloud2")
+    );
   }
   console.log(
     "setup",
@@ -152,16 +154,29 @@ try {
         });
         if (mode === "file") window.selection.setSelectedTime(2.9);
         const frames = [];
-        window.__cloudReady = { frames: 0, ready: 0 };
+        window.__cloudReady = { frames: 0, current: 0, held: 0, empty: 0, maxAge: 0 };
         let last = performance.now();
         function tick(t) {
           if (!window.__cloudMeasureUntil || t <= window.__cloudMeasureUntil) {
             frames.push(t - last);
             window.__cloudReady.frames++;
-            if (
-              tab.renderer.implementation?.objectManagers.some((e) => e.type === "cloud" && e.manager.positions?.length)
-            )
-              window.__cloudReady.ready++;
+            const newest = Math.max(
+              ...(tab.renderer.implementation?.objectManagers
+                .filter((e) => e.active && e.type === "cloud")
+                .map((e) => JSON.parse(e.cloudId)[1]) ?? [])
+            );
+            const key = tab.controller.saveState().sources[0]?.logKey;
+            const cursor = window.selection.getSelectedTime();
+            const wanted = window.log
+              .getRaw(key, cursor, cursor)
+              ?.timestamps.filter((s) => s <= cursor)
+              .at(-1);
+            if (!Number.isFinite(newest)) window.__cloudReady.empty++;
+            else {
+              const age = Math.max(0, (wanted ?? newest) - newest);
+              window.__cloudReady[age < 0.00001 ? "current" : "held"]++;
+              window.__cloudReady.maxAge = Math.max(window.__cloudReady.maxAge, age);
+            }
           }
           last = t;
           if (frames.length > 10000) frames.shift();
@@ -190,7 +205,6 @@ try {
         ?.renderer.implementation?.objectManagers.some((e) => e.type === "cloud"),
     { timeout: 60000 }
   );
-  await new Promise((r) => setTimeout(r, 5000));
   console.log("machine", os.cpus()[0].model, await app.evaluate(async ({ app }) => await app.getGPUInfo("complete")));
   const sample = () =>
     hub.evaluate(() => {
@@ -202,7 +216,7 @@ try {
       const times = window.__cloudFrames.splice(0).sort((a, b) => a - b);
       const entries = impl?.objectManagers.filter((e) => e.type === "cloud") ?? [];
       return {
-        readiness: { ...window.__cloudReady },
+        presentationAge: { ...window.__cloudReady },
         frameMedianMs: times[Math.floor(times.length * 0.5)],
         frameP95Ms: times[Math.floor(times.length * 0.95)],
         heapBytes: performance.memory?.usedJSHeapSize,
@@ -223,10 +237,33 @@ try {
       };
     });
   await hub.evaluate((seconds) => {
-    window.__cloudReady = { frames: 0, ready: 0 };
+    window.__cloudReady = { frames: 0, current: 0, held: 0, empty: 0, maxAge: 0 };
     window.__cloudFrames.splice(0);
     window.__cloudMeasureUntil = performance.now() + seconds * 1000;
   }, seconds);
+  if (mode === "file" && process.env.CLOUD_PLAYBACK === "1")
+    await hub.evaluate(() => {
+      window.selection.setSelectedTime(0);
+      window.selection.setPlaybackSpeed(8);
+      window.selection.play();
+    });
+  if (process.env.CLOUD_SATELLITE === "1") {
+    const opened = app.waitForEvent("window");
+    await hub.evaluate(() => window.tabs.newSatellite());
+    const satellite = await opened;
+    await satellite.waitForLoadState();
+    await satellite.evaluate(() => {
+      window.__satFrames = [];
+      let last = performance.now();
+      function tick(t) {
+        window.__satFrames.push(t - last);
+        last = t;
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+    });
+    app.__satellite = satellite;
+  }
   const measurementStart = Date.now();
   while (Date.now() - measurementStart < seconds * 1000) {
     await new Promise((r) =>
@@ -264,6 +301,11 @@ try {
         (s) => s.error && s.text.includes("available:")
       )
     );
+    await hub.waitForFunction(() =>
+      [...window.tabs.tabList.find((t) => t.type === 3).controller.sourceList.LIST.querySelectorAll(".value")].some(
+        (e) => e.title.includes("available:")
+      )
+    );
     const diagnostic = await hub.evaluate(() => {
       const list = window.tabs.tabList.find((t) => t.type === 3).controller.sourceList;
       return [...list.LIST.querySelectorAll(".value")].map((e) => ({ text: e.textContent, title: e.title }));
@@ -287,6 +329,19 @@ try {
     { timeout: 60000 }
   );
   await hub.screenshot({ path: shots + `/${cli.values.prefix}-${mode}-decay${decay}.png` });
+  if (app.__satellite)
+    console.log(
+      "satellite",
+      await app.__satellite.evaluate(() => {
+        const f = window.__satFrames.sort((a, b) => a - b);
+        return {
+          frames: f.length,
+          p50: f[Math.floor(f.length * 0.5)],
+          p95: f[Math.floor(f.length * 0.95)],
+          max: Math.max(...f)
+        };
+      })
+    );
   console.log("final", JSON.stringify(await sample()));
   if (mode === "live" && process.env.CLOUD_LIFECYCLE === "1") {
     const oldArgs = backend.spawnargs.slice(1);

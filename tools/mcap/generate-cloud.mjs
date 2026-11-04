@@ -145,4 +145,9 @@ for (let scan = 0; scan < scans; scan++) {
 }
 await writer.end();
 await file.close();
-console.log({ path: "/tmp/mur-point-clouds/reference.mcap", points, scans, bytes: String(position) });
+console.log({
+  path: process.argv[4] ?? "/tmp/mur-point-clouds/reference.mcap",
+  points,
+  scans,
+  bytes: String(position)
+});

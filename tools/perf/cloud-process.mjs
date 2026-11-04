@@ -12,10 +12,10 @@ export function options() {
     allowPositionals: true,
     options: {
       input: { type: "string" },
-      output: { type: "string", default: "/tmp/mur-point-clouds/r2/screenshots" },
+      output: { type: "string", default: "/tmp/mur-point-clouds/screenshots" },
       port: { type: "string", default: "18093" },
       "lite-port": { type: "string", default: "15809" },
-      prefix: { type: "string", default: "r2" }
+      prefix: { type: "string", default: "cloud" }
     }
   });
 }
@@ -50,7 +50,11 @@ export async function ready(child, port) {
 // Test instrumentation only: avoid copying every lidar payload through CDP.
 // Playwright exposes no public option for disabling Network on its own session.
 export async function disablePayloadMirroring(page) {
-  const session = page._connection.toImpl?.(page)?.delegate?._mainFrameSession?._client;
-  if (!session) throw Error("Cannot disable CDP payload mirroring; install the repository lockfile Playwright version");
-  await session.send("Network.disable");
+  try {
+    const session = page._connection.toImpl?.(page)?.delegate?._mainFrameSession?._client;
+    if (!session) throw Error("Playwright CDP session unavailable");
+    await session.send("Network.disable");
+  } catch (error) {
+    console.warn("WARNING payload mirroring remains enabled:", String(error));
+  }
 }

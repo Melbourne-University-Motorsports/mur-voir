@@ -22,6 +22,7 @@ import StatisticsRenderer from "./shared/renderers/StatisticsRenderer";
 import TabRenderer from "./shared/renderers/TabRenderer";
 import TableRenderer from "./shared/renderers/TableRenderer";
 import VideoRenderer from "./shared/renderers/VideoRenderer";
+import { CloudTransport } from "./shared/spatial/CloudTransport";
 import { htmlEncode } from "./shared/util";
 
 const MAX_ASPECT_RATIO = 5;
@@ -39,6 +40,7 @@ declare global {
 
 window.isBattery = false;
 
+const cloudTransport = new CloudTransport();
 let renderer: TabRenderer | null = null;
 let type: TabType | null = null;
 let title: string | null = null;
@@ -145,9 +147,9 @@ window.addEventListener("message", (event) => {
           }
 
           // Render frame
-          lastCommand = message.data.command;
+          lastCommand = cloudTransport.apply(message.data.command, false);
           if (renderer) {
-            renderer.render(message.data.command);
+            renderer.render(lastCommand);
             let aspectRatio = renderer.getAspectRatio();
             processAspectRatio(aspectRatio);
 

@@ -20,6 +20,7 @@ import StatisticsRenderer from "../shared/renderers/StatisticsRenderer";
 import TabRenderer, { NoopRenderer } from "../shared/renderers/TabRenderer";
 import TableRenderer from "../shared/renderers/TableRenderer";
 import VideoRenderer from "../shared/renderers/VideoRenderer";
+import { CloudTransport } from "../shared/spatial/CloudTransport";
 import { Units } from "../shared/units";
 import { clampValue } from "../shared/util";
 import ScrollSensor, { ScrollSensorMouseControl } from "./ScrollSensor";
@@ -370,9 +371,11 @@ export default class Tabs {
                 : tab.title === ""
                 ? getDefaultTabTitle(tab.type)
                 : tab.title;
+            let transport = this.satelliteClouds.get(tab.controller.UUID);
+            if (!transport) this.satelliteClouds.set(tab.controller.UUID, (transport = new CloudTransport()));
             window.sendMainMessage("update-satellite", {
               uuid: tab.controller.UUID,
-              command: command,
+              command: transport.apply(command, true),
               title: title
             });
           }
@@ -687,8 +690,10 @@ export default class Tabs {
   }
 
   /** Updates the list of active satellites for data publishing. */
+  private satelliteClouds = new Map<string, CloudTransport>();
   setActiveSatellites(activeSatellites: string[]) {
     this.activeSatellites = activeSatellites;
+    this.satelliteClouds.clear();
   }
 
   /** Check whether the UUID is associated with a tab. */
