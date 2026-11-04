@@ -222,7 +222,7 @@ try {
         impl = t.renderer.implementation,
         render = impl?.renderer;
       const times = window.__cloudFrames.splice(0).sort((a, b) => a - b);
-      const entries = impl?.objectManagers.filter((e) => e.type === "cloud") ?? [];
+      const entries = impl?.objectManagers.filter((e) => e.active && e.type === "cloud") ?? [];
       return {
         presentationAge: { ...window.__cloudReady },
         frameMedianMs: times[Math.floor(times.length * 0.5)],
@@ -282,6 +282,7 @@ try {
     console.log("sample", (Date.now() - measurementStart) / 1000, JSON.stringify(snapshot));
   }
   if (mode === "file") {
+    await hub.evaluate(() => window.selection.pause());
     const sets = [];
     for (const time of [2.9, 0.5, 2.9, 1, 2, 2.9]) {
       await hub.evaluate((time) => window.selection.setSelectedTime(time), time);
@@ -294,7 +295,7 @@ try {
           await hub.evaluate(() =>
             window.tabs.tabList
               .find((t) => t.type === 3)
-              .renderer.implementation.objectManagers.filter((e) => e.type === "cloud")
+              .renderer.implementation.objectManagers.filter((e) => e.active && e.type === "cloud")
               .map((e) => e.cloudId)
               .sort()
           )
