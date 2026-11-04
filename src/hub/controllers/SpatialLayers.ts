@@ -24,6 +24,9 @@ export class SpatialLayers {
   private badStamps = 0;
   private candidates = new Map<string, Map<number, string>>();
   cloudWarn = false;
+  private partialSince = new Map<string, number>();
+  private lastErrors = new Map<string, { signature: string; error: string }>();
+  private workerRetries = new Map<string, number>();
   robot: URDFRobot | null = null;
   assets: Record<string, string> = {};
   private log: Log | null = null;
@@ -56,6 +59,10 @@ export class SpatialLayers {
   joints: Record<string, number> = {};
   begin(log: Log, time: number, continuous = false) {
     this.continuous = continuous;
+    if (!continuous) {
+      this.lastErrors.clear();
+      this.partialSince.clear();
+    }
     for (const id of this.presentations.keys())
       if (!this.activeCloudLayers.has(id)) {
         this.presentations.delete(id);
@@ -383,7 +390,9 @@ export class SpatialLayers {
             .catch(() => {
               if (generation !== this.generation) return;
               this.pending.delete(id);
-              cache!.set(id, { error: "cloud worker failed" });
+              const tries = (this.workerRetries.get(id) ?? 0) + 1;
+              this.workerRetries.set(id, tries);
+              if (tries >= 3) cache!.set(id, { error: "cloud worker failed after 3 attempts" });
             });
         }
       }
@@ -456,13 +465,16 @@ export class SpatialLayers {
     }
     if (invalidScalars) issues.push(invalidScalars + " invalid " + field + " (magenta)");
     const lag = objects.length ? time - stamp : 0;
+    if (complete) this.partialSince.delete(layerId);
+    else if (!this.partialSince.has(layerId)) this.partialSince.set(layerId, Date.now());
+    const sustained = Date.now() - (this.partialSince.get(layerId) ?? Date.now()) >= 500;
     const shortage = indexes.length < decay;
-    this.cloudWarn = issues.length > 0 || shortage || lag > 0.5;
+    this.cloudWarn = issues.length > 0 || shortage || (held && sustained);
     this.cloudStatus = [
       ...new Set(issues),
-      held && lag > 0.5 ? "holding · " + lag.toFixed(2) + " s behind" : "",
+      held && sustained ? "holding · " + lag.toFixed(2) + " s behind" : "",
       superseded ? superseded + " scans superseded before decode (continuous playback)" : "",
-      ready < indexes.length && (!objects.length || lag > 0.5) ? "partial " + ready + "/" + indexes.length : "",
+      ready < indexes.length && (!objects.length || sustained) ? "partial " + ready + "/" + indexes.length : "",
       shortage
         ? "scans " +
           indexes.length +
@@ -478,9 +490,13 @@ export class SpatialLayers {
       .filter(Boolean)
       .join(" · ");
     if (!objects.length) {
+      if (issues.length) this.lastErrors.set(layerId, { signature, error: this.cloudStatus });
+      const lastError = this.lastErrors.get(layerId);
+      if (lastError?.signature === signature && !complete) throw new Error(lastError.error);
       this.presentations.delete(layerId);
       throw new Error(issues.length ? this.cloudStatus : "decoding cloud… " + this.cloudStatus);
     }
+    this.lastErrors.delete(layerId);
     this.presentations.set(layerId, { signature, wanted: wantedKey, objects: [...objects], range, time, stamp });
     return { objects: objects.reverse(), frame, stamp };
   }

@@ -29,9 +29,9 @@ if (
 const port = Number(cli.values.port),
   rosPort = port + 1;
 if (mode === "file" && !cli.values.input) throw Error("file mode requires --input path/to/cloud.mcap");
-await fs.mkdir("/tmp/mur-point-clouds/r3", { recursive: true });
+await fs.mkdir(cli.values["temp-root"], { recursive: true });
 const root = process.cwd(),
-  dir = await fs.mkdtemp("/tmp/mur-point-clouds/r3/profile-"),
+  dir = await fs.mkdtemp(cli.values["temp-root"] + "/profile-"),
   shots = cli.values.output;
 await fs.mkdir(dir, { recursive: true });
 await fs.mkdir(shots, { recursive: true });
@@ -93,6 +93,7 @@ try {
     }
   });
   const hub = app.windows().find((w) => w.url().endsWith("hub.html"));
+  await hub.waitForFunction(() => window.tabs && window.preferences && document.querySelector(".connect-source"));
   await disablePayloadMirroring(hub);
   hub.on("pageerror", (e) => console.error("PAGE", String(e)));
   if (mode !== "file") {
@@ -109,12 +110,12 @@ try {
     await hub.evaluate(() => window.dispatchEvent(new Event("welcome-connect")));
     console.log(
       await hub
-        .locator("dialog")
+        .locator(".connect-dialog")
         .innerText()
         .catch(() => hub.locator("body").innerText())
     );
     await hub
-      .locator("dialog[open] select")
+      .locator(".connect-dialog:visible select")
       .filter({ has: hub.locator('option[value="mur"]') })
       .selectOption(mode === "ros" ? "foxglove" : "mur");
     await hub
@@ -133,6 +134,7 @@ try {
     "setup",
     await hub.evaluate(
       ({ mode, decay }) => {
+        window.__cloudPerfEnabled = true;
         window.preferences.field3dModeAc = "standard";
         window.preferences.field3dModeBattery = "standard";
         const tabs = window.tabs;
@@ -245,6 +247,7 @@ try {
     await hub.evaluate(() => {
       window.selection.setSelectedTime(0);
       window.selection.setPlaybackSpeed(8);
+      window.selection.setPlaybackLooping(true);
       window.selection.play();
     });
   if (process.env.CLOUD_SATELLITE === "1") {
@@ -276,7 +279,10 @@ try {
     const sets = [];
     for (const time of [2.9, 0.5, 2.9, 1, 2, 2.9]) {
       await hub.evaluate((time) => window.selection.setSelectedTime(time), time);
-      await new Promise((r) => setTimeout(r, 1000));
+      await hub.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await hub.waitForFunction(
+        () => window.tabs.tabList.find((t) => t.type === 3).controller.spatial.pending.size === 0
+      );
       if (time === 2.9)
         sets.push(
           await hub.evaluate(() =>

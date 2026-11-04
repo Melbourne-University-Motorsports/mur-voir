@@ -41,7 +41,10 @@ const Field3dController_Config: SourceListConfig = {
           forTypes: ["sensor_msgs/PointCloud2"],
           display: "Colour",
           showInTypeName: false,
-          values: ["intensity", "z", "class", "rgb"].map((key) => ({ key, display: key }))
+          values: [
+            { key: "", display: "Auto (intensity / z)" },
+            ...["intensity", "z", "class", "rgb"].map((key) => ({ key, display: key }))
+          ]
         },
         {
           key: "map",

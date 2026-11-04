@@ -375,21 +375,26 @@ test("sim stamps and skew pose scans without changing receipt-time layers; outli
 });
 
 test("moving partial windows preserve prior range until complete", async () => {
-  const log = new Log(), layers = new SpatialLayers(), original = CloudDecoder.request;
+  const log = new Log(),
+    layers = new SpatialLayers(),
+    original = CloudDecoder.request;
   const finishes = new Map<number, (v: any) => void>();
   for (let i = 1; i <= 4; i++) log.putRaw("/cloud", i, new Uint8Array([i]));
   log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
   CloudDecoder.request = (p) => new Promise((r) => finishes.set(p.bytes[0], r));
-  const decoded = (max: number) => ({frame:"map",positions:new Float32Array([0,0,0]),min:0,max});
+  const decoded = (max: number) => ({ frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max });
   try {
     layers.begin(log, 3, true);
-    assert.throws(() => layers.objects(log, "/cloud", 3, "map", {decay:"3"}));
+    assert.throws(() => layers.objects(log, "/cloud", 3, "map", { decay: "3" }));
     for (const [i, finish] of finishes) finish(decoded(i === 1 ? 12 : 11));
     await Promise.resolve();
-    layers.objects(log, "/cloud", 3, "map", {decay:"3"});
+    layers.objects(log, "/cloud", 3, "map", { decay: "3" });
     layers.begin(log, 4, true);
-    assert.ok(layers.objects(log, "/cloud", 4, "map", {decay:"3"}).objects.every((o: any) => o.max === 12));
-    finishes.get(4)!(decoded(1000)); await Promise.resolve();
-    assert.ok(layers.objects(log, "/cloud", 4, "map", {decay:"3"}).objects.every((o: any) => o.max === 1000));
-  } finally { CloudDecoder.request = original; }
+    assert.ok(layers.objects(log, "/cloud", 4, "map", { decay: "3" }).objects.every((o: any) => o.max === 12));
+    finishes.get(4)!(decoded(1000));
+    await Promise.resolve();
+    assert.ok(layers.objects(log, "/cloud", 4, "map", { decay: "3" }).objects.every((o: any) => o.max === 1000));
+  } finally {
+    CloudDecoder.request = original;
+  }
 });

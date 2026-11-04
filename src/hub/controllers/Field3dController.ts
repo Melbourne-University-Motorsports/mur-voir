@@ -471,11 +471,10 @@ export default class Field3dController implements TabController {
           );
           const fields = this.spatial.cloudFields.get(source.logKey);
           if (fields)
-            this.sourceList.setItemOptionValues(
-              source.logKey,
-              "field",
-              fields.map((key) => ({ key, display: key }))
-            );
+            this.sourceList.setItemOptionValues(source.logKey, "field", [
+              { key: "", display: "Auto (intensity / z)" },
+              ...fields.map((key) => ({ key, display: key }))
+            ]);
           objects.push(...result.objects);
           const origin = window.log.getTimestampRange()[0];
           const recent = window.log.getString(source.logKey + "/spatial", time - 1, time)?.timestamps ?? [];
@@ -505,11 +504,10 @@ export default class Field3dController implements TabController {
         } catch (error) {
           const fields = this.spatial.cloudFields.get(source.logKey);
           if (fields)
-            this.sourceList.setItemOptionValues(
-              source.logKey,
-              "field",
-              fields.map((key) => ({ key, display: key }))
-            );
+            this.sourceList.setItemOptionValues(source.logKey, "field", [
+              { key: "", display: "Auto (intensity / z)" },
+              ...fields.map((key) => ({ key, display: key }))
+            ]);
           this.sourceList.itemStatus.set(String(i), {
             text: error instanceof Error ? error.message : String(error),
             error: true

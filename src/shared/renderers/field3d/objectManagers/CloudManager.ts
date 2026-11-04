@@ -108,10 +108,12 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
       this.points = new THREE.Points(geo, material);
       this.root.add(this.points);
     }
-    const perf = ((window as any).__cloudPerf ??= { uploadMs: 0, uploadedBytes: 0, updates: 0 });
-    perf.uploadMs += performance.now() - start;
-    perf.uploadedBytes += uploadedBytes;
-    perf.updates++;
+    if ((window as any).__cloudPerfEnabled) {
+      const perf = ((window as any).__cloudPerf ??= { uploadMs: 0, uploadedBytes: 0, updates: 0 });
+      perf.uploadMs += performance.now() - start;
+      perf.uploadedBytes += uploadedBytes;
+      perf.updates++;
+    }
     this.points.position.set(...object.transform.translation);
     this.points.quaternion.copy(rotation3dToQuaternion(object.transform.rotation));
   }

@@ -12,6 +12,7 @@ export function options() {
     allowPositionals: true,
     options: {
       input: { type: "string" },
+      "temp-root": { type: "string", default: "/tmp/mur-point-clouds" },
       output: { type: "string", default: "/tmp/mur-point-clouds/screenshots" },
       port: { type: "string", default: "18093" },
       "lite-port": { type: "string", default: "15809" },
