@@ -69,20 +69,21 @@ export class CloudCache {
       (value.positions?.byteLength ?? 0) +
       (value.values?.byteLength ?? 0) +
       (value.colors?.byteLength ?? 0);
+    const old = this.entries.get(key);
+    const needed = bytes - (old?.bytes ?? 0);
     const pinned = new Set<string>();
     for (const [owner, pin] of this.pins) {
       if (Date.now() - pin.time > 2000) this.pins.delete(owner);
       else pin.keys.forEach((k) => pinned.add(k));
     }
     for (const [k, entry] of this.entries) {
-      if (this.bytes + bytes <= this.budget) break;
-      if (!pinned.has(k)) {
+      if (this.bytes + needed <= this.budget) break;
+      if (k !== key && !pinned.has(k)) {
         this.entries.delete(k);
         this.bytes -= entry.bytes;
       }
     }
-    if (this.bytes + bytes > this.budget) return false;
-    const old = this.entries.get(key);
+    if (this.bytes + needed > this.budget) return false;
     if (old) this.bytes -= old.bytes;
     this.entries.set(key, { value, bytes });
     this.bytes += bytes;

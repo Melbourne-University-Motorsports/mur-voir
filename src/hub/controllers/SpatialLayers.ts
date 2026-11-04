@@ -30,19 +30,39 @@ export class SpatialLayers {
   private cloudOwners = new Map<string, object>();
   cloudStatus = "";
   cloudFields = new Map<string, string[]>();
-  private previousCloudWindows = new Map<string, string[]>();
-  private droppedClouds = 0;
+  private presentations = new Map<
+    string,
+    {
+      signature: string;
+      wanted: string;
+      objects: Field3dRendererCommand_AnyObj[];
+      range: { min: number; max: number };
+      time: number;
+      stamp: number;
+    }
+  >();
+  private continuous = false;
+  private activeCloudLayers = new Set<string>();
+  private admissionErrors = new Set<string>();
+
   private pending = new Set<string>();
   private generation = 0;
   joints: Record<string, number> = {};
-  begin(log: Log, time: number) {
+  begin(log: Log, time: number, continuous = false) {
+    this.continuous = continuous;
+    for (const id of this.presentations.keys())
+      if (!this.activeCloudLayers.has(id)) {
+        this.presentations.delete(id);
+        this.cloudOwners.delete(id);
+      }
+    this.activeCloudLayers.clear();
     if (log !== this.log || time < this.time) {
       this.markers.clear();
       this.trails.clear();
       this.generation++;
       this.cloudOwners.clear();
-      this.previousCloudWindows.clear();
-      this.droppedClouds = 0;
+      this.presentations.clear();
+      this.admissionErrors.clear();
       this.cloudFields.clear();
       if (this.log && log !== this.log) SpatialLayers.clouds.delete(this.log);
       this.pending.clear();
@@ -64,7 +84,7 @@ export class SpatialLayers {
             this.tree.addTransform(
               tf.header.frame_id,
               tf.child_frame_id,
-              stamp,
+              cloudStamp(tf.header?.stamp, stamp),
               rosPose(tf.transform),
               key.endsWith("tf_static")
             );
@@ -94,9 +114,11 @@ export class SpatialLayers {
     key: string,
     time: number,
     fixed: string,
-    options: Record<string, string> = {}
+    options: Record<string, string> = {},
+    layerId = key
   ): { objects: Field3dRendererCommand_AnyObj[]; frame: string; stamp: number } {
-    if (log.getStructuredType(key) === "sensor_msgs/PointCloud2") return this.cloud(log, key, time, fixed, options);
+    if (log.getStructuredType(key) === "sensor_msgs/PointCloud2")
+      return this.cloud(log, key, time, fixed, options, layerId);
     const snapshot = spatialSnapshot(log, key, time);
     const type = log.getStructuredType(key);
     if (!snapshot && !(type === "visualization_msgs/MarkerArray" && this.markers.has(key))) {
@@ -239,7 +261,8 @@ export class SpatialLayers {
     objects.push({ type: "trajectory", color: "#aaa", size: "normal", poses });
     return objects;
   }
-  private cloud(log: Log, key: string, time: number, fixed: string, options: Record<string, string>) {
+  private cloud(log: Log, key: string, time: number, fixed: string, options: Record<string, string>, layerId: string) {
+    this.activeCloudLayers.add(layerId);
     const decay = Math.max(1, Math.min(20, Math.floor(Number(options.decay ?? 1)) || 1));
     const history = log.getField(key);
     const indexes = history ? cloudWindow(history, time, decay) : [];
@@ -252,16 +275,18 @@ export class SpatialLayers {
       cache = new CloudCache();
       SpatialLayers.clouds.set(log, cache);
     }
-    let owner = this.cloudOwners.get(key);
+    let owner = this.cloudOwners.get(layerId);
     if (!owner) {
       owner = {};
-      this.cloudOwners.set(key, owner);
+      this.cloudOwners.set(layerId, owner);
     }
-    cache.protect(owner, indexes.map(cacheKey));
     const wanted = indexes.map(cacheKey);
-    for (const id of this.previousCloudWindows.get(key) ?? [])
-      if (!wanted.includes(id) && !cache.get(id)) this.droppedClouds++;
-    this.previousCloudWindows.set(key, wanted);
+    for (const id of this.admissionErrors)
+      if (!this.pending.has(id) && !wanted.includes(id)) this.admissionErrors.delete(id);
+    const signature = JSON.stringify([key, fixed, options]);
+    let previous = this.presentations.get(layerId);
+    if (previous?.signature !== signature || time < previous.time) previous = undefined;
+    cache.protect(owner, [...wanted, ...(previous?.objects.map((o: any) => o.id) ?? [])]);
     const objects: Field3dRendererCommand_AnyObj[] = [];
     const issues: string[] = [];
     let frame = "",
@@ -286,23 +311,29 @@ export class SpatialLayers {
           const generation = this.generation;
           request
             .then((result) => {
+              if (generation !== this.generation) return;
               this.pending.delete(id);
-              if (generation === this.generation && !cache!.set(id, result))
-                cache!.set(id, { error: "cloud cache budget exceeded" });
+              if (!cache!.set(id, result)) this.admissionErrors.add(id);
+              else this.admissionErrors.delete(id);
             })
             .catch(() => {
+              if (generation !== this.generation) return;
               this.pending.delete(id);
-              if (generation === this.generation) cache!.set(id, { error: "cloud worker failed" });
+              cache!.set(id, { error: "cloud worker failed" });
             });
         }
       }
-      if (!result) continue;
+      if (!result) {
+        if (this.admissionErrors.has(id)) issues.push("cloud cache budget exceeded; retrying");
+        continue;
+      }
       ready++;
       if (result.fields) this.cloudFields.set(key, result.fields);
       if (result.error) {
         issues.push(result.error);
         continue;
       }
+      if (result.invalidScalars) issues.push(result.invalidScalars + " points omitted: invalid " + field);
       frame = result.frame;
       stamp = Math.max(stamp, t);
       decimated ||= result.stride > 1;
@@ -320,17 +351,39 @@ export class SpatialLayers {
         issues.push(String(error));
       }
     }
-    const range = cloudRange(objects as { min: number; max: number }[]);
+    const complete = ready === indexes.length;
+    const wantedKey = JSON.stringify(wanted);
+    const range =
+      !complete && previous?.wanted === wantedKey
+        ? previous.range
+        : cloudRange(objects as { min: number; max: number }[]);
     for (const object of objects) Object.assign(object, range);
+    const held = this.continuous && !objects.length && !complete && !issues.length && previous?.objects.length;
+    if (held) {
+      for (const old of previous!.objects as any[]) {
+        try {
+          objects.push({ ...old, transform: this.resolve(old.frame, fixed, cloudStamp(old.stamp, previous!.stamp)) });
+        } catch (error) {
+          issues.push(String(error));
+        }
+      }
+      const last = objects[objects.length - 1] as any;
+      frame = last?.frame ?? "";
+      stamp = previous!.stamp;
+    }
     this.cloudStatus = [
-      ready < indexes.length ? "partial " + ready + "/" + indexes.length : "",
-      decimated ? "decimating · 2M point budget" : "",
-      this.droppedClouds ? this.droppedClouds + " skipped scans" : "",
-      ...new Set(issues)
+      ...new Set(issues),
+      held ? "holding last ready scan while decoding" : "",
+      ready < indexes.length ? "partial " + ready + "/" + indexes.length + " · range frozen until complete" : "",
+      decimated ? "decimating · " + (maxPoints * decay).toLocaleString("en-US") + " point layer budget" : ""
     ]
       .filter(Boolean)
       .join(" · ");
-    if (!objects.length) throw new Error("decoding cloud… " + this.cloudStatus);
+    if (!objects.length) {
+      this.presentations.delete(layerId);
+      throw new Error(issues.length ? this.cloudStatus : "decoding cloud… " + this.cloudStatus);
+    }
+    this.presentations.set(layerId, { signature, wanted: wantedKey, objects: [...objects], range, time, stamp });
     return { objects: objects.reverse(), frame, stamp };
   }
 }

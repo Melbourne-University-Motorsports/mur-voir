@@ -160,6 +160,7 @@ test("reference lidar load stays below 64 MiB and retains decay ten at the bound
   const log = new Log();
   log.createBlankField("/cloud", LoggableType.Raw);
   log.setLiveRetention("/cloud", 60);
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
   for (let i = 0; i < 25; i++) {
     log.putRaw("/cloud", i / 10, new Uint8Array(300000 * 16).fill(i));
     log.discardLiveData(i / 10, 1200);
@@ -181,4 +182,16 @@ test("replacement and out-of-order insertion preserve timestamps after a large l
   assert.equal(data.values.at(-1), -1);
   assert.equal(data.values[data.timestamps.indexOf(1234)], -2);
   assert.equal(data.values[data.timestamps.indexOf(1234.5)], -3);
+});
+
+test("non-cloud binary histories retain the previous time horizon", () => {
+  for (const type of ["sensor_msgs/Image", "sensor_msgs/LaserScan"]) {
+    const log = new Log();
+    log.putRaw("/raw", 0, new Uint8Array());
+    log.setLiveRetention("/raw", 60);
+    log.setStructuredType("/raw", type);
+    for (let i = 0; i < 70; i++) log.putRaw("/raw", i / 10, new Uint8Array(1024 * 1024));
+    log.discardLiveData(7, 1200);
+    assert.equal(log.getRaw("/raw", -Infinity, Infinity)!.values.length, 70);
+  }
 });

@@ -6,6 +6,9 @@
 // at the root directory of this project.
 
 export default interface Selection {
+  /** Changes on explicit seeks, so renderers can distinguish playback from navigation. */
+  getSeekRevision?(): number;
+
   /** Returns the current selection mode. */
   getMode(): SelectionMode;
 

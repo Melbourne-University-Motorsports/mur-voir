@@ -87,6 +87,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
   const xf = fields.get("x")!,
     yf = fields.get("y")!,
     zf = fields.get("z")!;
+  let invalidScalars = 0;
   let count = 0,
     min = Infinity,
     max = -Infinity;
@@ -96,12 +97,16 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
       y = read(base, yf),
       z = read(base, zf);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const value = rgb ? 0 : read(base, field);
+    if (!Number.isFinite(value)) {
+      invalidScalars++;
+      continue;
+    }
     const offset = count * 3;
     positions[offset] = x;
     positions[offset + 1] = y;
     positions[offset + 2] = z;
-    const value = rgb ? 0 : read(base, field);
-    values[count] = Number.isFinite(value) ? value : 0;
+    values[count] = value;
     if (colors) {
       const packed = view.getUint32(base + field.offset, little);
       colors[offset] = ((packed >>> 16) & 255) / 255;
@@ -123,6 +128,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
     frame: cloud.header?.frame_id ?? "",
     stamp: cloud.header?.stamp,
     fields: cloud.fields.filter((f) => f.count === 1).map((f) => f.name),
+    invalidScalars,
     sourcePoints: width * height,
     stride
   };

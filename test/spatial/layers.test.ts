@@ -16,6 +16,7 @@ test("retained scans use TF at acquisition time and reset clears decoded scans",
   const layers = new SpatialLayers();
   const log = new Log();
   log.putRaw("/cloud", 1, new Uint8Array([1]));
+  log.putRaw("/cloud", 0, new Uint8Array());
   log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
   layers.begin(log, 1);
   layers.tree.addTransform("map", "lidar", 1, { ...identity(), translation: [1, 0, 0] });
@@ -43,6 +44,7 @@ test("expired decoded scans cannot fail TF lookup for the current decay window",
   const layers = new SpatialLayers();
   const log = new Log();
   log.putRaw("/cloud", 1, new Uint8Array([1]));
+  log.putRaw("/cloud", 0, new Uint8Array());
   log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
   layers.begin(log, 1);
   layers.tree.addTransform("map", "retired_lidar", 1, identity());
@@ -62,6 +64,119 @@ test("expired decoded scans cannot fail TF lookup for the current decay window",
     const result = layers.objects(log, "/cloud", 2, "map");
     assert.equal(result.objects.length, 1);
     assert.equal(result.stamp, 2);
+  } finally {
+    CloudDecoder.request = request;
+  }
+});
+
+test("delayed TF uses individual acquisition stamps, receipt controls availability", async () => {
+  const log = new Log(),
+    layers = new SpatialLayers();
+  log.putRaw("/tf", 0, new Uint8Array());
+  log.setStructuredType("/tf", "tf2_msgs/TFMessage");
+  const tf = (child: string, sec: number, x: number, nanosec = 0) => ({
+    header: { frame_id: "map", stamp: { sec, nanosec } },
+    child_frame_id: child,
+    transform: { translation: { x, y: 0, z: 0 }, rotation: { w: 1, x: 0, y: 0, z: 0 } }
+  });
+  log.putString(
+    "/tf/spatial",
+    10.1,
+    JSON.stringify({ transforms: [tf("lidar", 10, 0), tf("other", 9, 3), tf("fallback", 0, 7)] })
+  );
+  log.putString(
+    "/tf/spatial",
+    11.1,
+    JSON.stringify({ transforms: [tf("lidar", 11, 10), tf("other", 10, 5), tf("invalid", 1, 9, 1e9)] })
+  );
+  log.putRaw("/cloud", 0, new Uint8Array());
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  log.putRaw("/cloud", 10.7, new Uint8Array([1]));
+  layers.begin(log, 10);
+  assert.equal(layers.tree.hasFrame("lidar"), false);
+  layers.begin(log, 11.2);
+  assert.equal(layers.resolve("other", "map", 9.5).translation[0], 4);
+  assert.equal(layers.resolve("fallback", "map", 10.1).translation[0], 7);
+  assert.equal(layers.resolve("invalid", "map", 11.1).translation[0], 9);
+  const request = CloudDecoder.request;
+  CloudDecoder.request = async () => ({
+    frame: "lidar",
+    stamp: { sec: 10, nanosec: 500000000 },
+    positions: new Float32Array([0, 0, 0])
+  });
+  try {
+    assert.throws(() => layers.objects(log, "/cloud", 11.2, "map"));
+    await Promise.resolve();
+    const cloud = layers.objects(log, "/cloud", 11.2, "map").objects[0];
+    assert.equal(cloud.type, "cloud");
+    if (cloud.type === "cloud") assert.equal(cloud.transform.translation[0], 5);
+  } finally {
+    CloudDecoder.request = request;
+  }
+});
+
+test("continuous decode holds only until settlement; seeks and options never revive old scans", async () => {
+  const layers = new SpatialLayers(),
+    log = new Log();
+  log.putRaw("/cloud", 0, new Uint8Array());
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  const request = CloudDecoder.request;
+  let finish: (v: any) => void = () => {};
+  CloudDecoder.request = () =>
+    new Promise((r) => {
+      finish = r;
+    });
+  const decoded = { frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max: 10 };
+  try {
+    log.putRaw("/cloud", 1, new Uint8Array([1]));
+    layers.begin(log, 1, true);
+    assert.throws(() => layers.objects(log, "/cloud", 1, "map"));
+    finish(decoded);
+    await Promise.resolve();
+    const first = layers.objects(log, "/cloud", 1, "map").objects[0];
+    log.putRaw("/cloud", 1.1, new Uint8Array([2]));
+    layers.begin(log, 1.1, true);
+    assert.equal(layers.objects(log, "/cloud", 1.1, "map").objects[0].id, first.id);
+    assert.match(layers.cloudStatus, /holding/);
+    finish({ error: "Invalid PointCloud2 layout" });
+    await Promise.resolve();
+    assert.throws(() => layers.objects(log, "/cloud", 1.1, "map"), /Invalid/);
+    log.putRaw("/cloud", 2, new Uint8Array([3]));
+    layers.begin(log, 2, false);
+    assert.throws(() => layers.objects(log, "/cloud", 2, "map"), /partial/);
+    finish(decoded);
+    await Promise.resolve();
+    layers.objects(log, "/cloud", 2, "map");
+    layers.begin(log, 2, true);
+    assert.throws(() => layers.objects(log, "/cloud", 2, "map", { field: "z" }), /partial/);
+  } finally {
+    CloudDecoder.request = request;
+  }
+});
+
+test("partial window range freezes and complete range is exact", async () => {
+  const layers = new SpatialLayers(),
+    log = new Log();
+  log.putRaw("/cloud", 0, new Uint8Array());
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  for (let i = 1; i <= 3; i++) log.putRaw("/cloud", i, new Uint8Array([i]));
+  layers.begin(log, 3);
+  const request = CloudDecoder.request,
+    finishes = new Map<number, (v: any) => void>();
+  CloudDecoder.request = (p) => new Promise((r) => finishes.set(p.bytes[0], r));
+  const value = (max: number) => ({ frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max });
+  const get = () => layers.objects(log, "/cloud", 3, "map", { decay: "3" }).objects as any[];
+  try {
+    assert.throws(get);
+    finishes.get(3)!(value(10));
+    await Promise.resolve();
+    assert.equal(get()[0].max, 10);
+    finishes.get(2)!(value(100));
+    await Promise.resolve();
+    assert.ok(get().every((o) => o.max === 10));
+    finishes.get(1)!(value(50));
+    await Promise.resolve();
+    assert.ok(get().every((o) => o.max === 100));
   } finally {
     CloudDecoder.request = request;
   }

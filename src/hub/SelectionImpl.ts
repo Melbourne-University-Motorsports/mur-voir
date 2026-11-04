@@ -161,7 +161,13 @@ export default class SelectionImpl implements Selection {
   }
 
   /** Updates the selected time based on the current mode. */
+  private seekRevision = 0;
+  getSeekRevision() {
+    return this.seekRevision;
+  }
+
   setSelectedTime(time: number) {
+    this.seekRevision++;
     switch (this.mode) {
       case SelectionMode.Idle:
         this.setMode(SelectionMode.Static);

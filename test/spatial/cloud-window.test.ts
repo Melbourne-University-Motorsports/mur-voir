@@ -56,3 +56,17 @@ test("scan stamps validate ROS nanoseconds and fall back to log time", () => {
   ])
     assert.equal(cloudStamp(stamp, 99), 99);
 });
+
+test("pinned replacement and duplicate completions account only the net allocation", () => {
+  const cache = new CloudCache(272),
+    owner = {};
+  const value = { positions: new Float32Array(4) };
+  assert.equal(cache.set("a", value), true);
+  cache.protect(owner, ["a"]);
+  assert.equal(cache.set("a", value), true);
+  assert.equal(cache.set("a", value), true);
+  assert.equal(cache.bytes, 272);
+  assert.equal(cache.set("b", value), false);
+  cache.protect(owner, []);
+  assert.equal(cache.set("b", value), true);
+});
