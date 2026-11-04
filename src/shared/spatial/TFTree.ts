@@ -30,6 +30,7 @@ interface EdgeSamples {
   isStatic: boolean;
   times: number[];
   transforms: Transform[];
+  receipts: number[];
 }
 
 /** Strips the leading slash some publishers put on frame ids ("/map" and "map" are the same frame). */
@@ -39,6 +40,8 @@ export function normalizeFrameId(frame: string): string {
 
 export class TFTree {
   private edges = new Map<string, EdgeSamples>(); // child -> edge
+  private frames: Set<string> | null = null;
+  private chains = new Map<string, string[]>();
   private extrapolationToleranceS: number;
 
   constructor(extrapolationToleranceS = DEFAULT_EXTRAPOLATION_TOLERANCE_S) {
@@ -46,7 +49,7 @@ export class TFTree {
   }
 
   /** Adds a child-in-parent transform. Samples should arrive roughly in time order; others are inserted. */
-  addTransform(parent: string, child: string, time: number, transform: Transform, isStatic = false) {
+  addTransform(parent: string, child: string, time: number, transform: Transform, isStatic = false, receipt = time) {
     parent = normalizeFrameId(parent);
     child = normalizeFrameId(child);
     if (parent === "" || child === "" || parent === child || !Number.isFinite(time) || !isFiniteTransform(transform))
@@ -62,33 +65,67 @@ export class TFTree {
     if (edge === undefined || edge.parent !== parent || edge.isStatic !== isStatic) {
       // A re-parented frame (or static/dynamic switch) replaces the old edge, as in tf2
       if (edge !== undefined && !isStatic && edge.isStatic) return; // Static wins over dynamic for the same child
-      edge = { parent: parent, isStatic: isStatic, times: [], transforms: [] };
+      edge = { parent: parent, isStatic: isStatic, times: [], transforms: [], receipts: [] };
       this.edges.set(child, edge);
+      this.frames = null;
+      this.chains.clear();
     }
     if (isStatic) {
       edge.times = [time];
+      edge.receipts = [receipt];
       edge.transforms = [transform];
       return;
     }
     const n = edge.times.length;
     if (n === 0 || time > edge.times[n - 1]) {
       edge.times.push(time);
+      edge.receipts.push(receipt);
       edge.transforms.push(transform);
     } else if (time === edge.times[n - 1]) {
       edge.transforms[n - 1] = transform;
+      edge.receipts[n - 1] = receipt;
     } else {
       const index = lowerBound(edge.times, time);
       if (edge.times[index] === time) {
         edge.transforms[index] = transform;
+        edge.receipts[index] = receipt;
       } else {
         edge.times.splice(index, 0, time);
+        edge.receipts.splice(index, 0, receipt);
         edge.transforms.splice(index, 0, transform);
       }
     }
   }
 
+  /** Retain one preceding sample for interpolation, and every static edge. */
+  pruneBeforeReceipt(cutoff: number) {
+    for (const edge of this.edges.values()) {
+      if (edge.isStatic) continue;
+      let first = 0;
+      while (first + 1 < edge.receipts.length && edge.receipts[first + 1] < cutoff) first++;
+      if (first) {
+        edge.times.splice(0, first);
+        edge.transforms.splice(0, first);
+        edge.receipts.splice(0, first);
+      }
+    }
+  }
+  removeEdge(child: string) {
+    this.edges.delete(normalizeFrameId(child));
+    this.frames = null;
+    this.chains.clear();
+  }
+  isStatic(frame: string) {
+    return this.edges.get(normalizeFrameId(frame))?.isStatic ?? false;
+  }
+  getSampleCount() {
+    return [...this.edges.values()].reduce((n, e) => n + e.times.length, 0);
+  }
+
   clear(): void {
     this.edges.clear();
+    this.frames = null;
+    this.chains.clear();
   }
 
   /** All frames known to the tree, sorted. */
@@ -106,7 +143,8 @@ export class TFTree {
     const result: { parent: string; child: string; isStatic: boolean; stamp: number | null }[] = [];
     this.edges.forEach((edge, child) => {
       let stamp: number | null = null;
-      for (const t of edge.times) if (t <= time) stamp = t;
+      const index = lowerBound(edge.times, time);
+      stamp = edge.times[index] === time ? time : edge.times[index - 1] ?? null;
       result.push({ parent: edge.parent, child, isStatic: edge.isStatic, stamp });
     });
     return result.sort((a, b) => a.parent.localeCompare(b.parent) || a.child.localeCompare(b.child));
@@ -114,11 +152,8 @@ export class TFTree {
 
   hasFrame(frame: string): boolean {
     frame = normalizeFrameId(frame);
-    if (this.edges.has(frame)) return true;
-    for (const edge of this.edges.values()) {
-      if (edge.parent === frame) return true;
-    }
-    return false;
+    this.frames ??= new Set(this.getFrames());
+    return this.frames.has(frame);
   }
 
   getParent(frame: string): string | null {
@@ -213,6 +248,8 @@ export class TFTree {
   }
 
   private chainToRoot(frame: string): string[] {
+    const cached = this.chains.get(frame);
+    if (cached) return cached;
     const chain = [frame];
     const seen = new Set([frame]);
     let current = frame;
@@ -222,6 +259,7 @@ export class TFTree {
       seen.add(current);
       chain.push(current);
     }
+    this.chains.set(frame, chain);
     return chain;
   }
 

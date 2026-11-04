@@ -416,3 +416,69 @@ test("moving partial windows preserve prior range until complete", async () => {
     CloudDecoder.request = original;
   }
 });
+
+test("dynamic TF is bounded in live, rebuilt after backward seeks, and complete for files", () => {
+  for (const live of [true, false]) {
+    const log = new Log(),
+      layers = new SpatialLayers();
+    log.putRaw("/tf", 0, new Uint8Array());
+    log.setStructuredType("/tf", "tf2_msgs/TFMessage");
+    if (live) log.setLiveRetention("/tf", 60);
+    for (let i = 1; i <= 10000; i++) {
+      log.putString(
+        "/tf/spatial",
+        i / 10,
+        JSON.stringify({
+          transforms: [
+            {
+              header: { frame_id: "map", stamp: { sec: Math.floor(i / 10), nanosec: (i % 10) * 100000000 } },
+              child_frame_id: "lidar",
+              transform: { translation: { x: i, y: 0, z: 0 }, rotation: { w: 1 } }
+            }
+          ]
+        })
+      );
+      if (i % 100 === 0) layers.begin(log, i / 10, true);
+    }
+    for (const tree of [layers.tree, (layers as any).scanTree])
+      assert.ok(live ? tree.getSampleCount() <= 602 : tree.getSampleCount() === 10000);
+    layers.begin(log, 500);
+    for (const tree of [layers.tree, (layers as any).scanTree])
+      assert.ok(live ? tree.getSampleCount() <= 602 : tree.getSampleCount() === 5000);
+    assert.equal(layers.resolve("lidar", "map", live ? 500 : 1).translation[0], live ? 5000 : 10);
+  }
+});
+
+test("TF continuity accepts delayed batches and 8x, recovers poisoned first and clock steps", () => {
+  const scenarios = [
+    { stamps: [1, 2, 3, 4, 5], receipts: [1, 2, 6, 7, 8] },
+    { stamps: [9000, 2, 3, 4, 5], receipts: [1, 2, 3, 4, 5] },
+    { stamps: [1, 2, 103, 104, 105], receipts: [1, 2, 3, 4, 5] },
+    { stamps: [101, 102, 3, 4, 5], receipts: [1, 2, 3, 4, 5] },
+    { stamps: [8, 16, 24, 32, 40], receipts: [1, 2, 3, 4, 5] }
+  ];
+  for (const { stamps, receipts } of scenarios) {
+    const log = new Log(),
+      layers = new SpatialLayers();
+    log.putRaw("/tf", 0, new Uint8Array());
+    log.setStructuredType("/tf", "tf2_msgs/TFMessage");
+    stamps.forEach((sec, i) =>
+      log.putString(
+        "/tf/spatial",
+        receipts[i],
+        JSON.stringify({
+          transforms: [
+            {
+              header: { frame_id: "map", stamp: { sec, nanosec: 0 } },
+              child_frame_id: "lidar",
+              transform: { translation: { x: i, y: 0, z: 0 }, rotation: { w: 1 } }
+            }
+          ]
+        })
+      )
+    );
+    layers.begin(log, receipts.at(-1)!);
+    const result = (layers as any).scanPose("lidar", "map", { sec: stamps.at(-1), nanosec: 0 }, receipts.at(-1), []);
+    assert.equal(result.translation[0], 4);
+  }
+});

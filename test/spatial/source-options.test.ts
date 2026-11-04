@@ -32,7 +32,7 @@ test("remembered discovered field survives remove and add through stock selectio
   };
   list.state = [];
   list.supplementalStateSuppliers = [];
-  list.itemOptionValues = new Map([[JSON.stringify(["/cloud", "field"]), [{ key: "ring", display: "ring" }]]]);
+  list.itemOptionValues = new Map();
   list.addListItem = (state: any) => list.state.push(state);
   try {
     list.addField("/cloud");

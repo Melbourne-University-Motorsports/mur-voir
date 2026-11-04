@@ -557,7 +557,7 @@ export default class SourceList {
       } else if (
         memory !== null &&
         optionConfig.key in memory.options &&
-        (optionConfig.key === "field" ||
+        ((optionConfig.key === "field" && window.log.getStructuredType(logKey) === "sensor_msgs/PointCloud2") ||
           this.optionValues(logKey, optionConfig.key, optionConfig.values)
             .map((valueConfig) => valueConfig.key)
             .includes(memory.options[optionConfig.key]))

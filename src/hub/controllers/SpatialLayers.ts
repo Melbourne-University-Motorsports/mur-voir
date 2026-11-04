@@ -21,6 +21,10 @@ export class SpatialLayers {
   tree = new TFTree();
   private scanTree = new TFTree();
   private stampOffsets = new Map<string, number>();
+  private stampRuns = new Map<
+    string,
+    { stamp: number; receipt: number; candidates: { stamp: number; receipt: number; tf: any }[] }
+  >();
   private badStamps = 0;
   private candidates = new Map<string, Map<number, string>>();
   cloudWarn = false;
@@ -87,6 +91,7 @@ export class SpatialLayers {
       this.tree.clear();
       this.scanTree.clear();
       this.stampOffsets.clear();
+      this.stampRuns.clear();
       this.badStamps = 0;
       this.candidates.clear();
       this.partialSince.clear();
@@ -113,21 +118,35 @@ export class SpatialLayers {
               rosPose(tf.transform),
               key.endsWith("tf_static")
             );
-            const source = key + ":" + tf.child_frame_id;
+            const source = normalizeFrameId(tf.child_frame_id);
             const acquisition = rosStamp(tf.header?.stamp, stamp);
-            const offset = stamp - acquisition;
-            const established = this.stampOffsets.get(source);
-            if (established !== undefined && Math.abs(offset - established) > 2) {
+            const isStatic = key.endsWith("tf_static");
+            let run = this.stampRuns.get(source);
+            const continuous = (a: number, r: number, b: number, s: number) =>
+              b >= a - 0.25 && b - a <= Math.max(0, s - r) * 8 + 2;
+            let accepted = [{ stamp: acquisition, receipt: stamp, tf }];
+            if (!isStatic && run && !continuous(run.stamp, run.receipt, acquisition, stamp)) {
               this.badStamps++;
-            } else {
-              this.stampOffsets.set(source, established ?? offset);
+              const last = run.candidates.at(-1);
+              if (last && !continuous(last.stamp, last.receipt, acquisition, stamp)) run.candidates = [];
+              run.candidates.push({ stamp: acquisition, receipt: stamp, tf });
+              if (run.candidates.length < 3) continue;
+              accepted = run.candidates;
+              this.scanTree.removeEdge(source);
+            }
+            for (const sample of accepted) {
               this.scanTree.addTransform(
-                tf.header.frame_id,
-                tf.child_frame_id,
-                acquisition,
-                rosPose(tf.transform),
-                key.endsWith("tf_static")
+                sample.tf.header.frame_id,
+                source,
+                sample.stamp,
+                rosPose(sample.tf.transform),
+                isStatic,
+                sample.receipt
               );
+            }
+            if (!isStatic) {
+              this.stampOffsets.set(source, stamp - acquisition);
+              this.stampRuns.set(source, { stamp: acquisition, receipt: stamp, candidates: [] });
             }
           }
           this.processed.set(key, stamp);
@@ -138,6 +157,11 @@ export class SpatialLayers {
           if (Number.isFinite(msg.position[i])) this.joints[name] = msg.position[i];
         });
       }
+    }
+    const cutoff = log.getLiveRetentionStart(time);
+    if (cutoff !== null) {
+      this.tree.pruneBeforeReceipt(cutoff);
+      this.scanTree.pruneBeforeReceipt(cutoff);
     }
   }
   resolve(frame: string, fixed: string, time: number): Transform {
@@ -158,18 +182,16 @@ export class SpatialLayers {
         current = this.scanTree.getParent(current);
       }
     }
-    const dynamic = new Set(
-      this.scanTree
-        .getEdges(acquisition)
-        .filter((e) => !e.isStatic && chain.has(e.child))
-        .map((e) => e.child)
-    );
-    const offsets = [...this.stampOffsets.entries()]
-      .filter(([key]) => dynamic.has(normalizeFrameId(key.slice(key.lastIndexOf(":") + 1))))
-      .map(([, offset]) => offset);
+    const offsets = [...chain]
+      .filter((child) => !this.scanTree.isStatic(child))
+      .map((child) => this.stampOffsets.get(child))
+      .filter((offset): offset is number => offset !== undefined);
     if (!this.scanTree.hasFrame(frame)) return this.resolve(frame, fixed, receipt);
     // Compare domains on dynamic edges, never static TF epochs or absolute epoch offsets.
-    if (offsets.some((offset) => Math.abs(receipt - acquisition - offset) > 2)) {
+    if (
+      this.scanTree.lookup(fixed, frame, acquisition).status !== "ok" &&
+      offsets.some((offset) => Math.abs(receipt - acquisition - offset) > 2)
+    ) {
       issues.push("cloud/TF clock mismatch; receipt-time pose");
       return this.resolve(frame, fixed, receipt);
     }
@@ -351,7 +373,7 @@ export class SpatialLayers {
       owner = {};
       this.cloudOwners.set(layerId, owner);
     }
-    log.setCloudDecay(key, decay, owner);
+
     const wanted = indexes.map(cacheKey);
     let candidates = this.candidates.get(layerId);
     if (
@@ -427,7 +449,7 @@ export class SpatialLayers {
         continue;
       }
       if (result.fallbackField) issues.push("colour by z (no field chosen)");
-      invalidScalars += result.invalidScalars ?? 0;
+      invalidScalars += (result.invalidScalars ?? 0) * (result.stride ?? 1);
       if (!result.positions.length) issues.push("no drawable points");
       frame = result.frame;
       stamp = Math.max(stamp, t);
@@ -457,9 +479,13 @@ export class SpatialLayers {
     const held = this.continuous && !objects.length && !complete && !issues.length;
     if (held) {
       // Only scans requested in this continuous segment are eligible. A seek clears candidates.
-      const newest = [...candidates]
-        .filter(([t, id]) => t <= time && cache!.get(id) && !cache!.get(id).error)
-        .sort((a, b) => b[0] - a[0])[0];
+      let newest: [number, string] | undefined;
+      for (const [t, id] of candidates) {
+        if (t <= time && (!newest || t > newest[0])) {
+          const result = cache.peek(id);
+          if (result && !result.error) newest = [t, id];
+        }
+      }
       if (newest) {
         const [t, id] = newest,
           result = cache.get(id);
@@ -477,14 +503,14 @@ export class SpatialLayers {
           });
           stamp = t;
           frame = result.frame;
-          invalidScalars = result.invalidScalars ?? 0;
+          invalidScalars = (result.invalidScalars ?? 0) * (result.stride ?? 1);
           decimated = result.stride > 1;
         } catch (error) {
           issues.push(error instanceof Error ? error.message : String(error));
         }
       }
     }
-    if (invalidScalars) issues.push(invalidScalars + " invalid " + field + " (magenta)");
+    if (invalidScalars) issues.push((decimated ? "~" : "") + invalidScalars + " invalid " + field + " (magenta)");
     const lag = objects.length ? time - stamp : 0;
     if (complete) this.partialSince.delete(layerId);
     else if (!this.partialSince.has(layerId)) this.partialSince.set(layerId, Date.now());

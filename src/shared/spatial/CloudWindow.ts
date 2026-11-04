@@ -49,6 +49,9 @@ export class CloudCache {
   protect(owner: object, keys: string[]) {
     this.pins.set(owner, { keys: new Set(keys), time: Date.now() });
   }
+  peek(key: string) {
+    return this.entries.get(key)?.value;
+  }
   get(key: string) {
     const entry = this.entries.get(key);
     if (entry) {

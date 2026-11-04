@@ -93,7 +93,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "", maxPoints
   let count = 0,
     min = Infinity,
     max = -Infinity;
-  for (let i = 0; i < width * height; i++) {
+  for (let i = 0; i < width * height; i += stride) {
     const base = Math.floor(i / width) * row_step + (i % width) * point_step;
     const x = read(base, xf),
       y = read(base, yf),
@@ -101,7 +101,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "", maxPoints
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
     const value = rgb ? 0 : read(base, field);
     if (!Number.isFinite(value)) invalidScalars++;
-    if (i % stride !== 0) continue;
+
     const offset = count * 3;
     positions[offset] = x;
     positions[offset + 1] = y;

@@ -192,9 +192,18 @@ export default class Log {
   hasCloudRetentionShortage(key: string) {
     return this.cloudRetentionShortage.has(key);
   }
-  private cloudDecay = new Map<object, { key: string; decay: number; at: number }>();
+  private cloudDecay = new Map<object, { key: string; decay: number }>();
+  private retainedCloudLayers = new Map<object, { key: string; decay: number }[]>();
+  setRetainedCloudLayers(owner: object, layers: { key: string; decay: number }[]) {
+    if (layers.length) this.retainedCloudLayers.set(owner, layers);
+    else this.retainedCloudLayers.delete(owner);
+  }
   setCloudDecay(key: string, decay: number, owner: object = this) {
-    this.cloudDecay.set(owner, { key, decay, at: Date.now() });
+    this.cloudDecay.set(owner, { key, decay });
+  }
+  getLiveRetentionStart(time: number): number | null {
+    if (!this.liveRetention.size) return null;
+    return Math.max(this.getTimestampRange()[0], time - Math.max(...this.liveRetention.values()));
   }
   isLiveRetained(key: string) {
     return this.liveRetention.has(key);
@@ -210,17 +219,17 @@ export default class Log {
       if (discarded && this.getStructuredType(key) === "sensor_msgs/PointCloud2") this.cloudRetentionShortage.add(key);
       changed = discarded || changed;
     }
-    for (const key of this.liveRetention.keys())
+    const cloudTopics = [...this.liveRetention.keys()].filter(
+      (k) => this.getStructuredType(k) === "sensor_msgs/PointCloud2"
+    );
+    const active = Math.max(1, cloudTopics.length);
+    for (const key of cloudTopics)
       if (this.getStructuredType(key) === "sensor_msgs/PointCloud2") {
         const history = this.getRaw(key, time, time);
         const size = Math.max(history?.values[0]?.byteLength ?? 0, this.cloudMessageBytes.get(key) ?? 0);
         this.cloudMessageBytes.set(key, size);
-        for (const [owner, demand] of this.cloudDecay) if (Date.now() - demand.at > 2000) this.cloudDecay.delete(owner);
-        const demands = [...this.cloudDecay.values()];
-        const active = Math.max(
-          1,
-          [...this.liveRetention.keys()].filter((k) => this.getStructuredType(k) === "sensor_msgs/PointCloud2").length
-        );
+
+        const demands = [...this.cloudDecay.values(), ...[...this.retainedCloudLayers.values()].flat()];
         const decay = Math.max(1, ...demands.filter((d) => d.key === key).map((d) => d.decay));
         const budget = Math.min(
           (256 * 1024 * 1024) / active,

@@ -420,6 +420,13 @@ export default class Field3dController implements TabController {
       [SelectionMode.Playback, SelectionMode.Locked].includes(window.selection.getMode()) &&
       revision === this.cloudSeekRevision;
     this.cloudSeekRevision = revision;
+    window.log.setRetainedCloudLayers(
+      this,
+      this.sourceList
+        .getState()
+        .filter((s) => window.log.getStructuredType(s.logKey) === "sensor_msgs/PointCloud2")
+        .map((s) => ({ key: s.logKey, decay: Math.max(1, Math.min(20, Number(s.options.decay) || 1)) }))
+    );
     this.spatial.begin(window.log, time ?? 0, continuous);
     const fixed = this.fixedFrame.value;
     this.updateFrameControls(time ?? 0);
@@ -482,7 +489,12 @@ export default class Field3dController implements TabController {
           const recent = window.log.getString(source.logKey + "/spatial", time - 1, time)?.timestamps ?? [];
           const rawRecent = recent.length ? recent : window.log.getRaw(source.logKey, time - 1, time)?.timestamps ?? [];
           const samples = rawRecent.filter((t) => t <= time);
-          const hz = samples.length > 1 ? Math.round((samples.length - 1) / (samples.at(-1)! - samples[0])) : 0;
+          const hz =
+            window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2"
+              ? samples.length > 1
+                ? Math.round((samples.length - 1) / (samples.at(-1)! - samples[0]))
+                : 0
+              : rawRecent.filter((t) => t > time - 1 && t <= time).length;
           const lag = time - result.stamp;
           const stale = lag > 1 && !source.logKey.endsWith("tf_static");
           this.sourceList.itemStatus.set(statusId, {

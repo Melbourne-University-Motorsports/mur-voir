@@ -103,7 +103,7 @@ test("zero and all-NaN clouds return empty finite ranges", () => {
   assert.equal(decodePointCloud2({ ...cloud, width: 0, row_step: 0, data: new Uint8Array() }).positions.length, 0);
 });
 
-test("invalid scalars preserve geometry, are counted across stride and excluded from range", () => {
+test("invalid scalars preserve geometry, are counted in the sampled points and excluded from range", () => {
   const cloud: PointCloud2 = {
     width: 4,
     height: 1,
@@ -120,7 +120,7 @@ test("invalid scalars preserve geometry, are counted across stride and excluded 
   assert.equal(decoded.invalidScalars, 3);
   assert.deepEqual([...decoded.values], [NaN, NaN, NaN, 10]);
   assert.equal(decoded.positions.length, 12);
-  assert.equal(decodePointCloud2(cloud, "intensity", 2).invalidScalars, 3);
+  assert.equal(decodePointCloud2(cloud, "intensity", 2).invalidScalars, 2);
   assert.equal(decoded.min, 10);
 });
 
