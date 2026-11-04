@@ -290,6 +290,7 @@ try {
       await hub.waitForFunction(
         () => window.tabs.tabList.find((t) => t.type === 3).controller.spatial.pending.size === 0
       );
+      await hub.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       if (time === 2.9)
         sets.push(
           await hub.evaluate(() =>
@@ -301,7 +302,8 @@ try {
           )
         );
     }
-    if (!sets.every((set) => JSON.stringify(set) === JSON.stringify(sets[0]))) throw Error("Seek scan sets differ");
+    if (!sets.every((set) => JSON.stringify(set) === JSON.stringify(sets[0])))
+      throw Error("Seek scan sets differ: " + JSON.stringify(sets));
     console.log("seek route sets match", JSON.stringify(sets));
     await hub.evaluate(() => {
       const controller = window.tabs.tabList.find((t) => t.type === 3).controller;
