@@ -169,3 +169,16 @@ test("reference lidar load stays below 64 MiB and retains decay ten at the bound
   assert.ok(raw.timestamps.length >= 10);
   assert.equal(raw.timestamps.at(-1), 2.4);
 });
+
+test("replacement and out-of-order insertion preserve timestamps after a large live history", () => {
+  const log = new Log();
+  for (let i = 0; i < 50000; i++) log.putNumber("/value", i, i);
+  log.putNumber("/value", 49999, -1);
+  log.putNumber("/value", 1234, -2);
+  log.putNumber("/value", 1234.5, -3);
+  const data = log.getNumber("/value", -Infinity, Infinity)!;
+  assert.equal(data.timestamps.length, 50001);
+  assert.equal(data.values.at(-1), -1);
+  assert.equal(data.values[data.timestamps.indexOf(1234)], -2);
+  assert.equal(data.values[data.timestamps.indexOf(1234.5)], -3);
+});

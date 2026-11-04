@@ -332,16 +332,17 @@ export default class LogField {
       // There's a good chance this data is at the end of the log, so check that first
       insertIndex = this.data.timestamps.length;
     } else {
-      // Adding in the middle, find where to insert it
-      let alreadyExists = false;
-      insertIndex =
-        this.data.timestamps.findLastIndex((x) => {
-          if (alreadyExists) return;
-          if (x === timestamp) alreadyExists = true;
-          return x < timestamp;
-        }) + 1;
-      if (alreadyExists) {
-        this.data.values[this.data.timestamps.indexOf(timestamp)] = value;
+      // Locate replacements and out-of-order writes without scanning the full live history.
+      let lo = 0,
+        hi = this.data.timestamps.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (this.data.timestamps[mid] < timestamp) lo = mid + 1;
+        else hi = mid;
+      }
+      insertIndex = lo;
+      if (this.data.timestamps[lo] === timestamp) {
+        this.data.values[lo] = value;
         return;
       }
     }
