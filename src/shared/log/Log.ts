@@ -187,9 +187,14 @@ export default class Log {
     this.liveChildRetention.set(key, seconds);
   }
 
-  private cloudDecay = new Map<string, number>();
-  setCloudDecay(key: string, decay: number) {
-    this.cloudDecay.set(key, Math.max(decay, this.cloudDecay.get(key) ?? 1));
+  private cloudMessageBytes = new Map<string, number>();
+  private cloudRetentionShortage = new Set<string>();
+  hasCloudRetentionShortage(key: string) {
+    return this.cloudRetentionShortage.has(key);
+  }
+  private cloudDecay = new Map<object, { key: string; decay: number; at: number }>();
+  setCloudDecay(key: string, decay: number, owner: object = this) {
+    this.cloudDecay.set(owner, { key, decay, at: Date.now() });
   }
   isLiveRetained(key: string) {
     return this.liveRetention.has(key);
@@ -208,13 +213,19 @@ export default class Log {
     for (const key of this.liveRetention.keys())
       if (this.getStructuredType(key) === "sensor_msgs/PointCloud2") {
         const history = this.getRaw(key, time, time);
-        const size = history?.values[0]?.byteLength ?? 0;
-        const active = Math.max(1, this.cloudDecay.size);
+        const size = Math.max(history?.values[0]?.byteLength ?? 0, this.cloudMessageBytes.get(key) ?? 0);
+        this.cloudMessageBytes.set(key, size);
+        for (const [owner, demand] of this.cloudDecay) if (Date.now() - demand.at > 2000) this.cloudDecay.delete(owner);
+        const demands = [...this.cloudDecay.values()];
+        const active = Math.max(1, new Set(demands.map((d) => d.key)).size);
+        const decay = Math.max(1, ...demands.filter((d) => d.key === key).map((d) => d.decay));
         const budget = Math.min(
           (256 * 1024 * 1024) / active,
-          Math.max((64 * 1024 * 1024) / active, size * ((this.cloudDecay.get(key) ?? 1) + 2))
+          Math.max((64 * 1024 * 1024) / active, size * (decay + 2))
         );
-        changed = (this.fields[key]?.discardRawBytes(budget) ?? false) || changed;
+        const discarded = this.fields[key]?.discardRawBytes(budget) ?? false;
+        if (discarded) this.cloudRetentionShortage.add(key);
+        changed = discarded || changed;
       }
     if (changed) this.timestampSetCache = {};
     if (seconds !== undefined && seconds !== -1) this.clearBeforeTime(Math.max(0, time - seconds), false, true);

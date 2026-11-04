@@ -63,11 +63,14 @@ export class SpatialLayers {
       this.lastErrors.clear();
       this.partialSince.clear();
     }
-    for (const id of this.presentations.keys())
+    for (const id of this.cloudOwners.keys())
       if (!this.activeCloudLayers.has(id)) {
         this.presentations.delete(id);
         this.cloudOwners.delete(id);
         this.decodeWindows.delete(id);
+        this.candidates.delete(id);
+        this.partialSince.delete(id);
+        this.lastErrors.delete(id);
       }
     this.activeCloudLayers.clear();
     if (log !== this.log || time < this.time) {
@@ -86,6 +89,9 @@ export class SpatialLayers {
       this.stampOffsets.clear();
       this.badStamps = 0;
       this.candidates.clear();
+      this.partialSince.clear();
+      this.lastErrors.clear();
+      this.workerRetries.clear();
       this.processed.clear();
       this.joints = {};
     }
@@ -315,7 +321,6 @@ export class SpatialLayers {
   private cloud(log: Log, key: string, time: number, fixed: string, options: Record<string, string>, layerId: string) {
     this.activeCloudLayers.add(layerId);
     const decay = Math.max(1, Math.min(20, Math.floor(Number(options.decay ?? 1)) || 1));
-    log.setCloudDecay(key, decay);
     const history = log.getField(key);
     const indexes = history ? cloudWindow(history, time, decay) : [];
     if (!indexes.length) throw new Error("waiting for cloud");
@@ -332,6 +337,7 @@ export class SpatialLayers {
       owner = {};
       this.cloudOwners.set(layerId, owner);
     }
+    log.setCloudDecay(key, decay, owner);
     const wanted = indexes.map(cacheKey);
     let candidates = this.candidates.get(layerId);
     if (
@@ -469,20 +475,18 @@ export class SpatialLayers {
     else if (!this.partialSince.has(layerId)) this.partialSince.set(layerId, Date.now());
     const sustained = Date.now() - (this.partialSince.get(layerId) ?? Date.now()) >= 500;
     const shortage = indexes.length < decay;
-    this.cloudWarn = issues.length > 0 || shortage || (held && sustained);
+    this.cloudWarn = issues.length > 0 || shortage || this.badStamps > 0 || (held && sustained);
     this.cloudStatus = [
       ...new Set(issues),
       held && sustained ? "holding · " + lag.toFixed(2) + " s behind" : "",
-      superseded ? superseded + " scans superseded before decode (continuous playback)" : "",
+      superseded ? superseded + " scans superseded" : "",
       ready < indexes.length && (!objects.length || sustained) ? "partial " + ready + "/" + indexes.length : "",
       shortage
         ? "scans " +
           indexes.length +
           "/" +
           decay +
-          (log.isLiveRetained(key) && time - log.getTimestampRange()[0] > decay / 10
-            ? " (retention limit)"
-            : " (log start)")
+          (log.hasCloudRetentionShortage(key) ? " (retention / 256 MiB total limit)" : " (log start)")
         : "",
       this.badStamps ? this.badStamps + " TF stamp outliers rejected" : "",
       decimated ? "decimating · " + (maxPoints * decay).toLocaleString("en-US") + " point layer budget" : ""
