@@ -24,16 +24,11 @@ export function cloudWindow(
   return result;
 }
 /** Zero, malformed or unusable ROS stamps fall back to the log receipt timestamp. */
-export function cloudStamp(stamp: { sec: number; nanosec: number } | undefined, logTime: number): number {
-  if (
-    !stamp ||
-    !Number.isSafeInteger(stamp.sec) ||
-    !Number.isInteger(stamp.nanosec) ||
-    stamp.nanosec < 0 ||
-    stamp.nanosec >= 1e9
-  )
+export function rosStamp(stamp: { sec: number; nanosec?: number; nsec?: number } | undefined, logTime: number): number {
+  const nanos = stamp?.nanosec ?? stamp?.nsec;
+  if (!stamp || !Number.isSafeInteger(stamp.sec) || !Number.isInteger(nanos) || nanos! < 0 || nanos! >= 1e9)
     return logTime;
-  const time = stamp.sec + stamp.nanosec / 1e9;
+  const time = stamp.sec + nanos! / 1e9;
   return time > 0 ? time : logTime;
 }
 export function cloudRange(scans: { min: number; max: number }[]): { min: number; max: number } {
@@ -90,3 +85,6 @@ export class CloudCache {
     return true;
   }
 }
+
+// Compatibility for saved callers; all parsing uses rosStamp.
+export const cloudStamp = rosStamp;

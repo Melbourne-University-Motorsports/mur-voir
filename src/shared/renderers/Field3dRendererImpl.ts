@@ -111,6 +111,7 @@ export default class Field3dRendererImpl implements TabRenderer {
     manager: ObjectManager<Field3dRendererCommand_AnyObj>;
     active: boolean;
     cloudId?: string;
+    idleSince?: number;
   }[] = [];
 
   private cloudBuffers = new WeakMap<object, number>();
@@ -565,16 +566,19 @@ export default class Field3dRendererImpl implements TabRenderer {
     controlsUpdated = this.controls.update(delta) || controlsUpdated;
 
     // Check for new parameters
-    let commandString = JSON.stringify(command, (_key, value) =>
-      value?.type === "cloud"
-        ? {
-            ...value,
-            positions: this.cloudBufferId(value.positions),
-            values: this.cloudBufferId(value.values),
-            colors: this.cloudBufferId(value.colors)
-          }
-        : value
-    );
+    let commandString = JSON.stringify({
+      ...command,
+      objects: command.objects.map((value) =>
+        value.type === "cloud"
+          ? {
+              ...value,
+              positions: this.cloudBufferId(value.positions),
+              values: this.cloudBufferId(value.values),
+              colors: this.cloudBufferId(value.colors)
+            }
+          : value
+      )
+    });
     let assetsString = JSON.stringify(window.assets);
     let isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     let newAssets = assetsString !== JSON.stringify(this.lastAssets);
@@ -823,6 +827,7 @@ export default class Field3dRendererImpl implements TabRenderer {
       if (newRobotAssets && (entry.type === "robot" || entry.type === "ghost")) {
         (entry.manager as RobotManager).newAssets();
       }
+      entry.idleSince = undefined;
       entry.cloudId = object.type === "cloud" ? object.id : undefined;
       entry.manager.setObjectData(object);
     });
@@ -844,12 +849,23 @@ export default class Field3dRendererImpl implements TabRenderer {
         }
       }
     });
+    this.objectManagers.forEach((entry) => {
+      if (!entry.active && entry.type === "cloud") {
+        entry.idleSince ??= performance.now();
+        (entry.manager as CloudManager).setVisible(false);
+      } else if (entry.type === "cloud") (entry.manager as CloudManager).setVisible(true);
+    });
+    const keep = (entry: { active: boolean; type: string; idleSince?: number }) =>
+      entry.active ||
+      (entry.type === "cloud" &&
+        command.objects.some((o) => o.type === "cloud") &&
+        performance.now() - entry.idleSince! < 500);
     this.objectManagers
-      .filter((entry) => !entry.active)
+      .filter((entry) => !keep(entry))
       .forEach((entry) => {
         entry.manager.dispose();
       });
-    this.objectManagers = this.objectManagers.filter((entry) => entry.active);
+    this.objectManagers = this.objectManagers.filter(keep);
 
     // Set camera for fixed views
     {

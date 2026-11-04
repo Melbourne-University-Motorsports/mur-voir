@@ -195,3 +195,18 @@ test("non-cloud binary histories retain the previous time horizon", () => {
     assert.equal(log.getRaw("/raw", -Infinity, Infinity)!.values.length, 70);
   }
 });
+
+test("32-byte padded reference lidar retains requested maximum within total cap", () => {
+  const log = new Log();
+  log.putRaw("/cloud", 0, new Uint8Array());
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  log.setLiveRetention("/cloud", 60);
+  log.setCloudDecay("/cloud", 20);
+  for (let i = 1; i <= 30; i++) {
+    log.putRaw("/cloud", i / 10, new Uint8Array(300000 * 32));
+    log.discardLiveData(i / 10, 1200);
+  }
+  const raw = log.getRaw("/cloud", -Infinity, Infinity)!;
+  assert.ok(raw.timestamps.length >= 20);
+  assert.ok(raw.values.reduce((n, v) => n + v.byteLength, 0) <= 256 * 1024 * 1024);
+});

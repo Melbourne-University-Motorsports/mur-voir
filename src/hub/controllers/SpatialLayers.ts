@@ -9,7 +9,7 @@ import { AnnotatedPose3d } from "../../shared/geometry";
 import HistoryCursor from "../../shared/log/HistoryCursor";
 import Log from "../../shared/log/Log";
 import { Field3dRendererCommand_AnyObj } from "../../shared/renderers/Field3dRenderer";
-import { CloudCache, cloudRange, cloudStamp, cloudWindow } from "../../shared/spatial/CloudWindow";
+import { CloudCache, cloudRange, cloudWindow, rosStamp } from "../../shared/spatial/CloudWindow";
 import { coneStyle } from "../../shared/spatial/ConeStyle";
 import { metadata, rosPose, spatialSnapshot } from "../../shared/spatial/SpatialLog";
 import { TFTree, normalizeFrameId } from "../../shared/spatial/TFTree";
@@ -19,6 +19,11 @@ import { CloudDecoder } from "../CloudDecoder";
 
 export class SpatialLayers {
   tree = new TFTree();
+  private scanTree = new TFTree();
+  private stampOffsets = new Map<string, number>();
+  private badStamps = 0;
+  private candidates = new Map<string, Map<number, string>>();
+  cloudWarn = false;
   robot: URDFRobot | null = null;
   assets: Record<string, string> = {};
   private log: Log | null = null;
@@ -70,6 +75,10 @@ export class SpatialLayers {
       if (this.log && log !== this.log) SpatialLayers.clouds.delete(this.log);
       this.pending.clear();
       this.tree.clear();
+      this.scanTree.clear();
+      this.stampOffsets.clear();
+      this.badStamps = 0;
+      this.candidates.clear();
       this.processed.clear();
       this.joints = {};
     }
@@ -87,10 +96,26 @@ export class SpatialLayers {
             this.tree.addTransform(
               tf.header.frame_id,
               tf.child_frame_id,
-              cloudStamp(tf.header?.stamp, stamp),
+              stamp,
               rosPose(tf.transform),
               key.endsWith("tf_static")
             );
+            const source = key + ":" + tf.child_frame_id;
+            const acquisition = rosStamp(tf.header?.stamp, stamp);
+            const offset = stamp - acquisition;
+            const established = this.stampOffsets.get(source);
+            if (established !== undefined && Math.abs(offset - established) > 2) {
+              this.badStamps++;
+            } else {
+              this.stampOffsets.set(source, established ?? offset);
+              this.scanTree.addTransform(
+                tf.header.frame_id,
+                tf.child_frame_id,
+                acquisition,
+                rosPose(tf.transform),
+                key.endsWith("tf_static")
+              );
+            }
           }
           this.processed.set(key, stamp);
         });
@@ -106,6 +131,22 @@ export class SpatialLayers {
     if (!frame) throw new Error("missing frame");
     if (normalizeFrameId(frame) === normalizeFrameId(fixed)) return identity();
     const result = this.tree.lookup(fixed, frame, time);
+    if (result.status !== "ok") throw new Error(result.status + ": " + frame + " → " + fixed);
+    return result.transform;
+  }
+  private scanPose(frame: string, fixed: string, stamp: any, receipt: number, issues: string[]): Transform {
+    if (normalizeFrameId(frame) === normalizeFrameId(fixed)) return identity();
+    const acquisition = rosStamp(stamp, receipt);
+    const offsets = [...this.stampOffsets.entries()]
+      .filter(([key]) => key.endsWith(":" + frame))
+      .map(([, offset]) => offset);
+    if (!offsets.length) return this.resolve(frame, fixed, receipt);
+    // Compare domains, never absolute epoch offsets (sim time may be recorded at wall time).
+    if (Math.abs(receipt - acquisition - offsets[0]) > 2) {
+      issues.push("cloud/TF clock mismatch; receipt-time pose");
+      return this.resolve(frame, fixed, receipt);
+    }
+    const result = this.scanTree.lookup(fixed, frame, acquisition);
     if (result.status !== "ok") throw new Error(result.status + ": " + frame + " → " + fixed);
     return result.transform;
   }
@@ -267,11 +308,12 @@ export class SpatialLayers {
   private cloud(log: Log, key: string, time: number, fixed: string, options: Record<string, string>, layerId: string) {
     this.activeCloudLayers.add(layerId);
     const decay = Math.max(1, Math.min(20, Math.floor(Number(options.decay ?? 1)) || 1));
+    log.setCloudDecay(key, decay);
     const history = log.getField(key);
     const indexes = history ? cloudWindow(history, time, decay) : [];
     if (!indexes.length) throw new Error("waiting for cloud");
     const maxPoints = Math.max(1, Math.floor(Number(options.cloudBudget ?? 2_000_000) / decay));
-    const field = options.field ?? "intensity";
+    const field = options.field ?? "";
     const cacheKey = (t: number) => JSON.stringify([key, t, field, maxPoints]);
     let cache = SpatialLayers.clouds.get(log);
     if (!cache) {
@@ -284,6 +326,17 @@ export class SpatialLayers {
       this.cloudOwners.set(layerId, owner);
     }
     const wanted = indexes.map(cacheKey);
+    let candidates = this.candidates.get(layerId);
+    if (
+      !this.continuous ||
+      !candidates ||
+      this.decodeWindows.get(layerId)?.signature !== JSON.stringify([key, fixed, options])
+    ) {
+      candidates = new Map();
+      this.candidates.set(layerId, candidates);
+    }
+    indexes.forEach((t) => candidates!.set(t, cacheKey(t)));
+    while (candidates.size > 120) candidates.delete(candidates.keys().next().value!);
     for (const id of this.admissionErrors)
       if (!this.pending.has(id) && !wanted.includes(id)) this.admissionErrors.delete(id);
     const signature = JSON.stringify([key, fixed, options]);
@@ -299,6 +352,7 @@ export class SpatialLayers {
     cache.protect(owner, [...wanted, ...(this.continuous ? previous?.objects.map((o: any) => o.id) ?? [] : [])]);
     const objects: Field3dRendererCommand_AnyObj[] = [];
     const issues: string[] = [];
+    let invalidScalars = 0;
     let frame = "",
       stamp = 0,
       ready = 0,
@@ -343,7 +397,9 @@ export class SpatialLayers {
         issues.push(result.error);
         continue;
       }
-      if (result.invalidScalars) issues.push(result.invalidScalars + " points omitted: invalid " + field);
+      if (result.fallbackField) issues.push("colour by z (no field chosen)");
+      invalidScalars += result.invalidScalars ?? 0;
+      if (!result.positions.length) issues.push("no drawable points");
       frame = result.frame;
       stamp = Math.max(stamp, t);
       decimated ||= result.stride > 1;
@@ -353,43 +409,70 @@ export class SpatialLayers {
           type: "cloud",
           ...result,
           id,
-          transform: this.resolve(frame, fixed, cloudStamp(result.stamp, t)),
+          transform: this.scanPose(frame, fixed, result.stamp, t, issues),
+          receiptTime: t,
           size: Number(options.size ?? 3),
           map: options.map ?? "viridis"
         });
       } catch (error) {
-        issues.push(String(error));
+        issues.push(error instanceof Error ? error.message : String(error));
       }
     }
     const complete = ready === indexes.length;
     const wantedKey = JSON.stringify(wanted);
     let range =
-      !complete && previous?.wanted === wantedKey
+      !complete && previous && (this.continuous || previous.wanted === wantedKey)
         ? previous.range
         : cloudRange(objects as { min: number; max: number }[]);
     for (const object of objects) Object.assign(object, range);
-    const held = this.continuous && !objects.length && !complete && !issues.length && previous?.objects.length;
+    const held = this.continuous && !objects.length && !complete && !issues.length;
     if (held) {
-      range = previous!.range;
-      for (const old of previous!.objects as any[]) {
+      // Only scans requested in this continuous segment are eligible. A seek clears candidates.
+      const newest = [...candidates]
+        .filter(([t, id]) => t <= time && cache!.get(id) && !cache!.get(id).error)
+        .sort((a, b) => b[0] - a[0])[0];
+      if (newest) {
+        const [t, id] = newest,
+          result = cache.get(id);
         try {
           objects.push({
-            ...old,
-            transform: this.resolve(old.frame, fixed, cloudStamp(old.stamp, JSON.parse(old.id)[1]))
+            type: "cloud",
+            ...result,
+            ...range,
+            id,
+            receiptTime: t,
+            transform: this.scanPose(result.frame, fixed, result.stamp, t, issues),
+            size: Number(options.size ?? 3),
+            map: options.map ?? "viridis"
           });
+          stamp = t;
+          frame = result.frame;
+          invalidScalars = result.invalidScalars ?? 0;
+          decimated = result.stride > 1;
         } catch (error) {
-          issues.push(String(error));
+          issues.push(error instanceof Error ? error.message : String(error));
         }
       }
-      const last = objects[objects.length - 1] as any;
-      frame = last?.frame ?? "";
-      stamp = previous!.stamp;
     }
+    if (invalidScalars) issues.push(invalidScalars + " invalid " + field + " (magenta)");
+    const lag = objects.length ? time - stamp : 0;
+    const shortage = indexes.length < decay;
+    this.cloudWarn = issues.length > 0 || shortage || lag > 0.5;
     this.cloudStatus = [
       ...new Set(issues),
-      held ? "holding last ready scan while decoding" : "",
+      held && lag > 0.5 ? "holding · " + lag.toFixed(2) + " s behind" : "",
       superseded ? superseded + " scans superseded before decode (continuous playback)" : "",
-      ready < indexes.length ? "partial " + ready + "/" + indexes.length + " · range frozen until complete" : "",
+      ready < indexes.length && (!objects.length || lag > 0.5) ? "partial " + ready + "/" + indexes.length : "",
+      shortage
+        ? "scans " +
+          indexes.length +
+          "/" +
+          decay +
+          (log.isLiveRetained(key) && time - log.getTimestampRange()[0] > decay / 10
+            ? " (retention limit)"
+            : " (log start)")
+        : "",
+      this.badStamps ? this.badStamps + " TF stamp outliers rejected" : "",
       decimated ? "decimating · " + (maxPoints * decay).toLocaleString("en-US") + " point layer budget" : ""
     ]
       .filter(Boolean)

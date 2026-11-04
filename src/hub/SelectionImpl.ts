@@ -250,6 +250,7 @@ export default class SelectionImpl implements Selection {
   /** Switches to locked mode if possible. */
   lock() {
     if (this.liveConnected) {
+      this.seekRevision++;
       this.setMode(SelectionMode.Locked);
     }
   }

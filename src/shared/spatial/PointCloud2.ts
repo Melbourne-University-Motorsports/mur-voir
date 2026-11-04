@@ -24,7 +24,7 @@ export interface PointCloud2 {
 }
 const SIZES = [0, 1, 1, 2, 2, 4, 4, 4, 8];
 /** Decodes padded organized clouds without expanding points into Log fields. Non-finite points are dropped even if a producer incorrectly sets is_dense. */
-export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", maxPoints = 10_000_000) {
+export function decodePointCloud2(cloud: PointCloud2, colorField = "", maxPoints = 10_000_000) {
   const { width, height, point_step, row_step } = cloud;
   if (
     ![width, height, point_step, row_step].every((v) => Number.isSafeInteger(v) && v >= 0) ||
@@ -72,6 +72,8 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
         return NaN;
     }
   };
+  const fallbackField = !colorField && !fields.has("intensity");
+  colorField ||= fallbackField ? "z" : "intensity";
   const field = fields.get(colorField);
   if (!field) throw new Error("Missing colour field: " + colorField + "; available: " + [...fields.keys()].join(", "));
   for (const f of [fields.get("x")!, fields.get("y")!, fields.get("z")!, field])
@@ -91,22 +93,20 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
   let count = 0,
     min = Infinity,
     max = -Infinity;
-  for (let i = 0; i < width * height; i += stride) {
+  for (let i = 0; i < width * height; i++) {
     const base = Math.floor(i / width) * row_step + (i % width) * point_step;
     const x = read(base, xf),
       y = read(base, yf),
       z = read(base, zf);
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
     const value = rgb ? 0 : read(base, field);
-    if (!Number.isFinite(value)) {
-      invalidScalars++;
-      continue;
-    }
+    if (!Number.isFinite(value)) invalidScalars++;
+    if (i % stride !== 0) continue;
     const offset = count * 3;
     positions[offset] = x;
     positions[offset + 1] = y;
     positions[offset + 2] = z;
-    values[count] = value;
+    values[count] = Number.isFinite(value) ? value : NaN;
     if (colors) {
       const packed = view.getUint32(base + field.offset, little);
       colors[offset] = ((packed >>> 16) & 255) / 255;
@@ -129,6 +129,7 @@ export function decodePointCloud2(cloud: PointCloud2, colorField = "intensity", 
     stamp: cloud.header?.stamp,
     fields: cloud.fields.filter((f) => f.count === 1).map((f) => f.name),
     invalidScalars,
+    fallbackField,
     sourcePoints: width * height,
     stride
   };

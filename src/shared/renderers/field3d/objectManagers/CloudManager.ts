@@ -19,6 +19,9 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
   private positions: Float32Array | null = null;
   private values: Float32Array | null = null;
   private colors: Float32Array | null = null;
+  setVisible(visible: boolean) {
+    if (this.points) this.points.visible = visible;
+  }
   dispose() {
     this.points?.removeFromParent();
     this.points?.geometry.dispose();
@@ -73,7 +76,8 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
       this.values = object.values;
     }
     if (!this.points || resized || this.colors !== object.colors) {
-      update("pointColor", object.colors ?? new Float32Array(object.positions.length), 3);
+      if (object.colors) update("pointColor", object.colors, 3);
+      else geo.deleteAttribute("pointColor");
       this.colors = object.colors;
     }
     const material =
@@ -89,11 +93,12 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
           turbo: { value: object.map === "turbo" }
         },
         vertexShader: `attribute float value; attribute vec3 pointColor; varying float v; varying vec3 c; uniform float pointSize; uniform float low; uniform float high;
-      void main(){v=clamp((value-low)/max(high-low,0.00001),0.,1.);c=pointColor;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=pointSize;}`,
+      void main(){v=value!=value?-1.:clamp((value-low)/max(high-low,0.00001),0.,1.);c=pointColor;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=pointSize;}`,
         fragmentShader: `varying float v; varying vec3 c; uniform bool rgb; uniform bool turbo; uniform sampler2D turboLut; uniform sampler2D viridisLut;
       void main(){if(length(gl_PointCoord-vec2(.5))>.5) discard;vec3 col=texture2D(viridisLut,vec2((v*255.+.5)/256.,.5)).rgb;
-      if(turbo) col=texture2D(turboLut,vec2((v*255.+.5)/256.,.5)).rgb;gl_FragColor=vec4(rgb?c:col,1.);}`
+      if(turbo) col=texture2D(turboLut,vec2((v*255.+.5)/256.,.5)).rgb;gl_FragColor=vec4(v<0.?vec3(1.,0.,1.):rgb?c:col,1.);}`
       });
+    material.defaultAttributeValues.pointColor = [0, 0, 0];
     material.uniforms.pointSize.value = object.size * window.devicePixelRatio;
     material.uniforms.low.value = object.min;
     material.uniforms.high.value = object.max;

@@ -95,7 +95,7 @@ test("delayed TF uses individual acquisition stamps, receipt controls availabili
   layers.begin(log, 10);
   assert.equal(layers.tree.hasFrame("lidar"), false);
   layers.begin(log, 11.2);
-  assert.equal(layers.resolve("other", "map", 9.5).translation[0], 4);
+  assert.equal(layers.resolve("other", "map", 10.6).translation[0], 4);
   assert.equal(layers.resolve("fallback", "map", 10.1).translation[0], 7);
   assert.equal(layers.resolve("invalid", "map", 11.1).translation[0], 9);
   const request = CloudDecoder.request;
@@ -137,7 +137,7 @@ test("continuous decode holds only until settlement; seeks and options never rev
     log.putRaw("/cloud", 1.1, new Uint8Array([2]));
     layers.begin(log, 1.1, true);
     assert.equal(layers.objects(log, "/cloud", 1.1, "map").objects[0].id, first.id);
-    assert.match(layers.cloudStatus, /holding/);
+    assert.doesNotMatch(layers.cloudStatus, /holding/, "brief holds are debounced");
     finish({ error: "Invalid PointCloud2 layout" });
     await Promise.resolve();
     assert.throws(() => layers.objects(log, "/cloud", 1.1, "map"), /Invalid/);
@@ -264,5 +264,112 @@ test("settled scan identities match across seek, playback, and overlapping reset
     assert.equal(layers.objects(other, "/cloud", 3, "map").objects.length, 1);
   } finally {
     CloudDecoder.request = request;
+  }
+});
+
+test("virtual 60 Hz clock advances decay one when decode exceeds scan period", async () => {
+  const original = CloudDecoder.request;
+  try {
+    for (const [speed, hz, latency] of [
+      [8, 10, 0.01],
+      [1, 10, 0.15],
+      [1, 20, 0.06]
+    ]) {
+      const log = new Log(),
+        layers = new SpatialLayers();
+      for (let i = 0; i <= hz * speed * 5; i++) log.putRaw("/cloud", i / hz, new Uint8Array([i % 256]));
+      log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+      let clock = 0;
+      const jobs: { at: number; finish: (v: any) => void }[] = [];
+      CloudDecoder.request = () =>
+        jobs.length >= 2 ? null : new Promise((finish) => jobs.push({ at: clock + latency, finish }));
+      const shown = new Set<string>();
+      let maxAge = 0;
+      for (let tick = 0; tick < 300; tick++) {
+        clock = tick / 60;
+        for (let j = jobs.length - 1; j >= 0; j--)
+          if (jobs[j].at <= clock) {
+            jobs.splice(j, 1)[0].finish({ frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max: 1 });
+          }
+        await Promise.resolve();
+        const time = clock * speed;
+        layers.begin(log, time, true);
+        try {
+          const result = layers.objects(log, "/cloud", time, "map");
+          shown.add(result.objects[0].id!);
+          maxAge = Math.max(maxAge, time - result.stamp);
+        } catch {}
+      }
+      assert.ok(shown.size > 20, `${speed}x ${hz} Hz ${latency}s: ${shown.size} scans`);
+      assert.ok(maxAge < speed * (latency + 0.15));
+      layers.begin(log, 39.95, false);
+      assert.throws(() => layers.objects(log, "/cloud", 39.95, "map"), /decoding/);
+    }
+  } finally {
+    CloudDecoder.request = original;
+  }
+});
+
+test("sim stamps and skew pose scans without changing receipt-time layers; outliers and domains disclosed", async () => {
+  const original = CloudDecoder.request;
+  try {
+    for (const offset of [0.5, 1700000000]) {
+      const log = new Log(),
+        layers = new SpatialLayers();
+      log.putRaw("/tf", 0, new Uint8Array());
+      log.setStructuredType("/tf", "tf2_msgs/TFMessage");
+      for (const [stamp, x] of [
+        [100, 0],
+        [101, 10],
+        [99999, 1000]
+      ]) {
+        const receipt = (stamp === 99999 ? 101.1 : stamp) + offset;
+        log.putString(
+          "/tf/spatial",
+          receipt,
+          JSON.stringify({
+            transforms: [
+              {
+                header: { frame_id: "map", stamp: { sec: stamp, nsec: 0 } },
+                child_frame_id: "lidar",
+                transform: { translation: { x, y: 0, z: 0 }, rotation: { w: 1, x: 0, y: 0, z: 0 } }
+              }
+            ]
+          })
+        );
+      }
+      log.putRaw("/cloud", 101 + offset, new Uint8Array([1]));
+      log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+      layers.begin(log, 101 + offset);
+      assert.equal(layers.resolve("lidar", "map", 101 + offset).translation[0], 10);
+      CloudDecoder.request = async () => ({
+        frame: "lidar",
+        stamp: { sec: 100, nsec: 500000000 },
+        positions: new Float32Array([0, 0, 0]),
+        min: 0,
+        max: 1
+      });
+      assert.throws(() => layers.objects(log, "/cloud", 101 + offset, "map"));
+      await Promise.resolve();
+      const obj = layers.objects(log, "/cloud", 101 + offset, "map").objects[0] as any;
+      assert.equal(obj.transform.translation[0], 5);
+      layers.begin(log, 101.1 + offset);
+      layers.objects(log, "/cloud", 101.1 + offset, "map");
+      assert.match(layers.cloudStatus, /1 TF stamp outliers/);
+      log.putRaw("/cloud", 101.2 + offset, new Uint8Array([2]));
+      CloudDecoder.request = async () => ({
+        frame: "lidar",
+        stamp: { sec: 5000, nsec: 0 },
+        positions: new Float32Array([0, 0, 0]),
+        min: 0,
+        max: 1
+      });
+      assert.throws(() => layers.objects(log, "/cloud", 101.2 + offset, "map"));
+      await Promise.resolve();
+      layers.objects(log, "/cloud", 101.2 + offset, "map");
+      assert.match(layers.cloudStatus, /clock mismatch; receipt-time pose/);
+    }
+  } finally {
+    CloudDecoder.request = original;
   }
 });

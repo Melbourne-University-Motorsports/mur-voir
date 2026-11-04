@@ -78,7 +78,7 @@ test("cloud updates preserve shader and buffers while updating uniforms and scan
     object.positions = new Float32Array([1, 2, 3, 4, 5, 6]);
     object.values = new Float32Array([1, 2]);
     manager.setObjectData(object);
-    assert.equal(points.geometry.getAttribute("pointColor").count, 2);
+    assert.equal(points.geometry.getAttribute("pointColor"), undefined);
     assert.equal(points.material, material);
   } finally {
     manager.dispose();

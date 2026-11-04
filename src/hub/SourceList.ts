@@ -557,9 +557,10 @@ export default class SourceList {
       } else if (
         memory !== null &&
         optionConfig.key in memory.options &&
-        this.optionValues(logKey, optionConfig.key, optionConfig.values)
-          .map((valueConfig) => valueConfig.key)
-          .includes(memory.options[optionConfig.key])
+        (optionConfig.key === "field" ||
+          this.optionValues(logKey, optionConfig.key, optionConfig.values)
+            .map((valueConfig) => valueConfig.key)
+            .includes(memory.options[optionConfig.key]))
       ) {
         // Select value from type memory
         options[optionConfig.key] = memory.options[optionConfig.key];
@@ -1471,7 +1472,8 @@ export default class SourceList {
         }
       }
     }
-    const status = this.itemStatus.get(state.logKey);
+    const status =
+      this.itemStatus.get(String(Array.from(this.LIST.children).indexOf(item))) ?? this.itemStatus.get(state.logKey);
     if (status) {
       text = status.text;
       valueText.title = status.text;

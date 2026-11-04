@@ -8,6 +8,7 @@
 import { MessageDefinition, MessageDefinitionField } from "@foxglove/message-definition";
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
+import { rosStamp } from "../../../shared/spatial/CloudWindow";
 
 /**
  * Writes decoded ROS 2 (or JSON/protobuf) messages into a Log as child fields so numeric leaves
@@ -248,11 +249,11 @@ export function writeUnknown(log: Log, key: string, timestamp: number, value: un
 /** Header stamp in seconds, or null if there is no (non-zero) header stamp. */
 export function getHeaderStamp(message: any): number | null {
   const stamp = message?.header?.stamp;
-  if (stamp === undefined || stamp === null) return null;
-  const sec = toNumber(stamp.sec);
-  const nanosec = toNumber(stamp.nanosec ?? stamp.nsec ?? 0);
-  if (!isFinite(sec) || (sec === 0 && nanosec === 0)) return null;
-  return sec + nanosec * 1e-9;
+  const time = rosStamp(
+    stamp && { sec: toNumber(stamp.sec), nanosec: toNumber(stamp.nanosec ?? stamp.nsec ?? 0) },
+    NaN
+  );
+  return Number.isFinite(time) ? time : null;
 }
 
 type Pose = {

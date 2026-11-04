@@ -187,6 +187,13 @@ export default class Log {
     this.liveChildRetention.set(key, seconds);
   }
 
+  private cloudDecay = new Map<string, number>();
+  setCloudDecay(key: string, decay: number) {
+    this.cloudDecay.set(key, Math.max(decay, this.cloudDecay.get(key) ?? 1));
+  }
+  isLiveRetained(key: string) {
+    return this.liveRetention.has(key);
+  }
   discardLiveData(time: number, seconds: number | undefined) {
     // Drop bounded payloads first: clearBeforeTime otherwise holds an expired value at the boundary.
     let changed = false;
@@ -199,8 +206,16 @@ export default class Log {
         changed;
     }
     for (const key of this.liveRetention.keys())
-      if (this.getStructuredType(key) === "sensor_msgs/PointCloud2")
-        changed = (this.fields[key]?.discardRawBytes(64 * 1024 * 1024) ?? false) || changed;
+      if (this.getStructuredType(key) === "sensor_msgs/PointCloud2") {
+        const history = this.getRaw(key, time, time);
+        const size = history?.values[0]?.byteLength ?? 0;
+        const active = Math.max(1, this.cloudDecay.size);
+        const budget = Math.min(
+          (256 * 1024 * 1024) / active,
+          Math.max((64 * 1024 * 1024) / active, size * ((this.cloudDecay.get(key) ?? 1) + 2))
+        );
+        changed = (this.fields[key]?.discardRawBytes(budget) ?? false) || changed;
+      }
     if (changed) this.timestampSetCache = {};
     if (seconds !== undefined && seconds !== -1) this.clearBeforeTime(Math.max(0, time - seconds), false, true);
   }
