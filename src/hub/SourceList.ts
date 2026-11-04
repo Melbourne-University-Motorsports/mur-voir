@@ -433,6 +433,9 @@ export default class SourceList {
   }
 
   private itemOptionValues = new Map<string, SourceListOptionValueConfig[]>();
+  private optionValues(logKey: string, option: string, fallback: SourceListOptionValueConfig[]) {
+    return this.itemOptionValues.get(JSON.stringify([logKey, option])) ?? fallback;
+  }
   /** Reuse inline source-list controls for fields discovered in a binary message. */
   setItemOptionValues(logKey: string, option: string, values: SourceListOptionValueConfig[]) {
     const key = JSON.stringify([logKey, option]);
@@ -554,7 +557,9 @@ export default class SourceList {
       } else if (
         memory !== null &&
         optionConfig.key in memory.options &&
-        optionConfig.values.map((valueConfig) => valueConfig.key).includes(memory.options[optionConfig.key])
+        this.optionValues(logKey, optionConfig.key, optionConfig.values)
+          .map((valueConfig) => valueConfig.key)
+          .includes(memory.options[optionConfig.key])
       ) {
         // Select value from type memory
         options[optionConfig.key] = memory.options[optionConfig.key];
@@ -871,7 +876,7 @@ export default class SourceList {
             ...t,
             options: t.options.map((o) => ({
               ...o,
-              values: this.itemOptionValues.get(JSON.stringify([this.state[index].logKey, o.key])) ?? o.values
+              values: this.optionValues(this.state[index].logKey, o.key, o.values)
             }))
           }))
         },
@@ -1170,7 +1175,7 @@ export default class SourceList {
     }
     const options = typeConfig.options
       .filter((o) => !o.forTypes || o.forTypes.includes(state.logType))
-      .map((o) => ({ ...o, values: this.itemOptionValues.get(JSON.stringify([state.logKey, o.key])) ?? o.values }));
+      .map((o) => ({ ...o, values: this.optionValues(state.logKey, o.key, o.values) }));
     const open = this.expanded.has(state.logKey) && options.length > 0;
     if (!toggle) {
       toggle = document.createElement("button");
@@ -1473,7 +1478,7 @@ export default class SourceList {
     }
     item.classList.toggle("spatial-error", status?.error === true);
     item.classList.toggle("spatial-warn", status?.warn === true);
-    if (status?.title) valueText.title = status.title;
+    if (status?.title) valueText.title += "\n" + status.title;
     // Update state
     valueSymbol.hidden = text === null;
     valueText.hidden = text === null;

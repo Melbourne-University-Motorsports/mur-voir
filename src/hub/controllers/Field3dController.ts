@@ -6,6 +6,7 @@
 // at the root directory of this project.
 
 import { BuiltIn3dFields } from "../../shared/AdvantageScopeAssets";
+import { SelectionMode } from "../../shared/Selection";
 import { SourceListItemState, SourceListOptionValueConfig, SourceListState } from "../../shared/SourceListConfig";
 import {
   APRIL_TAG_16H5_COUNT,
@@ -40,6 +41,7 @@ export default class Field3dController implements TabController {
   UUID = createUUID();
 
   private staticTrack: StaticTrack | null = null;
+  private cloudSeekRevision = -1;
   private spatial = new SpatialLayers();
   private fixedFrame = document.createElement("select");
   private treePopover = document.createElement("div");
@@ -413,7 +415,12 @@ export default class Field3dController implements TabController {
     }
     this.spatial.robot = this.robot;
     this.spatial.assets = this.robotAssets;
-    this.spatial.begin(window.log, time ?? 0);
+    const revision = window.selection.getSeekRevision?.() ?? 0;
+    const continuous =
+      [SelectionMode.Playback, SelectionMode.Locked].includes(window.selection.getMode()) &&
+      revision === this.cloudSeekRevision;
+    this.cloudSeekRevision = revision;
+    this.spatial.begin(window.log, time ?? 0, continuous);
     const fixed = this.fixedFrame.value;
     this.updateFrameControls(time ?? 0);
     this.layerStatus.replaceChildren();
@@ -451,10 +458,17 @@ export default class Field3dController implements TabController {
           const cloudLayers = sources.filter(
             (s) => s.visible && window.log.getStructuredType(s.logKey) === "sensor_msgs/PointCloud2"
           ).length;
-          const result = this.spatial.objects(window.log, source.logKey, time, fixed, {
-            ...source.options,
-            cloudBudget: String(Math.floor(2_000_000 / Math.max(1, cloudLayers)))
-          });
+          const result = this.spatial.objects(
+            window.log,
+            source.logKey,
+            time,
+            fixed,
+            {
+              ...source.options,
+              cloudBudget: String(Math.floor(2_000_000 / Math.max(1, cloudLayers)))
+            },
+            String(i)
+          );
           const fields = this.spatial.cloudFields.get(source.logKey);
           if (fields)
             this.sourceList.setItemOptionValues(
@@ -471,19 +485,21 @@ export default class Field3dController implements TabController {
           const stale = lag > 1 && !source.logKey.endsWith("tf_static");
           this.sourceList.itemStatus.set(source.logKey, {
             text:
+              (window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2" && this.spatial.cloudStatus
+                ? this.spatial.cloudStatus + " · "
+                : "") +
               result.frame +
               " · t+" +
               (result.stamp - origin).toFixed(2) +
               " s · " +
               hz +
               " Hz" +
-              (stale ? " · LAG " + lag.toFixed(1) + " s" : "") +
-              (window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2" && this.spatial.cloudStatus
-                ? " · " + this.spatial.cloudStatus
-                : ""),
+              (stale ? " · LAG " + lag.toFixed(1) + " s" : ""),
             title: "Stamp " + result.stamp.toFixed(6) + " s (epoch), session start " + origin.toFixed(6) + " s",
             error: false,
-            warn: stale
+            warn:
+              stale ||
+              (window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2" && !!this.spatial.cloudStatus)
           });
         } catch (error) {
           const fields = this.spatial.cloudFields.get(source.logKey);
@@ -493,7 +509,10 @@ export default class Field3dController implements TabController {
               "field",
               fields.map((key) => ({ key, display: key }))
             );
-          this.sourceList.itemStatus.set(source.logKey, { text: String(error), error: true });
+          this.sourceList.itemStatus.set(source.logKey, {
+            text: error instanceof Error ? error.message : String(error),
+            error: true
+          });
         }
         continue;
       }
@@ -540,7 +559,10 @@ export default class Field3dController implements TabController {
           poses = poses.map((pose) => ({ ...pose, pose: compose(transform, pose.pose) }));
           status(source.logKey + " · " + frame + " · cursor " + time.toFixed(3) + " s");
         } catch (error) {
-          this.sourceList.itemStatus.set(source.logKey, { text: String(error), error: true });
+          this.sourceList.itemStatus.set(source.logKey, {
+            text: error instanceof Error ? error.message : String(error),
+            error: true
+          });
           poses = [];
         }
       }

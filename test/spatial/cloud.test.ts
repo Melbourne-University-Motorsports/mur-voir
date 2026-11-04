@@ -101,3 +101,36 @@ test("zero and all-NaN clouds return empty finite ranges", () => {
   assert.equal(decodePointCloud2(cloud).positions.length, 0);
   assert.equal(decodePointCloud2({ ...cloud, width: 0, row_step: 0, data: new Uint8Array() }).positions.length, 0);
 });
+
+test("invalid scalar points are omitted and counted, never represented as zero", () => {
+  const cloud: PointCloud2 = {
+    width: 4,
+    height: 1,
+    point_step: 16,
+    row_step: 64,
+    is_dense: true,
+    is_bigendian: false,
+    fields: ["x", "y", "z", "intensity"].map((name, i) => ({ name, offset: i * 4, datatype: 7, count: 1 })),
+    data: new Uint8Array(64)
+  };
+  const view = new DataView(cloud.data.buffer);
+  [NaN, Infinity, -Infinity, 10].forEach((v, i) => view.setFloat32(i * 16 + 12, v, true));
+  const decoded = decodePointCloud2(cloud);
+  assert.equal(decoded.invalidScalars, 3);
+  assert.deepEqual([...decoded.values], [10]);
+  assert.equal(decoded.min, 10);
+});
+
+test("reference mock positions are spatially distinct", async () => {
+  const { cloudPacket } = await import("../../tools/mock-backend/src/pointcloud");
+  for (const count of [1, 1200, 300000]) {
+    const packet = cloudPacket(1000000000n, 0, { x: 0, y: 0 }, count),
+      length = new DataView(packet.buffer).getUint32(0, true);
+    const cloud = JSON.parse(new TextDecoder().decode(packet.subarray(4, 4 + length)));
+    cloud.data = packet.subarray(4 + length);
+    const { positions } = decodePointCloud2(cloud);
+    const unique = new Set<string>();
+    for (let i = 0; i < positions.length; i += 3) unique.add(positions.slice(i, i + 3).join(","));
+    assert.equal(unique.size, count);
+  }
+});

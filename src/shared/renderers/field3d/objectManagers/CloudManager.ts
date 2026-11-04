@@ -7,10 +7,12 @@
 
 import * as THREE from "three";
 import { TURBO } from "../../../spatial/Turbo";
+import { VIRIDIS } from "../../../spatial/Viridis";
 import { Field3dRendererCommand_CloudObj } from "../../Field3dRenderer";
 import { rotation3dToQuaternion } from "../../Field3dRendererImpl";
 import ObjectManager from "../ObjectManager";
 export default class CloudManager extends ObjectManager<Field3dRendererCommand_CloudObj> {
+  private viridisTexture: THREE.DataTexture | null = null;
   private turboTexture: THREE.DataTexture | null = null;
   private points: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial> | null = null;
   decodeMs = 0;
@@ -22,6 +24,8 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
     this.points?.geometry.dispose();
     this.points?.material.dispose();
     this.turboTexture?.dispose();
+    this.viridisTexture?.dispose();
+    this.viridisTexture = null;
     this.turboTexture = null;
     this.points = null;
     this.positions = this.values = this.colors = null;
@@ -38,6 +42,13 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
       );
       this.turboTexture.minFilter = this.turboTexture.magFilter = THREE.LinearFilter;
       this.turboTexture.needsUpdate = true;
+      this.viridisTexture = new THREE.DataTexture(
+        new Uint8Array(VIRIDIS.flatMap((c) => [...c.map((v) => Math.round(v * 255)), 255])),
+        256,
+        1
+      );
+      this.viridisTexture.minFilter = this.viridisTexture.magFilter = THREE.LinearFilter;
+      this.viridisTexture.needsUpdate = true;
     }
     const geo = this.points?.geometry ?? new THREE.BufferGeometry();
     const resized = this.points !== null && geo.getAttribute("position").count !== object.positions.length / 3;
@@ -73,13 +84,14 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
           low: { value: object.min },
           high: { value: object.max },
           rgb: { value: object.colors !== null },
+          viridisLut: { value: this.viridisTexture },
           turboLut: { value: this.turboTexture },
           turbo: { value: object.map === "turbo" }
         },
         vertexShader: `attribute float value; attribute vec3 pointColor; varying float v; varying vec3 c; uniform float pointSize; uniform float low; uniform float high;
       void main(){v=clamp((value-low)/max(high-low,0.00001),0.,1.);c=pointColor;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=pointSize;}`,
-        fragmentShader: `varying float v; varying vec3 c; uniform bool rgb; uniform bool turbo; uniform sampler2D turboLut;
-      void main(){if(length(gl_PointCoord-vec2(.5))>.5) discard;vec3 col=mix(mix(vec3(.267,.005,.329),vec3(.128,.567,.551),clamp(v*2.,0.,1.)),vec3(.993,.906,.144),clamp(v*2.-1.,0.,1.));
+        fragmentShader: `varying float v; varying vec3 c; uniform bool rgb; uniform bool turbo; uniform sampler2D turboLut; uniform sampler2D viridisLut;
+      void main(){if(length(gl_PointCoord-vec2(.5))>.5) discard;vec3 col=texture2D(viridisLut,vec2((v*255.+.5)/256.,.5)).rgb;
       if(turbo) col=texture2D(turboLut,vec2((v*255.+.5)/256.,.5)).rgb;gl_FragColor=vec4(rgb?c:col,1.);}`
       });
     material.uniforms.pointSize.value = object.size * window.devicePixelRatio;

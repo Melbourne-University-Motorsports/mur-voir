@@ -28,7 +28,7 @@ export function cloudPacket(timeNs: bigint, run: number, center = { x: 0, y: 0 }
   bytes.set(header, 4);
   const t = Number(timeNs % 100000000000n) / 1e9;
   for (let i = 0; i < count; i++) {
-    const a = ((i % 120) / 120) * Math.PI * 2;
+    const a = ((i % Math.ceil(count / 10)) / Math.ceil(count / 10)) * Math.PI * 2;
     const r = 3 + Math.floor((i / count) * 10) * 0.45 + 0.1 * Math.sin(a * 5 + t);
     const offset = 4 + header.length + i * 16;
     view.setFloat32(offset, center.x + r * Math.cos(a), true);

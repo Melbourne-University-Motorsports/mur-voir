@@ -41,6 +41,7 @@ export class SpatialLayers {
       stamp: number;
     }
   >();
+  private decodeWindows = new Map<string, { signature: string; wanted: string[]; superseded: number }>();
   private continuous = false;
   private activeCloudLayers = new Set<string>();
   private admissionErrors = new Set<string>();
@@ -54,6 +55,7 @@ export class SpatialLayers {
       if (!this.activeCloudLayers.has(id)) {
         this.presentations.delete(id);
         this.cloudOwners.delete(id);
+        this.decodeWindows.delete(id);
       }
     this.activeCloudLayers.clear();
     if (log !== this.log || time < this.time) {
@@ -62,6 +64,7 @@ export class SpatialLayers {
       this.generation++;
       this.cloudOwners.clear();
       this.presentations.clear();
+      this.decodeWindows.clear();
       this.admissionErrors.clear();
       this.cloudFields.clear();
       if (this.log && log !== this.log) SpatialLayers.clouds.delete(this.log);
@@ -284,6 +287,13 @@ export class SpatialLayers {
     for (const id of this.admissionErrors)
       if (!this.pending.has(id) && !wanted.includes(id)) this.admissionErrors.delete(id);
     const signature = JSON.stringify([key, fixed, options]);
+    const priorWindow = this.decodeWindows.get(layerId);
+    let superseded = 0;
+    if (this.continuous && priorWindow?.signature === signature) {
+      superseded =
+        priorWindow.superseded + priorWindow.wanted.filter((id) => !wanted.includes(id) && !cache!.get(id)).length;
+    }
+    this.decodeWindows.set(layerId, { signature, wanted, superseded });
     let previous = this.presentations.get(layerId);
     if (previous?.signature !== signature || time < previous.time) previous = undefined;
     cache.protect(owner, [...wanted, ...(previous?.objects.map((o: any) => o.id) ?? [])]);
@@ -374,6 +384,7 @@ export class SpatialLayers {
     this.cloudStatus = [
       ...new Set(issues),
       held ? "holding last ready scan while decoding" : "",
+      superseded ? superseded + " scans superseded before decode (continuous playback)" : "",
       ready < indexes.length ? "partial " + ready + "/" + indexes.length + " · range frozen until complete" : "",
       decimated ? "decimating · " + (maxPoints * decay).toLocaleString("en-US") + " point layer budget" : ""
     ]

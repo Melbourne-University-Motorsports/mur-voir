@@ -181,3 +181,35 @@ test("partial window range freezes and complete range is exact", async () => {
     CloudDecoder.request = request;
   }
 });
+
+test("duplicate-topic layers pin independent variants and navigation is not decode loss", async () => {
+  const layers = new SpatialLayers(),
+    log = new Log();
+  log.putRaw("/cloud", 1, new Uint8Array([1]));
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  const request = CloudDecoder.request;
+  CloudDecoder.request = () => new Promise(() => {});
+  try {
+    layers.begin(log, 1, true);
+    for (const [id, field] of [
+      ["a", "intensity"],
+      ["b", "z"]
+    ])
+      assert.throws(() => layers.objects(log, "/cloud", 1, "map", { field }, id));
+    const cache = (SpatialLayers as any).clouds.get(log);
+    assert.equal(cache.pins.size, 2);
+    assert.equal(new Set([...cache.pins.values()].flatMap((p: any) => [...p.keys])).size, 2);
+    log.putRaw("/cloud", 2, new Uint8Array([2]));
+    layers.begin(log, 2, false);
+    assert.throws(() => layers.objects(log, "/cloud", 2, "map", {}, "a"));
+    assert.doesNotMatch(layers.cloudStatus, /superseded/);
+    log.putRaw("/cloud", 3, new Uint8Array([3]));
+    layers.begin(log, 3, true);
+    assert.throws(() => layers.objects(log, "/cloud", 3, "map", {}, "a"));
+    assert.match(layers.cloudStatus, /1 scans superseded/);
+    assert.throws(() => layers.objects(log, "/cloud", 3, "map", { field: "z" }, "a"));
+    assert.doesNotMatch(layers.cloudStatus, /superseded/);
+  } finally {
+    CloudDecoder.request = request;
+  }
+});
