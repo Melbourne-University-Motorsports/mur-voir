@@ -34,3 +34,29 @@ test("satellites transmit arrays once, preserve receiver identity, and resend on
   receiver.apply({ objects: [] }, false);
   assert.equal((receiver as any).buffers.size, 0);
 });
+
+test("receiver misses recover on a full resend and repeated IDs cannot reuse old buffers", () => {
+  const sender = new CloudTransport(),
+    receiver = new CloudTransport();
+  let object = {
+    type: "cloud",
+    id: "same",
+    positions: new Float32Array([1]),
+    values: new Float32Array([2]),
+    colors: null
+  };
+  const send = () => structuredClone(sender.apply({ objects: [object] }, true));
+  receiver.apply(send(), false);
+  for (const target of [new CloudTransport(), new CloudTransport()]) {
+    assert.deepEqual(target.apply(send(), false).objects, []);
+    assert.equal(target.missing, true);
+    sender.clear();
+    assert.equal(target.apply(send(), false).objects[0].positions[0], 1);
+  }
+  object = { ...object, positions: new Float32Array([9]) };
+  send(); // drop full packet after Log reset, with repeated scan ID
+  assert.deepEqual(receiver.apply(send(), false).objects, []);
+  assert.equal(receiver.missing, true);
+  sender.clear();
+  assert.equal(receiver.apply(send(), false).objects[0].positions[0], 9);
+});

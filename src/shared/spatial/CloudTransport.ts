@@ -7,11 +7,14 @@
 
 /** Per-window scan buffers: transmit only changes, retain only the active window. */
 export class CloudTransport {
+  missing = false;
+  private static revision = 0;
   private buffers = new Map<string, any>();
   clear() {
     this.buffers.clear();
   }
   apply(command: any, send: boolean): any {
+    this.missing = false;
     if (!Array.isArray(command?.objects)) return command;
     const active = new Set<string>();
     const objects = command.objects.map((object: any) => {
@@ -20,14 +23,26 @@ export class CloudTransport {
       active.add(id);
       const prior = this.buffers.get(id);
       if (send) {
-        this.buffers.set(id, object);
-        if (prior?.positions === object.positions && prior?.values === object.values && prior?.colors === object.colors)
-          return { ...object, positions: undefined, values: undefined, colors: undefined };
-        return object;
+        const unchanged =
+          prior?.positions === object.positions && prior?.values === object.values && prior?.colors === object.colors;
+        const revision = unchanged ? prior.cloudRevision : ++CloudTransport.revision;
+        this.buffers.set(id, { ...object, cloudRevision: revision });
+        if (unchanged)
+          return { ...object, cloudRevision: revision, positions: undefined, values: undefined, colors: undefined };
+        return { ...object, cloudRevision: revision };
       }
       if (object.positions)
-        this.buffers.set(id, { positions: object.positions, values: object.values, colors: object.colors });
-      if (!this.buffers.has(id)) return null;
+        this.buffers.set(id, {
+          positions: object.positions,
+          values: object.values,
+          colors: object.colors,
+          cloudRevision: object.cloudRevision
+        });
+      if (!this.buffers.has(id) || this.buffers.get(id).cloudRevision !== object.cloudRevision) {
+        this.missing = true;
+        this.buffers.delete(id);
+        return null;
+      }
       return { ...object, ...this.buffers.get(id) };
     });
     for (const id of this.buffers.keys()) if (!active.has(id)) this.buffers.delete(id);

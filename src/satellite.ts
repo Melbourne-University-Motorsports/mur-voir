@@ -148,6 +148,7 @@ window.addEventListener("message", (event) => {
 
           // Render frame
           lastCommand = cloudTransport.apply(message.data.command, false);
+          if (cloudTransport.missing) window.sendMainMessage("cloud-resync");
           if (renderer) {
             renderer.render(lastCommand);
             let aspectRatio = renderer.getAspectRatio();

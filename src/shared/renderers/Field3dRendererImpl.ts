@@ -604,6 +604,19 @@ export default class Field3dRendererImpl implements TabRenderer {
       this.shouldRender = true;
     }
 
+    this.objectManagers = this.objectManagers.filter((entry) => {
+      if (
+        entry.type === "cloud" &&
+        !entry.active &&
+        entry.idleSince !== undefined &&
+        performance.now() - entry.idleSince >= 500
+      ) {
+        entry.manager.dispose();
+        return false;
+      }
+      return true;
+    });
+
     // Exit if not visible
     if (this.canvas.getBoundingClientRect().width === 0) {
       return; // Continue trying to render

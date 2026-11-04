@@ -72,7 +72,21 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
       this.positions = object.positions;
     }
     if (!this.points || resized || this.values !== object.values) {
-      update("value", object.values, 1);
+      if (object.values.some((v) => !Number.isFinite(v))) {
+        update(
+          "valid",
+          Float32Array.from(object.values, (v) => (Number.isFinite(v) ? 1 : 0)),
+          1
+        );
+        update(
+          "value",
+          Float32Array.from(object.values, (v) => (Number.isFinite(v) ? v : 0)),
+          1
+        );
+      } else {
+        geo.deleteAttribute("valid");
+        update("value", object.values, 1);
+      }
       this.values = object.values;
     }
     if (!this.points || resized || this.colors !== object.colors) {
@@ -92,13 +106,14 @@ export default class CloudManager extends ObjectManager<Field3dRendererCommand_C
           turboLut: { value: this.turboTexture },
           turbo: { value: object.map === "turbo" }
         },
-        vertexShader: `attribute float value; attribute vec3 pointColor; varying float v; varying vec3 c; uniform float pointSize; uniform float low; uniform float high;
-      void main(){v=value!=value?-1.:clamp((value-low)/max(high-low,0.00001),0.,1.);c=pointColor;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=pointSize;}`,
+        vertexShader: `attribute float value; attribute float valid; attribute vec3 pointColor; varying float v; varying vec3 c; uniform float pointSize; uniform float low; uniform float high;
+      void main(){v=valid<0.5?-1.:clamp((value-low)/max(high-low,0.00001),0.,1.);c=pointColor;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_PointSize=pointSize;}`,
         fragmentShader: `varying float v; varying vec3 c; uniform bool rgb; uniform bool turbo; uniform sampler2D turboLut; uniform sampler2D viridisLut;
       void main(){if(length(gl_PointCoord-vec2(.5))>.5) discard;vec3 col=texture2D(viridisLut,vec2((v*255.+.5)/256.,.5)).rgb;
       if(turbo) col=texture2D(turboLut,vec2((v*255.+.5)/256.,.5)).rgb;gl_FragColor=vec4(v<0.?vec3(1.,0.,1.):rgb?c:col,1.);}`
       });
     material.defaultAttributeValues.pointColor = [0, 0, 0];
+    material.defaultAttributeValues.valid = [1];
     material.uniforms.pointSize.value = object.size * window.devicePixelRatio;
     material.uniforms.low.value = object.min;
     material.uniforms.high.value = object.max;

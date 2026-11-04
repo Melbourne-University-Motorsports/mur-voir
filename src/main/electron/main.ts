@@ -2506,6 +2506,10 @@ function createSatellite(
           select2DCameraPopup(satellite, message.data.position, message.data.selectedIndex);
           break;
 
+        case "cloud-resync":
+          hubWindows.forEach((window) => sendMessage(window, "cloud-resync"));
+          break;
+
         case "add-table-range":
           hubWindows.forEach((window) => {
             sendMessage(window, "add-table-range", {

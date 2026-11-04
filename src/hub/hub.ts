@@ -718,6 +718,10 @@ async function handleMainMessage(message: NamedMessage) {
       }
       break;
 
+    case "cloud-resync":
+      window.tabs.resyncClouds();
+      break;
+
     case "set-active-satellites":
       window.tabs.setActiveSatellites(message.data);
       break;

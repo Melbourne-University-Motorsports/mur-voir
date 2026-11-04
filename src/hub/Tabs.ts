@@ -691,6 +691,9 @@ export default class Tabs {
 
   /** Updates the list of active satellites for data publishing. */
   private satelliteClouds = new Map<string, CloudTransport>();
+  resyncClouds() {
+    this.satelliteClouds.forEach((transport) => transport.clear());
+  }
   setActiveSatellites(activeSatellites: string[]) {
     this.activeSatellites = activeSatellites;
     this.satelliteClouds.clear();
