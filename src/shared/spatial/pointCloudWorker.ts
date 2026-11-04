@@ -10,6 +10,7 @@ import { MessageReader } from "@foxglove/rosmsg2-serialization";
 import { decodePointCloud2 } from "./PointCloud2";
 self.onmessage = (event) => {
   const { id, payload } = event.data;
+  let message: any;
   try {
     let cloud = payload.cloud;
     if (payload.encoding === "mur-points-v1") {
@@ -19,18 +20,25 @@ self.onmessage = (event) => {
       cloud = JSON.parse(new TextDecoder().decode(bytes.subarray(4, 4 + length)));
       cloud.data = bytes.subarray(4 + length);
     }
-    const message =
+    message =
       payload.encoding === "cdr"
         ? new MessageReader(parse(payload.definition, { ros2: true })).readMessage(payload.bytes)
         : cloud;
-    const result = decodePointCloud2(message, payload.field);
+    const start = performance.now();
+    const result = decodePointCloud2(message, payload.field, payload.maxPoints);
     // @ts-expect-error worker transfer overload
-    self.postMessage({ id, payload: result }, [
+    self.postMessage({ id, payload: { ...result, decodeMs: performance.now() - start } }, [
       result.positions.buffer,
       result.values.buffer,
       ...(result.colors ? [result.colors.buffer] : [])
     ]);
   } catch (error) {
-    self.postMessage({ id, payload: { error: String(error) } });
+    self.postMessage({
+      id,
+      payload: {
+        error: String(error),
+        fields: message?.fields?.filter((f: any) => f.count === 1).map((f: any) => f.name)
+      }
+    });
   }
 };

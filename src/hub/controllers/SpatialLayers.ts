@@ -9,12 +9,13 @@ import { AnnotatedPose3d } from "../../shared/geometry";
 import HistoryCursor from "../../shared/log/HistoryCursor";
 import Log from "../../shared/log/Log";
 import { Field3dRendererCommand_AnyObj } from "../../shared/renderers/Field3dRenderer";
+import { CloudCache, cloudRange, cloudWindow } from "../../shared/spatial/CloudWindow";
 import { coneStyle } from "../../shared/spatial/ConeStyle";
 import { metadata, rosPose, spatialSnapshot } from "../../shared/spatial/SpatialLog";
 import { TFTree, normalizeFrameId } from "../../shared/spatial/TFTree";
 import { Transform, compose, identity } from "../../shared/spatial/Transform";
 import { URDFRobot, computeLinkPoses } from "../../shared/spatial/URDF";
-import WorkerManager from "../WorkerManager";
+import { CloudDecoder } from "../CloudDecoder";
 
 export class SpatialLayers {
   tree = new TFTree();
@@ -25,7 +26,12 @@ export class SpatialLayers {
   private processed = new Map<string, number>();
   private markers = new Map<string, { cursor: HistoryCursor; active: Map<string, { marker: any; stamp: number }> }>();
   private trails = new Map<string, { cursor: HistoryCursor; samples: { stamp: number; value: any }[] }>();
-  private clouds = new Map<string, any>();
+  private static clouds = new WeakMap<Log, CloudCache>();
+  private cloudOwners = new Map<string, object>();
+  cloudStatus = "";
+  cloudFields = new Map<string, string[]>();
+  private previousCloudWindows = new Map<string, string[]>();
+  private droppedClouds = 0;
   private pending = new Set<string>();
   private generation = 0;
   joints: Record<string, number> = {};
@@ -34,7 +40,11 @@ export class SpatialLayers {
       this.markers.clear();
       this.trails.clear();
       this.generation++;
-      this.clouds.clear();
+      this.cloudOwners.clear();
+      this.previousCloudWindows.clear();
+      this.droppedClouds = 0;
+      this.cloudFields.clear();
+      if (this.log && log !== this.log) SpatialLayers.clouds.delete(this.log);
       this.pending.clear();
       this.tree.clear();
       this.processed.clear();
@@ -230,69 +240,94 @@ export class SpatialLayers {
     return objects;
   }
   private cloud(log: Log, key: string, time: number, fixed: string, options: Record<string, string>) {
-    const decay = Math.max(1, Math.min(20, Number(options.decay ?? 1)));
+    const decay = Math.max(1, Math.min(20, Math.floor(Number(options.decay ?? 1)) || 1));
     const history = log.getField(key);
-    let lo = 0,
-      hi = history?.getTimestampCount() ?? 0;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (history!.getTimestamp(mid)! <= time) lo = mid + 1;
-      else hi = mid;
-    }
-    if (lo === 0) throw new Error("waiting for cloud");
-    const newest = new Set<number>();
-    for (let i = Math.max(0, lo - decay); i < lo; i++) newest.add(history!.getTimestamp(i)!);
+    const indexes = history ? cloudWindow(history, time, decay) : [];
+    if (!indexes.length) throw new Error("waiting for cloud");
+    const maxPoints = Math.floor(2_000_000 / decay);
     const field = options.field ?? "intensity";
-    const decoded = [...this.clouds.keys()]
-      .filter((cacheKey) => cacheKey.startsWith(key + ":") && cacheKey.endsWith(":" + field))
-      .map((cacheKey) => Number(cacheKey.slice(key.length + 1, -(field.length + 1))))
-      .filter((stamp) => stamp >= history!.getTimestamp(0)! && stamp <= time)
-      .sort((a, b) => a - b)
-      .slice(-decay);
-    const indexes = [...new Set([...newest, ...decoded])].sort((a, b) => a - b).map((t) => ({ t }));
+    const cacheKey = (t: number) => JSON.stringify([key, t, field, maxPoints]);
+    let cache = SpatialLayers.clouds.get(log);
+    if (!cache) {
+      cache = new CloudCache();
+      SpatialLayers.clouds.set(log, cache);
+    }
+    let owner = this.cloudOwners.get(key);
+    if (!owner) {
+      owner = {};
+      this.cloudOwners.set(key, owner);
+    }
+    cache.protect(owner, indexes.map(cacheKey));
+    const wanted = indexes.map(cacheKey);
+    for (const id of this.previousCloudWindows.get(key) ?? [])
+      if (!wanted.includes(id) && !cache.get(id)) this.droppedClouds++;
+    this.previousCloudWindows.set(key, wanted);
     const objects: Field3dRendererCommand_AnyObj[] = [];
+    const issues: string[] = [];
     let frame = "",
-      stamp = 0;
-    // Only resolve the retained decoded scans. Older scans may no longer have TF history.
-    for (const { t } of indexes) {
-      const cacheKey = key + ":" + t + ":" + (options.field ?? "intensity");
-      const result = this.clouds.get(cacheKey);
-      if (!result && !newest.has(t)) continue;
-      if (!result && !this.pending.has(cacheKey)) {
-        this.pending.add(cacheKey);
-        const generation = this.generation;
+      stamp = 0,
+      ready = 0,
+      decimated = false;
+    // Newest first; if the bounded worker pool is busy we retry from current history next frame.
+    for (const t of [...indexes].reverse()) {
+      const id = cacheKey(t),
+        result = cache.get(id);
+      if (!result && !this.pending.has(id)) {
         const meta = metadata(log, key);
-        WorkerManager.request("../bundles/pointCloudWorker.js", {
-          encoding: meta.encoding,
-          definition: meta.definition,
-          bytes: log.getRaw(key, t, t)!.values[0],
-          field: options.field ?? "intensity"
-        })
-          .then((result) => {
-            if (generation !== this.generation) return;
-            this.pending.delete(cacheKey);
-            this.clouds.set(cacheKey, result);
-            if (this.clouds.size > 60) this.clouds.delete(this.clouds.keys().next().value!);
-          })
-          .catch(() => {
-            if (generation !== this.generation) return;
-            this.pending.delete(cacheKey);
-            this.clouds.set(cacheKey, { error: "cloud worker failed" });
-          });
+        const bytes = log.getRaw(key, t, t)?.values[0];
+        const request =
+          bytes &&
+          CloudDecoder.request({ encoding: meta.encoding, definition: meta.definition, bytes, field, maxPoints });
+        if (request) {
+          this.pending.add(id);
+          const generation = this.generation;
+          request
+            .then((result) => {
+              this.pending.delete(id);
+              if (generation === this.generation && !cache!.set(id, result))
+                this.cloudStatus = "cloud cache budget exceeded";
+            })
+            .catch(() => {
+              this.pending.delete(id);
+              if (generation === this.generation) cache!.set(id, { error: "cloud worker failed" });
+            });
+        }
       }
       if (!result) continue;
-      if (result.error) throw new Error(result.error);
+      ready++;
+      if (result.fields) this.cloudFields.set(key, result.fields);
+      if (result.error) {
+        issues.push(result.error);
+        continue;
+      }
       frame = result.frame;
-      stamp = t;
-      objects.push({
-        type: "cloud",
-        ...result,
-        transform: this.resolve(frame, fixed, t),
-        size: Number(options.size ?? 3),
-        map: options.map ?? "viridis"
-      });
+      stamp = Math.max(stamp, t);
+      decimated ||= result.stride > 1;
+      const headerStamp = result.stamp ? result.stamp.sec + result.stamp.nanosec / 1e9 : 0;
+      try {
+        objects.push({
+          type: "cloud",
+          ...result,
+          id,
+          transform: this.resolve(frame, fixed, Number.isFinite(headerStamp) && headerStamp > 0 ? headerStamp : t),
+          size: Number(options.size ?? 3),
+          map: options.map ?? "viridis"
+        });
+      } catch (error) {
+        issues.push(String(error));
+      }
     }
-    if (!objects.length) throw new Error("decoding cloud…");
-    return { objects: objects.slice(-decay), frame, stamp };
+    const range = cloudRange(objects as { min: number; max: number }[]);
+    for (const object of objects) Object.assign(object, range);
+    this.cloudStatus = [
+      ready < indexes.length ? "partial " + ready + "/" + indexes.length : "",
+      decimated ? "decimating · 2M point budget" : "",
+      this.droppedClouds ? this.droppedClouds + " skipped scans" : "",
+      ...new Set(issues)
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (!objects.length) throw new Error("decoding cloud… " + this.cloudStatus);
+    return { objects: objects.reverse(), frame, stamp };
   }
 }

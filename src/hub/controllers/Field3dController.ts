@@ -449,6 +449,13 @@ export default class Field3dController implements TabController {
       if (source.type === "spatial" && time !== null) {
         try {
           const result = this.spatial.objects(window.log, source.logKey, time, fixed, source.options);
+          const fields = this.spatial.cloudFields.get(source.logKey);
+          if (fields)
+            this.sourceList.setItemOptionValues(
+              source.logKey,
+              "field",
+              fields.map((key) => ({ key, display: key }))
+            );
           objects.push(...result.objects);
           const origin = window.log.getTimestampRange()[0];
           const recent = window.log.getString(source.logKey + "/spatial", time - 1, time)?.timestamps ?? [];
@@ -464,12 +471,22 @@ export default class Field3dController implements TabController {
               " s · " +
               hz +
               " Hz" +
-              (stale ? " · LAG " + lag.toFixed(1) + " s" : ""),
+              (stale ? " · LAG " + lag.toFixed(1) + " s" : "") +
+              (window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2" && this.spatial.cloudStatus
+                ? " · " + this.spatial.cloudStatus
+                : ""),
             title: "Stamp " + result.stamp.toFixed(6) + " s (epoch), session start " + origin.toFixed(6) + " s",
             error: false,
             warn: stale
           });
         } catch (error) {
+          const fields = this.spatial.cloudFields.get(source.logKey);
+          if (fields)
+            this.sourceList.setItemOptionValues(
+              source.logKey,
+              "field",
+              fields.map((key) => ({ key, display: key }))
+            );
           this.sourceList.itemStatus.set(source.logKey, { text: String(error), error: true });
         }
         continue;

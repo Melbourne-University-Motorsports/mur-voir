@@ -198,6 +198,8 @@ export default class Log {
           false) ||
         changed;
     }
+    for (const key of this.liveRetention.keys())
+      changed = (this.fields[key]?.discardRawBytes(64 * 1024 * 1024) ?? false) || changed;
     if (changed) this.timestampSetCache = {};
     if (seconds !== undefined && seconds !== -1) this.clearBeforeTime(Math.max(0, time - seconds), false, true);
   }

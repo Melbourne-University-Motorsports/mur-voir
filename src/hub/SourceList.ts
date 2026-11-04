@@ -432,6 +432,17 @@ export default class SourceList {
     }
   }
 
+  private itemOptionValues = new Map<string, SourceListOptionValueConfig[]>();
+  /** Reuse inline source-list controls for fields discovered in a binary message. */
+  setItemOptionValues(logKey: string, option: string, values: SourceListOptionValueConfig[]) {
+    const key = JSON.stringify([logKey, option]);
+    if (JSON.stringify(this.itemOptionValues.get(key)) === JSON.stringify(values)) return;
+    this.itemOptionValues.set(key, values);
+    this.state.forEach((state, i) => {
+      if (state.logKey === logKey) this.updateItem(this.LIST.children[i] as HTMLElement, state);
+    });
+  }
+
   /**
    * Updates a set of option values and validates that all items are valid.
    */
@@ -1148,7 +1159,9 @@ export default class SourceList {
       toggle?.remove();
       return;
     }
-    const options = typeConfig.options.filter((o) => !o.forTypes || o.forTypes.includes(state.logType));
+    const options = typeConfig.options
+      .filter((o) => !o.forTypes || o.forTypes.includes(state.logType))
+      .map((o) => ({ ...o, values: this.itemOptionValues.get(JSON.stringify([state.logKey, o.key])) ?? o.values }));
     const open = this.expanded.has(state.logKey) && options.length > 0;
     if (!toggle) {
       toggle = document.createElement("button");
@@ -1167,7 +1180,7 @@ export default class SourceList {
       panel?.remove();
       return;
     }
-    const sig = options.map((o) => o.key + "=" + state.options[o.key]).join("|");
+    const sig = options.map((o) => o.key + "=" + state.options[o.key] + JSON.stringify(o.values)).join("|");
     if (!panel) {
       panel = document.createElement("div");
       panel.className = "inline-settings";
@@ -1181,6 +1194,8 @@ export default class SourceList {
           label.textContent = o.display + " ";
           const select = document.createElement("select");
           o.values.forEach((v) => select.append(new Option(v.display, v.key)));
+          if (!o.values.some((v) => v.key === state.options[o.key]))
+            select.append(new Option(state.options[o.key] + " (missing)", state.options[o.key]));
           select.value = state.options[o.key];
           select.onchange = () => {
             state.options[o.key] = select.value;

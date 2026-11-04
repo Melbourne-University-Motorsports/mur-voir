@@ -426,13 +426,13 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       });
 
       const cloudPath = "vehicles/mur27/perception/points";
-      const wantsCloud = activePaths.has(cloudPath) && this.descriptors.get(cloudPath)?.encoding === "mur-points-v1";
+      const wantsCloud = tabPaths.has(cloudPath) && this.descriptors.get(cloudPath)?.encoding === "mur-points-v1";
       if (wantsCloud && !this.cloudSocket) {
         const socket = new WebSocket(this.baseUrl.replace(/^http/, "ws") + "/api/v1/points");
         socket.binaryType = "arraybuffer";
         this.cloudSocket = socket;
         socket.onmessage = (event) => {
-          if (!this.log || !(event.data instanceof ArrayBuffer)) return;
+          if (this.cloudSocket !== socket || !this.log || !(event.data instanceof ArrayBuffer)) return;
           const bytes = new Uint8Array(event.data);
           try {
             const size = new DataView(bytes.buffer).getUint32(0, true);

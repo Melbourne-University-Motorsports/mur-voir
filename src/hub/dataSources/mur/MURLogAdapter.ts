@@ -138,6 +138,7 @@ export function getLayoutSignature(descriptor: SignalDescriptor): string {
 export function createField(log: Log, descriptor: SignalDescriptor) {
   const key = pathToKey(descriptor.path);
   log.createBlankField(key, getLoggableType(descriptor.type));
+  if (descriptor.type === "pointcloud2") log.setLiveRetention(key, 60);
   const structuredType = getStructuredType(descriptor.type);
   if (structuredType !== null) {
     log.setStructuredType(key, structuredType);

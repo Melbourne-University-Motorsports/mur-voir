@@ -155,3 +155,17 @@ test("current spatial snapshots reuse eager decode without keeping every decoded
   assert.equal(reads, 10);
   assert.equal(mapped.decoded.size, 2);
 });
+
+test("reference lidar load stays below 64 MiB and retains decay ten at the boundary", () => {
+  const log = new Log();
+  log.createBlankField("/cloud", LoggableType.Raw);
+  log.setLiveRetention("/cloud", 60);
+  for (let i = 0; i < 25; i++) {
+    log.putRaw("/cloud", i / 10, new Uint8Array(300000 * 16).fill(i));
+    log.discardLiveData(i / 10, 1200);
+  }
+  const raw = log.getRaw("/cloud", -Infinity, Infinity)!;
+  assert.ok(raw.values.reduce((n, v) => n + v.byteLength, 0) <= 64 * 1024 * 1024);
+  assert.ok(raw.timestamps.length >= 10);
+  assert.equal(raw.timestamps.at(-1), 2.4);
+});

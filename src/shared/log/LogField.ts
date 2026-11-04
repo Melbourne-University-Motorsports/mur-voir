@@ -129,6 +129,20 @@ export default class LogField {
     return true;
   }
 
+  /** Bound raw live history by bytes as well as time; always retain the newest sample. */
+  discardRawBytes(budget: number): boolean {
+    if (this.type !== LoggableType.Raw) return false;
+    let bytes = 0,
+      first = this.data.timestamps.length - 1;
+    for (let i = first; i >= this.dataStart; i--) {
+      const size = (this.data.values[i] as Uint8Array | undefined)?.byteLength ?? 0;
+      if (bytes + size > budget && i < this.data.timestamps.length - 1) break;
+      bytes += size;
+      first = i;
+    }
+    return first > this.dataStart && this.discardBeforeTime(this.data.timestamps[first]);
+  }
+
   private compactDiscarded() {
     if (this.dataStart === 0) return;
     this.data.timestamps.splice(0, this.dataStart);
