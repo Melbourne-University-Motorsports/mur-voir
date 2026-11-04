@@ -463,6 +463,7 @@ export class SpatialLayers {
       if (newest) {
         const [t, id] = newest,
           result = cache.get(id);
+        if (!previous) range = cloudRange([result]);
         try {
           objects.push({
             type: "cloud",

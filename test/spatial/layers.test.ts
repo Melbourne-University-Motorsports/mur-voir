@@ -284,12 +284,13 @@ test("virtual 60 Hz clock advances decay one when decode exceeds scan period", a
       CloudDecoder.request = () =>
         jobs.length >= 2 ? null : new Promise((finish) => jobs.push({ at: clock + latency, finish }));
       const shown = new Set<string>();
+      const ranges = new Set<number>();
       let maxAge = 0;
       for (let tick = 0; tick < 300; tick++) {
         clock = tick / 60;
         for (let j = jobs.length - 1; j >= 0; j--)
           if (jobs[j].at <= clock) {
-            jobs.splice(j, 1)[0].finish({ frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max: 1 });
+            jobs.splice(j, 1)[0].finish({ frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max: 7 });
           }
         await Promise.resolve();
         const time = clock * speed;
@@ -297,9 +298,11 @@ test("virtual 60 Hz clock advances decay one when decode exceeds scan period", a
         try {
           const result = layers.objects(log, "/cloud", time, "map");
           shown.add(result.objects[0].id!);
+          ranges.add((result.objects[0] as any).max);
           maxAge = Math.max(maxAge, time - result.stamp);
         } catch {}
       }
+      assert.deepEqual([...ranges], [7], "first late scan initializes a real range");
       assert.ok(shown.size > 20, `${speed}x ${hz} Hz ${latency}s: ${shown.size} scans`);
       assert.ok(maxAge < speed * (latency + 0.15));
       layers.begin(log, 39.95, false);
