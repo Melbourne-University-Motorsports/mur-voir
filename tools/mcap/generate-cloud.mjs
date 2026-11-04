@@ -15,7 +15,7 @@ const points = Number(process.argv[2] ?? 300000),
 if (!Number.isSafeInteger(points) || points < 1 || points > 10000000 || !Number.isSafeInteger(scans) || scans < 1)
   throw Error("Invalid size");
 await fs.mkdir("/tmp/mur-point-clouds", { recursive: true });
-const file = await fs.open("/tmp/mur-point-clouds/reference.mcap", "w");
+const file = await fs.open(process.argv[4] ?? "/tmp/mur-point-clouds/reference.mcap", "w");
 let position = 0n;
 const writer = new McapWriter({
   writable: {

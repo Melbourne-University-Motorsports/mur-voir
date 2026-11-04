@@ -36,7 +36,7 @@ self.onmessage = (event) => {
     self.postMessage({
       id,
       payload: {
-        error: String(error),
+        error: error instanceof Error ? error.message : String(error),
         fields: message?.fields?.filter((f: any) => f.count === 1).map((f: any) => f.name)
       }
     });

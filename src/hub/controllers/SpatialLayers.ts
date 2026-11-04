@@ -296,7 +296,7 @@ export class SpatialLayers {
     this.decodeWindows.set(layerId, { signature, wanted, superseded });
     let previous = this.presentations.get(layerId);
     if (previous?.signature !== signature || time < previous.time) previous = undefined;
-    cache.protect(owner, [...wanted, ...(previous?.objects.map((o: any) => o.id) ?? [])]);
+    cache.protect(owner, [...wanted, ...(this.continuous ? previous?.objects.map((o: any) => o.id) ?? [] : [])]);
     const objects: Field3dRendererCommand_AnyObj[] = [];
     const issues: string[] = [];
     let frame = "",
@@ -372,7 +372,10 @@ export class SpatialLayers {
     if (held) {
       for (const old of previous!.objects as any[]) {
         try {
-          objects.push({ ...old, transform: this.resolve(old.frame, fixed, cloudStamp(old.stamp, previous!.stamp)) });
+          objects.push({
+            ...old,
+            transform: this.resolve(old.frame, fixed, cloudStamp(old.stamp, JSON.parse(old.id)[1]))
+          });
         } catch (error) {
           issues.push(String(error));
         }

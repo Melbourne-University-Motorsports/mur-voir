@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodePointCloud2, PointCloud2 } from "../../src/shared/spatial/PointCloud2";
+import { VIRIDIS } from "../../src/shared/spatial/Viridis";
 for (const big of [false, true])
   test("padded cloud offsets and endianness " + big, () => {
     const cloud: PointCloud2 = {
@@ -133,4 +134,21 @@ test("reference mock positions are spatially distinct", async () => {
     for (let i = 0; i < positions.length; i += 3) unique.add(positions.slice(i, i + 3).join(","));
     assert.equal(unique.size, count);
   }
+});
+
+// Reference byte samples from d3-scale-chromatic v3.1.0 sequential-multi/viridis.js.
+test("viridis matches independent D3 reference samples", () => {
+  const reference = [
+    [68, 1, 84],
+    [59, 82, 139],
+    [33, 145, 140],
+    [94, 201, 98],
+    [253, 231, 37]
+  ];
+  [0, 64, 128, 192, 255].forEach((i, n) =>
+    assert.deepEqual(
+      VIRIDIS[i].map((v) => Math.round(v * 255)),
+      reference[n]
+    )
+  );
 });

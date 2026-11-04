@@ -6,17 +6,25 @@
 // at the root directory of this project.
 
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
 import { chromium } from "playwright";
+import { freePort, options, ready } from "./cloud-process.mjs";
+const cli = options(),
+  port = Number(cli.values.port),
+  litePort = Number(cli.values["lite-port"]);
+await fs.mkdir(cli.values.output, { recursive: true });
 let browser;
 const children = [];
 try {
+  await freePort(port);
+  await freePort(litePort);
   children.push(
     spawn(
       process.execPath,
       [
         "tools/mock-backend/src/main.ts",
         "--port",
-        "18095",
+        String(port),
         "--point-cloud",
         "--point-cloud-points",
         "300000",
@@ -24,24 +32,29 @@ try {
         "10",
         "--sim-clock"
       ],
-      { stdio: "ignore" }
+      { stdio: ["ignore", "ignore", "inherit"] }
     )
   );
+  await ready(children[0], port);
   children.push(
-    spawn(process.execPath, ["tools/lite-serve/main.mjs", "--port", "15809", "--backend", "http://127.0.0.1:18095"], {
-      stdio: "ignore"
-    })
+    spawn(
+      process.execPath,
+      ["tools/lite-serve/main.mjs", "--port", String(litePort), "--backend", `http://127.0.0.1:${port}`],
+      {
+        stdio: ["ignore", "ignore", "inherit"]
+      }
+    )
   );
-  await new Promise((r) => setTimeout(r, 2000));
+  await ready(children[1], litePort);
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
-  await page.goto("http://127.0.0.1:15809");
+  await page.goto(`http://127.0.0.1:${litePort}`);
   const hub = page.frameLocator(".hub-frame");
   await hub.locator(".connect-source").waitFor({ state: "attached" });
   const frame = page.frames().find((f) => f.url().endsWith("hub.html"));
   await frame.evaluate(() => window.dispatchEvent(new Event("welcome-connect")));
   await hub.locator(".connect-source").selectOption("mur");
-  await hub.locator(".connect-address").fill("http://127.0.0.1:15809");
+  await hub.locator(".connect-address").fill(`http://127.0.0.1:${litePort}`);
   await hub.locator(".connect-confirm").click();
   await frame.waitForFunction(() => window.log.getFieldKeys().includes("/vehicles/mur27/perception/points"));
   await frame.evaluate(() => {
@@ -97,8 +110,9 @@ try {
       return { renderer: debug && gl.getParameter(debug.UNMASKED_RENDERER_WEBGL), memory: impl.renderer.info.memory };
     })
   );
+  await page.waitForTimeout(2000);
   await page.screenshot({
-    path: "/Users/jasper/code/telemetry-dashboard/research/mur-voir/screenshots/point-clouds/r1-lite-cloud.png"
+    path: cli.values.output + "/" + cli.values.prefix + "-lite-cloud.png"
   });
 } finally {
   await browser?.close();

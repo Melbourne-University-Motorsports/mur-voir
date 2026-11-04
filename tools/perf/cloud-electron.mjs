@@ -7,16 +7,23 @@
 
 // Real Electron, real importer/source, real renderer. Run after npm run compile.
 // node tools/perf/cloud-electron.mjs [file|live] [seconds=180] [decay=1]
+import electronPath from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import { _electron } from "playwright";
-const mode = process.argv[2] ?? "file",
-  seconds = Number(process.argv[3] ?? 180),
-  decay = process.argv[4] ?? "1";
+import { freePort, options, ready } from "./cloud-process.mjs";
+const cli = options();
+const mode = cli.positionals[0] ?? "file",
+  seconds = Number(cli.positionals[1] ?? 180),
+  decay = cli.positionals[2] ?? "1";
+const port = Number(cli.values.port),
+  rosPort = port + 1;
+if (mode === "file" && !cli.values.input) throw Error("file mode requires --input path/to/cloud.mcap");
+await fs.mkdir("/tmp/mur-point-clouds/r2", { recursive: true });
 const root = process.cwd(),
-  dir = "/tmp/mur-point-clouds/profile-" + Date.now();
-const shots = "/Users/jasper/code/telemetry-dashboard/research/mur-voir/screenshots/point-clouds";
+  dir = await fs.mkdtemp("/tmp/mur-point-clouds/r2/profile-"),
+  shots = cli.values.output;
 await fs.mkdir(dir, { recursive: true });
 await fs.mkdir(shots, { recursive: true });
 await fs.writeFile(dir + "/beta-2027.json", JSON.stringify({ welcomeComplete: true, surveyTime: Date.now() + 1e12 }));
@@ -25,20 +32,22 @@ delete env.ELECTRON_RUN_AS_NODE;
 let app, backend;
 try {
   if (mode === "ros") {
+    await freePort(rosPort);
     backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
       cwd: root,
-      env: { ...env, ROS_MOCK_PORT: "18094", ROS_MOCK_RESET: "1" },
-      stdio: "ignore"
+      env: { ...env, ROS_MOCK_PORT: String(rosPort), ROS_MOCK_RESET: "1" },
+      stdio: ["ignore", "ignore", "inherit"]
     });
-    await new Promise((r) => setTimeout(r, 1000));
+    await ready(backend, rosPort);
   }
   if (mode === "live") {
+    await freePort(port);
     backend = spawn(
       process.execPath,
       [
         "tools/mock-backend/src/main.ts",
         "--port",
-        "18093",
+        String(port),
         "--point-cloud",
         "--point-cloud-points",
         "300000",
@@ -46,31 +55,33 @@ try {
         "10",
         "--sim-clock"
       ],
-      { cwd: root, stdio: "ignore" }
+      { cwd: root, stdio: ["ignore", "ignore", "inherit"] }
     );
-    await new Promise((r) => setTimeout(r, 1500));
+    await ready(backend, port);
   }
   app = await _electron.launch({
-    executablePath: root + "/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+    executablePath: electronPath,
     args: [
       "bundles/main.js",
       "--enable-precise-memory-info",
       "--disable-renderer-backgrounding",
       "--disable-background-timer-throttling",
       "--user-data-dir=" + dir,
-      ...(mode === "file" ? ["/tmp/mur-point-clouds/reference.mcap"] : [])
+      ...(mode === "file" ? [cli.values.input] : [])
     ],
     cwd: root,
     env
   });
   await new Promise((r) => setTimeout(r, 5000));
   await app.evaluate(({ BrowserWindow }) => {
-    for (const w of BrowserWindow.getAllWindows())
+    for (const w of BrowserWindow.getAllWindows()) {
+      w.webContents.closeDevTools();
       if (w.webContents.getURL().includes("betaWelcome")) w.close();
       else if (w.webContents.getURL().endsWith("hub.html")) {
         w.webContents.setBackgroundThrottling(false);
         w.setContentSize(1440, 960);
       }
+    }
   });
   const hub = app.windows().find((w) => w.url().endsWith("hub.html"));
   hub.on("pageerror", (e) => console.error("PAGE", String(e)));
@@ -100,7 +111,9 @@ try {
       .locator("input[placeholder]")
       .evaluateAll((es) => es.map((e) => ({ placeholder: e.placeholder, type: e.type })))
       .then(console.log);
-    await hub.locator(".connect-address").fill(mode === "ros" ? "ws://127.0.0.1:18094" : "http://127.0.0.1:18093");
+    await hub
+      .locator(".connect-address")
+      .fill(mode === "ros" ? `ws://127.0.0.1:${rosPort}` : `http://127.0.0.1:${port}`);
     await hub.getByRole("button", { name: "Connect", exact: true }).click();
     await new Promise((r) => setTimeout(r, 3000));
   }
@@ -129,9 +142,15 @@ try {
         });
         if (mode === "file") window.selection.setSelectedTime(2.9);
         const frames = [];
+        window.__cloudReady = { frames: 0, ready: 0 };
         let last = performance.now();
         function tick(t) {
           frames.push(t - last);
+          window.__cloudReady.frames++;
+          if (
+            tab.renderer.implementation?.objectManagers.some((e) => e.type === "cloud" && e.manager.positions?.length)
+          )
+            window.__cloudReady.ready++;
           last = t;
           if (frames.length > 10000) frames.shift();
           // Keep moving live scans in the frustum so the soak actually exercises GPU drawing.
@@ -171,6 +190,7 @@ try {
       const times = window.__cloudFrames.splice(0).sort((a, b) => a - b);
       const entries = impl?.objectManagers.filter((e) => e.type === "cloud") ?? [];
       return {
+        readiness: { ...window.__cloudReady },
         frameMedianMs: times[Math.floor(times.length * 0.5)],
         frameP95Ms: times[Math.floor(times.length * 0.95)],
         heapBytes: performance.memory?.usedJSHeapSize,
@@ -190,6 +210,10 @@ try {
         )
       };
     });
+  await hub.evaluate(() => {
+    window.__cloudReady = { frames: 0, ready: 0 };
+    window.__cloudFrames.splice(0);
+  });
   for (let elapsed = 0; elapsed < seconds; elapsed += 10) {
     console.log("sample", elapsed, JSON.stringify(await sample()));
     await new Promise((r) => setTimeout(r, Math.min(10, seconds - elapsed) * 1000));
@@ -220,13 +244,13 @@ try {
         .renderer.implementation.objectManagers.some((e) => e.type === "cloud"),
     { timeout: 60000 }
   );
-  await hub.screenshot({ path: shots + `/r1-${mode}-decay${decay}.png` });
+  await hub.screenshot({ path: shots + `/${cli.values.prefix}-${mode}-decay${decay}.png` });
   console.log("final", JSON.stringify(await sample()));
   if (mode === "live" && process.env.CLOUD_LIFECYCLE === "1") {
     const oldArgs = backend.spawnargs.slice(1);
     backend.kill("SIGTERM");
     await new Promise((r) => setTimeout(r, 2000));
-    backend = spawn(process.execPath, oldArgs, { cwd: root, stdio: "ignore" });
+    backend = spawn(process.execPath, oldArgs, { cwd: root, stdio: ["ignore", "ignore", "inherit"] });
     await new Promise((r) => setTimeout(r, 12000));
     console.log("backend restart", JSON.stringify(await sample()));
     const rewound = await hub.evaluate(() =>
@@ -237,13 +261,13 @@ try {
     await new Promise((r) => setTimeout(r, 1000));
     backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
       cwd: root,
-      env: { ...env, ROS_MOCK_PORT: "18094" },
-      stdio: "ignore"
+      env: { ...env, ROS_MOCK_PORT: String(rosPort) },
+      stdio: ["ignore", "ignore", "inherit"]
     });
     await new Promise((r) => setTimeout(r, 1000));
     await hub.evaluate(() => window.dispatchEvent(new Event("welcome-connect")));
     await hub.locator(".connect-source").selectOption("foxglove");
-    await hub.locator(".connect-address").fill("ws://127.0.0.1:18094");
+    await hub.locator(".connect-address").fill(`ws://127.0.0.1:${rosPort}`);
     await hub.getByRole("button", { name: "Connect", exact: true }).click();
     await new Promise((r) => setTimeout(r, 5000));
     await hub.evaluate(() => {

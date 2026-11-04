@@ -213,3 +213,56 @@ test("duplicate-topic layers pin independent variants and navigation is not deco
     CloudDecoder.request = request;
   }
 });
+
+test("settled scan identities match across seek, playback, and overlapping reset decodes", async () => {
+  const layers = new SpatialLayers(),
+    log = new Log();
+  for (let t = 1; t <= 6; t++) log.putRaw("/cloud", t, new Uint8Array([t]));
+  log.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+  const request = CloudDecoder.request;
+  const decoded = { frame: "map", positions: new Float32Array([0, 0, 0]), min: 0, max: 1 };
+  CloudDecoder.request = async () => decoded;
+  const sets: string[][] = [];
+  try {
+    for (const route of [
+      [1, 6, 3],
+      [6, 3],
+      [1, 2, 3]
+    ]) {
+      for (const t of route) {
+        layers.begin(log, t, route.length === 3);
+        try {
+          layers.objects(log, "/cloud", t, "map", { decay: "2" });
+        } catch {}
+        await Promise.resolve();
+      }
+      sets.push(
+        layers
+          .objects(log, "/cloud", 3, "map", { decay: "2" })
+          .objects.map((o) => o.id!)
+          .sort()
+      );
+    }
+    assert.deepEqual(sets[0], sets[1]);
+    assert.deepEqual(sets[1], sets[2]);
+    const pending: ((v: any) => void)[] = [];
+    CloudDecoder.request = () => new Promise((r) => pending.push(r));
+    const other = new Log();
+    other.putRaw("/cloud", 3, new Uint8Array([3]));
+    other.setStructuredType("/cloud", "sensor_msgs/PointCloud2");
+    layers.begin(other, 3);
+    assert.throws(() => layers.objects(other, "/cloud", 3, "map"));
+    layers.begin(new Log(), 0);
+    layers.begin(other, 3);
+    assert.throws(() => layers.objects(other, "/cloud", 3, "map"));
+    pending[0]({ ...decoded, error: "old generation" });
+    await Promise.resolve();
+    assert.throws(() => layers.objects(other, "/cloud", 3, "map"), /decoding/);
+    assert.equal(pending.length, 2);
+    pending[1](decoded);
+    await Promise.resolve();
+    assert.equal(layers.objects(other, "/cloud", 3, "map").objects.length, 1);
+  } finally {
+    CloudDecoder.request = request;
+  }
+});
