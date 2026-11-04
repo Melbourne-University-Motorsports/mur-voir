@@ -436,9 +436,11 @@ export default class Field3dController implements TabController {
     );
     let objects: Field3dRendererCommand_AnyObj[] = [];
     let cameraOverride: AnnotatedPose3d | null = null;
+    this.sourceList.itemStatus.clear();
     let sources = this.sourceList.getState(true);
     for (let i = 0; i < sources.length; i++) {
       let source = sources[i];
+      const statusId = String(this.sourceList.getState().indexOf(source));
       let typeConfig = Field3dController_Config.types.find((typeConfig) => typeConfig.key === source.type);
       if (typeConfig?.childOf !== undefined) continue; // This is a child, don't render
 
@@ -467,7 +469,7 @@ export default class Field3dController implements TabController {
               ...source.options,
               cloudBudget: String(Math.floor(2_000_000 / Math.max(1, cloudLayers)))
             },
-            String(i)
+            statusId
           );
           const fields = this.spatial.cloudFields.get(source.logKey);
           if (fields)
@@ -483,7 +485,7 @@ export default class Field3dController implements TabController {
           const hz = samples.length > 1 ? Math.round((samples.length - 1) / (samples.at(-1)! - samples[0])) : 0;
           const lag = time - result.stamp;
           const stale = lag > 1 && !source.logKey.endsWith("tf_static");
-          this.sourceList.itemStatus.set(String(i), {
+          this.sourceList.itemStatus.set(statusId, {
             text:
               (window.log.getStructuredType(source.logKey) === "sensor_msgs/PointCloud2" && this.spatial.cloudStatus
                 ? this.spatial.cloudStatus + " · "
@@ -508,7 +510,7 @@ export default class Field3dController implements TabController {
               { key: "", display: "Auto (intensity / z)" },
               ...fields.map((key) => ({ key, display: key }))
             ]);
-          this.sourceList.itemStatus.set(String(i), {
+          this.sourceList.itemStatus.set(statusId, {
             text: error instanceof Error ? error.message : String(error),
             error: true
           });
@@ -558,7 +560,7 @@ export default class Field3dController implements TabController {
           poses = poses.map((pose) => ({ ...pose, pose: compose(transform, pose.pose) }));
           status(source.logKey + " · " + frame + " · cursor " + time.toFixed(3) + " s");
         } catch (error) {
-          this.sourceList.itemStatus.set(String(i), {
+          this.sourceList.itemStatus.set(statusId, {
             text: error instanceof Error ? error.message : String(error),
             error: true
           });
