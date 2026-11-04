@@ -336,6 +336,8 @@ try {
   );
   await hub.screenshot({ path: shots + `/${cli.values.prefix}-${mode}-decay${decay}.png` });
   if (app.__satellite)
+    await app.__satellite.screenshot({ path: shots + `/${cli.values.prefix}-satellite-decay${decay}.png` });
+  if (app.__satellite)
     console.log(
       "satellite",
       await app.__satellite.evaluate(() => {

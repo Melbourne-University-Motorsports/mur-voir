@@ -150,12 +150,26 @@ export class SpatialLayers {
   private scanPose(frame: string, fixed: string, stamp: any, receipt: number, issues: string[]): Transform {
     if (normalizeFrameId(frame) === normalizeFrameId(fixed)) return identity();
     const acquisition = rosStamp(stamp, receipt);
+    const chain = new Set<string>();
+    for (const endpoint of [frame, fixed]) {
+      let current: string | null = normalizeFrameId(endpoint);
+      while (current && !chain.has(current)) {
+        chain.add(current);
+        current = this.scanTree.getParent(current);
+      }
+    }
+    const dynamic = new Set(
+      this.scanTree
+        .getEdges(acquisition)
+        .filter((e) => !e.isStatic && chain.has(e.child))
+        .map((e) => e.child)
+    );
     const offsets = [...this.stampOffsets.entries()]
-      .filter(([key]) => key.endsWith(":" + frame))
+      .filter(([key]) => dynamic.has(normalizeFrameId(key.slice(key.lastIndexOf(":") + 1))))
       .map(([, offset]) => offset);
-    if (!offsets.length) return this.resolve(frame, fixed, receipt);
-    // Compare domains, never absolute epoch offsets (sim time may be recorded at wall time).
-    if (Math.abs(receipt - acquisition - offsets[0]) > 2) {
+    if (!this.scanTree.hasFrame(frame)) return this.resolve(frame, fixed, receipt);
+    // Compare domains on dynamic edges, never static TF epochs or absolute epoch offsets.
+    if (offsets.some((offset) => Math.abs(receipt - acquisition - offset) > 2)) {
       issues.push("cloud/TF clock mismatch; receipt-time pose");
       return this.resolve(frame, fixed, receipt);
     }

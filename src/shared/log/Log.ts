@@ -217,7 +217,10 @@ export default class Log {
         this.cloudMessageBytes.set(key, size);
         for (const [owner, demand] of this.cloudDecay) if (Date.now() - demand.at > 2000) this.cloudDecay.delete(owner);
         const demands = [...this.cloudDecay.values()];
-        const active = Math.max(1, new Set(demands.map((d) => d.key)).size);
+        const active = Math.max(
+          1,
+          [...this.liveRetention.keys()].filter((k) => this.getStructuredType(k) === "sensor_msgs/PointCloud2").length
+        );
         const decay = Math.max(1, ...demands.filter((d) => d.key === key).map((d) => d.decay));
         const budget = Math.min(
           (256 * 1024 * 1024) / active,
