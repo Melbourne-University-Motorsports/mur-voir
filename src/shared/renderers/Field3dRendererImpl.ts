@@ -110,8 +110,16 @@ export default class Field3dRendererImpl implements TabRenderer {
     type: Field3dRendererCommand_AnyObj["type"];
     manager: ObjectManager<Field3dRendererCommand_AnyObj>;
     active: boolean;
+    cloudId?: string;
   }[] = [];
 
+  private cloudBuffers = new WeakMap<object, number>();
+  private nextCloudBuffer = 0;
+  private cloudBufferId(value: object | null) {
+    if (value === null) return null;
+    if (!this.cloudBuffers.has(value)) this.cloudBuffers.set(value, this.nextCloudBuffer++);
+    return this.cloudBuffers.get(value);
+  }
   private shouldRender = false;
   private cameraIndex: CameraIndex = CameraIndexEnum.OrbitField;
   private orbitFov = 50;
@@ -557,7 +565,16 @@ export default class Field3dRendererImpl implements TabRenderer {
     controlsUpdated = this.controls.update(delta) || controlsUpdated;
 
     // Check for new parameters
-    let commandString = JSON.stringify(command);
+    let commandString = JSON.stringify(command, (_key, value) =>
+      value?.type === "cloud"
+        ? {
+            ...value,
+            positions: this.cloudBufferId(value.positions),
+            values: this.cloudBufferId(value.values),
+            colors: this.cloudBufferId(value.colors)
+          }
+        : value
+    );
     let assetsString = JSON.stringify(window.assets);
     let isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     let newAssets = assetsString !== JSON.stringify(this.lastAssets);
@@ -781,11 +798,17 @@ export default class Field3dRendererImpl implements TabRenderer {
         (entry) =>
           !entry.active &&
           entry.type === object.type &&
+          (object.type !== "cloud" || entry.cloudId === object.id) &&
           ((object.type !== "robot" && object.type !== "ghost") ||
             object.model === (entry.manager as RobotManager).getModel())
       );
       if (entry === undefined) {
-        entry = this.objectManagers.find((entry) => !entry.active && entry.type === object.type);
+        entry = this.objectManagers.find(
+          (entry) =>
+            !entry.active &&
+            entry.type === object.type &&
+            (object.type !== "cloud" || !command.objects.some((o) => o.type === "cloud" && o.id === entry.cloudId))
+        );
       }
       if (entry === undefined) {
         entry = {
@@ -800,6 +823,7 @@ export default class Field3dRendererImpl implements TabRenderer {
       if (newRobotAssets && (entry.type === "robot" || entry.type === "ghost")) {
         (entry.manager as RobotManager).newAssets();
       }
+      entry.cloudId = object.type === "cloud" ? object.id : undefined;
       entry.manager.setObjectData(object);
     });
     this.objectManagers.forEach((entry) => {

@@ -223,6 +223,7 @@ export type Field3dRendererCommand_MarkerObj = { type: "marker"; marker: any; fr
 
 export type Field3dRendererCommand_CloudObj = {
   type: "cloud";
+  id?: string;
   positions: Float32Array;
   values: Float32Array;
   colors: Float32Array | null;
