@@ -8,6 +8,7 @@
 import { AdvantageScopeAssets } from "./shared/AdvantageScopeAssets";
 import NamedMessage from "./shared/NamedMessage";
 import Preferences from "./shared/Preferences";
+import { RenderGuard, inlineStatus } from "./shared/RenderGuard";
 import Selection, { SelectionMode } from "./shared/Selection";
 import TabType, { getTabIcon } from "./shared/TabType";
 import ConsoleRenderer from "./shared/renderers/ConsoleRenderer";
@@ -24,6 +25,15 @@ import TableRenderer from "./shared/renderers/TableRenderer";
 import VideoRenderer from "./shared/renderers/VideoRenderer";
 import { CloudTransport } from "./shared/spatial/CloudTransport";
 import { htmlEncode } from "./shared/util";
+
+const renderGuard = new RenderGuard();
+function guardedRender(action: () => void) {
+  renderGuard.run(
+    action,
+    () => inlineStatus(document.body, "Unable to display this tab. Check its fields and options in the main window."),
+    () => inlineStatus(document.body, "")
+  );
+}
 
 const MAX_ASPECT_RATIO = 5;
 const SAVE_PERIOD_MS = 250;
@@ -150,7 +160,7 @@ window.addEventListener("message", (event) => {
           lastCommand = cloudTransport.apply(message.data.command, false);
           if (cloudTransport.missing) window.sendMainMessage("cloud-resync");
           if (renderer) {
-            renderer.render(lastCommand);
+            guardedRender(() => renderer!.render(lastCommand));
             let aspectRatio = renderer.getAspectRatio();
             processAspectRatio(aspectRatio);
 
@@ -195,7 +205,7 @@ window.addEventListener("resize", () => {
   if (renderer === null || lastCommand === null) {
     return;
   }
-  renderer.render(lastCommand);
+  guardedRender(() => renderer!.render(lastCommand));
   let aspectRatio = renderer.getAspectRatio();
   if (aspectRatio) processAspectRatio(aspectRatio);
 });
