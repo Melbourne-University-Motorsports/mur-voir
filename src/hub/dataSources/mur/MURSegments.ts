@@ -25,7 +25,7 @@
 // Streams that belonged to an earlier segment are *retired*: late samples or history from them are dropped,
 // so the old run never leaks into the new one.
 
-import type { ClockDomain } from "../../../../tools/mock-backend/src/contract";
+import type { ClockDomain } from "../../../shared/mur/contract";
 
 export type SegmentDecision = "accept" | "drop" | "new-segment";
 
