@@ -145,12 +145,10 @@ const timer = setInterval(
     for (let i = 0; i < pointCount; i++) {
       const a = ((i % (pointCount / 10)) / (pointCount / 10)) * Math.PI * 2,
         r = 3 + Math.floor(i / (pointCount / 10)) * 0.45 + 0.15 * Math.sin(5 * a + t);
-      [
-        r * Math.cos(a),
-        r * Math.sin(a),
-        -0.55 + 0.08 * Math.floor(i / (pointCount / 10)) + 0.1 * Math.sin(3 * a),
-        process.env.ROS_MOCK_INVALID_SCALARS ? NaN : (i * 17) % 256
-      ].forEach((v, j) => view.setFloat32(i * 16 + j * 4, v, true));
+      view.setFloat32(i * 16, r * Math.cos(a), true);
+      view.setFloat32(i * 16 + 4, r * Math.sin(a), true);
+      view.setFloat32(i * 16 + 8, -0.55 + 0.08 * Math.floor(i / (pointCount / 10)) + 0.1 * Math.sin(3 * a), true);
+      view.setFloat32(i * 16 + 12, process.env.ROS_MOCK_INVALID_SCALARS ? NaN : (i * 17) % 256, true);
     }
     const messages = {
       "/clock": { clock: stamp },
@@ -222,7 +220,7 @@ const timer = setInterval(
       "/lidar/points": {
         header: { ...header, frame_id: "lidar" },
         height: 1,
-        width: 2400,
+        width: pointCount,
         fields: ["x", "y", "z", "intensity"].map((name, i) => ({ name, offset: i * 4, datatype: 7, count: 1 })),
         is_bigendian: false,
         point_step: 16,
