@@ -31,7 +31,7 @@ test("one scalar range is applied across every scan", () => {
   assert.deepEqual(cloudRange(scans), { min: -10, max: 30 });
 });
 test("byte LRU preserves current windows across layers and rejects over-budget inserts", () => {
-  const cache = new CloudCache(32),
+  const cache = new CloudCache(544),
     a = {},
     b = {};
   const value = { positions: new Float32Array(4) };
@@ -41,6 +41,6 @@ test("byte LRU preserves current windows across layers and rejects over-budget i
   cache.protect(b, ["b"]);
   assert.equal(cache.set("b", value), true);
   assert.equal(cache.get("old"), undefined);
-  assert.equal(cache.bytes, 32);
+  assert.equal(cache.bytes, 544);
   assert.equal(cache.set("c", value), false);
 });

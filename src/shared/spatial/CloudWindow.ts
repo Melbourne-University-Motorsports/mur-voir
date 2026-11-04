@@ -51,7 +51,11 @@ export class CloudCache {
   }
   set(key: string, value: any) {
     const bytes =
-      (value.positions?.byteLength ?? 0) + (value.values?.byteLength ?? 0) + (value.colors?.byteLength ?? 0);
+      256 +
+      (value.error?.length ?? 0) * 2 +
+      (value.positions?.byteLength ?? 0) +
+      (value.values?.byteLength ?? 0) +
+      (value.colors?.byteLength ?? 0);
     const pinned = new Set<string>();
     for (const [owner, pin] of this.pins) {
       if (Date.now() - pin.time > 2000) this.pins.delete(owner);

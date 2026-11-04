@@ -108,6 +108,8 @@ try {
     "setup",
     await hub.evaluate(
       ({ mode, decay }) => {
+        window.preferences.field3dModeAc = "standard";
+        window.preferences.field3dModeBattery = "standard";
         const tabs = window.tabs;
         const tab = tabs.tabList.find((t) => t.type === 3);
         tabs.selectedTab = tabs.tabList.indexOf(tab);
@@ -172,6 +174,7 @@ try {
         frameMedianMs: times[Math.floor(times.length * 0.5)],
         frameP95Ms: times[Math.floor(times.length * 0.95)],
         heapBytes: performance.memory?.usedJSHeapSize,
+        renderMode: impl?.mode,
         gpu: render?.info.memory,
         upload: window.__cloudPerf,
         scans: entries.length,
@@ -219,6 +222,41 @@ try {
   );
   await hub.screenshot({ path: shots + `/r1-${mode}-decay${decay}.png` });
   console.log("final", JSON.stringify(await sample()));
+  if (mode === "live" && process.env.CLOUD_LIFECYCLE === "1") {
+    const oldArgs = backend.spawnargs.slice(1);
+    backend.kill("SIGTERM");
+    await new Promise((r) => setTimeout(r, 2000));
+    backend = spawn(process.execPath, oldArgs, { cwd: root, stdio: "ignore" });
+    await new Promise((r) => setTimeout(r, 12000));
+    console.log("backend restart", JSON.stringify(await sample()));
+    const rewound = await hub.evaluate(() =>
+      window.log.getRaw("/vehicles/mur27/perception/points", -Infinity, Infinity)?.timestamps.at(-1)
+    );
+    if (!(rewound < 20)) throw Error("Restart left stale cloud clock: " + rewound);
+    backend.kill("SIGTERM");
+    await new Promise((r) => setTimeout(r, 1000));
+    backend = spawn(process.execPath, ["tools/mock-ros.mjs"], {
+      cwd: root,
+      env: { ...env, ROS_MOCK_PORT: "18094" },
+      stdio: "ignore"
+    });
+    await new Promise((r) => setTimeout(r, 1000));
+    await hub.evaluate(() => window.dispatchEvent(new Event("welcome-connect")));
+    await hub.locator(".connect-source").selectOption("foxglove");
+    await hub.locator(".connect-address").fill("ws://127.0.0.1:18094");
+    await hub.getByRole("button", { name: "Connect", exact: true }).click();
+    await new Promise((r) => setTimeout(r, 5000));
+    await hub.evaluate(() => {
+      const controller = window.tabs.tabList.find((t) => t.type === 3).controller;
+      const state = controller.saveState();
+      state.sources[0].logKey = "/lidar/points";
+      controller.restoreState(state);
+    });
+    await new Promise((r) => setTimeout(r, 3000));
+    console.log("source switch", JSON.stringify(await sample()));
+    const clean = await hub.evaluate(() => !window.log.getFieldKeys().includes("/vehicles/mur27/perception/points"));
+    if (!clean) throw Error("Source switch retained previous cloud topic");
+  }
   await hub.evaluate(() => window.tabs.tabList.find((t) => t.type === 3).controller.sourceList.setState([]));
   await new Promise((r) => setTimeout(r, 2000));
   console.log("removed", JSON.stringify(await sample()));
