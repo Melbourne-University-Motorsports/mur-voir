@@ -160,12 +160,12 @@ export default class SelectionImpl implements Selection {
     }
   }
 
-  /** Updates the selected time based on the current mode. */
   private seekRevision = 0;
   getSeekRevision() {
     return this.seekRevision;
   }
 
+  /** Updates the selected time based on the current mode. */
   setSelectedTime(time: number) {
     this.seekRevision++;
     switch (this.mode) {

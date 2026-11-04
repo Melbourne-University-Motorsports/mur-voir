@@ -132,7 +132,7 @@ try {
   }
   if (mode === "file")
     await hub.waitForFunction(
-      () => window.log.getRaw("/lidar/points", -Infinity, Infinity)?.values.length > 0,
+      () => window.log.getStructuredType("/lidar/points") === "sensor_msgs/PointCloud2",
       undefined,
       { timeout: 120000 }
     );
