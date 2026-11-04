@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CloudCache, cloudRange, cloudWindow } from "../../src/shared/spatial/CloudWindow";
+import { CloudCache, cloudRange, cloudStamp, cloudWindow } from "../../src/shared/spatial/CloudWindow";
 test("scan selection is independent of forward, backward and playback history", () => {
   const stamps = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const history = { getTimestampCount: () => stamps.length, getTimestamp: (i: number) => stamps[i] };
@@ -43,4 +43,16 @@ test("byte LRU preserves current windows across layers and rejects over-budget i
   assert.equal(cache.get("old"), undefined);
   assert.equal(cache.bytes, 544);
   assert.equal(cache.set("c", value), false);
+});
+
+test("scan stamps validate ROS nanoseconds and fall back to log time", () => {
+  assert.equal(cloudStamp({ sec: 12, nanosec: 500000000 }, 99), 12.5);
+  for (const stamp of [
+    undefined,
+    { sec: 0, nanosec: 0 },
+    { sec: 1, nanosec: 1e9 },
+    { sec: NaN, nanosec: 0 },
+    { sec: 1, nanosec: -1 }
+  ])
+    assert.equal(cloudStamp(stamp, 99), 99);
 });

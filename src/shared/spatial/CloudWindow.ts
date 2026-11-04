@@ -23,6 +23,19 @@ export function cloudWindow(
     result.push(history.getTimestamp(i)!);
   return result;
 }
+/** Zero, malformed or unusable ROS stamps fall back to the log receipt timestamp. */
+export function cloudStamp(stamp: { sec: number; nanosec: number } | undefined, logTime: number): number {
+  if (
+    !stamp ||
+    !Number.isSafeInteger(stamp.sec) ||
+    !Number.isInteger(stamp.nanosec) ||
+    stamp.nanosec < 0 ||
+    stamp.nanosec >= 1e9
+  )
+    return logTime;
+  const time = stamp.sec + stamp.nanosec / 1e9;
+  return time > 0 ? time : logTime;
+}
 export function cloudRange(scans: { min: number; max: number }[]): { min: number; max: number } {
   let min = Infinity,
     max = -Infinity;

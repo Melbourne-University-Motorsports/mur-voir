@@ -9,7 +9,7 @@ import { AnnotatedPose3d } from "../../shared/geometry";
 import HistoryCursor from "../../shared/log/HistoryCursor";
 import Log from "../../shared/log/Log";
 import { Field3dRendererCommand_AnyObj } from "../../shared/renderers/Field3dRenderer";
-import { CloudCache, cloudRange, cloudWindow } from "../../shared/spatial/CloudWindow";
+import { CloudCache, cloudRange, cloudStamp, cloudWindow } from "../../shared/spatial/CloudWindow";
 import { coneStyle } from "../../shared/spatial/ConeStyle";
 import { metadata, rosPose, spatialSnapshot } from "../../shared/spatial/SpatialLog";
 import { TFTree, normalizeFrameId } from "../../shared/spatial/TFTree";
@@ -306,13 +306,13 @@ export class SpatialLayers {
       frame = result.frame;
       stamp = Math.max(stamp, t);
       decimated ||= result.stride > 1;
-      const headerStamp = result.stamp ? result.stamp.sec + result.stamp.nanosec / 1e9 : 0;
+
       try {
         objects.push({
           type: "cloud",
           ...result,
           id,
-          transform: this.resolve(frame, fixed, Number.isFinite(headerStamp) && headerStamp > 0 ? headerStamp : t),
+          transform: this.resolve(frame, fixed, cloudStamp(result.stamp, t)),
           size: Number(options.size ?? 3),
           map: options.map ?? "viridis"
         });
