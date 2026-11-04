@@ -17,6 +17,15 @@ const cli = options();
 const mode = cli.positionals[0] ?? "file",
   seconds = Number(cli.positionals[1] ?? 180),
   decay = cli.positionals[2] ?? "1";
+if (
+  !["file", "live", "ros"].includes(mode) ||
+  !Number.isFinite(seconds) ||
+  seconds <= 0 ||
+  !Number.isInteger(Number(decay)) ||
+  Number(decay) < 1 ||
+  Number(decay) > 20
+)
+  throw Error("Expected mode file/live/ros, positive duration, and decay 1–20");
 const port = Number(cli.values.port),
   rosPort = port + 1;
 if (mode === "file" && !cli.values.input) throw Error("file mode requires --input path/to/cloud.mcap");
@@ -222,7 +231,8 @@ try {
     await new Promise((r) =>
       setTimeout(r, Math.min(10000, Math.max(0, seconds * 1000 - (Date.now() - measurementStart))))
     );
-    console.log("sample", (Date.now() - measurementStart) / 1000, JSON.stringify(await sample()));
+    const snapshot = await sample();
+    console.log("sample", (Date.now() - measurementStart) / 1000, JSON.stringify(snapshot));
   }
   if (mode === "file") {
     const sets = [];
@@ -242,6 +252,31 @@ try {
     }
     if (!sets.every((set) => JSON.stringify(set) === JSON.stringify(sets[0]))) throw Error("Seek scan sets differ");
     console.log("seek route sets match", JSON.stringify(sets));
+    await hub.evaluate(() => {
+      const controller = window.tabs.tabList.find((t) => t.type === 3).controller;
+      const state = controller.saveState();
+      state.sources[0].options.field = "not_a_field";
+      controller.restoreState(state);
+    });
+    await hub.waitForFunction(() =>
+      [...window.tabs.tabList.find((t) => t.type === 3).controller.sourceList.itemStatus.values()].some(
+        (s) => s.error && s.text.includes("available:")
+      )
+    );
+    const diagnostic = await hub.evaluate(() => {
+      const list = window.tabs.tabList.find((t) => t.type === 3).controller.sourceList;
+      return [...list.LIST.querySelectorAll(".value")].map((e) => ({ text: e.textContent, title: e.title }));
+    });
+    if (!diagnostic.some((d) => d.title.includes("available:") && d.title.includes("intensity")))
+      throw Error("Missing field diagnostics absent from tooltip");
+    console.log("missing-field tooltip", JSON.stringify(diagnostic));
+    await hub.screenshot({ path: shots + `/${cli.values.prefix}-missing-colour.png` });
+    await hub.evaluate(() => {
+      const controller = window.tabs.tabList.find((t) => t.type === 3).controller;
+      const state = controller.saveState();
+      state.sources[0].options.field = "intensity";
+      controller.restoreState(state);
+    });
   }
   await hub.waitForFunction(
     () =>

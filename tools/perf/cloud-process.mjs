@@ -20,6 +20,7 @@ export function options() {
   });
 }
 export async function freePort(port) {
+  if (!Number.isInteger(Number(port)) || Number(port) < 1 || Number(port) > 65535) throw Error("Invalid port: " + port);
   const server = net.createServer();
   await new Promise((resolve, reject) => server.once("error", reject).listen(Number(port), resolve));
   await new Promise((r) => server.close(r));
