@@ -94,8 +94,8 @@ export default class Tabs {
     this.FIXED_CONTROL_HEIGHTS.set(TabType.Video, 85);
     this.FIXED_CONTROL_HEIGHTS.set(TabType.Points, undefined);
     this.FIXED_CONTROL_HEIGHTS.set(TabType.Metadata, 0);
-    this.FIXED_CONTROL_HEIGHTS.set(TabType.TrackMap, 0);
-    this.FIXED_CONTROL_HEIGHTS.set(TabType.Laps, 0);
+    this.FIXED_CONTROL_HEIGHTS.set(TabType.TrackMap, undefined);
+    this.FIXED_CONTROL_HEIGHTS.set(TabType.Laps, undefined);
     this.FIXED_CONTROL_HEIGHTS.set(TabType.RawMessages, 0);
     this.FIXED_CONTROL_HEIGHTS.set(TabType.RosLog, 0);
     this.FIXED_CONTROL_HEIGHTS.set(TabType.RosImage, 0);
@@ -462,7 +462,12 @@ export default class Tabs {
         this.tabList[index].renderer.restoreState(tabState.renderer);
 
         let tabConfig = this.FIXED_CONTROL_HEIGHTS.get(tabState.type);
-        if (tabState.controlsHeight === 0 || tabConfig === undefined) {
+        // Layouts from before the lap tabs had source lists saved a height of 0.
+        let oldLapTab =
+          tabState.controlsHeight === 0 &&
+          (tabState.type === TabType.TrackMap || tabState.type === TabType.Laps) &&
+          !(tabState.controller as { sourceLists?: boolean } | null)?.sourceLists;
+        if (!oldLapTab && (tabState.controlsHeight === 0 || tabConfig === undefined)) {
           this.tabList[index].controlsHeight = tabState.controlsHeight;
         }
       });
@@ -578,7 +583,7 @@ export default class Tabs {
         break;
       case TabType.TrackMap:
       case TabType.Laps:
-        controller = new LapController(rendererElement, type === TabType.TrackMap);
+        controller = new LapController(rendererElement, type === TabType.TrackMap, controlsElement);
         renderer = new LapRenderer(rendererElement);
         break;
       case TabType.RawMessages:

@@ -11,9 +11,10 @@
 // - LiveStatusPill: title-bar pill with three separate indicators (backend, car, sim), plus a popover with
 //   details, sim controls (only when the backend has sim endpoints) and connect/disconnect.
 
-import { analyze, interpolate, LapConfig, LapResult, project, Sample } from "../shared/laps/LapEngine";
+import { analyze, Gate, interpolate, LapConfig, LapResult, project, Sample } from "../shared/laps/LapEngine";
 import { slipRatio } from "../shared/laps/SlipRatio";
 import Log from "../shared/log/Log";
+import LoggableType from "../shared/log/LoggableType";
 
 export type LapSettings = {
   latitude: string;
@@ -29,8 +30,20 @@ export type LapSettings = {
   ratio: number;
   config: LapConfig;
 };
+export type LapSourceRole = Exclude<keyof LapSettings, "radius" | "ratio" | "config">;
 export const LAP_COLORS = ["#58a7ff", "#f4b860", "#72d6a0", "#d49bff", "#ff8c9c", "#70d6de"];
-class LapService {
+const SOURCE_ROLES: LapSourceRole[] = [
+  "latitude",
+  "longitude",
+  "frontLeft",
+  "frontRight",
+  "speed",
+  "rpm",
+  "yaw",
+  "counter",
+  "beacon"
+];
+export class LapService {
   settings: LapSettings = {
     latitude: "",
     longitude: "",
@@ -48,6 +61,7 @@ class LapService {
   result: LapResult = { laps: [], samples: [], theoretical: [] };
   reference: number | null = null;
   overlays: number[] = [];
+  private autoOverlays = true;
   selected: number | null = null;
   version = 0;
   private log?: Log;
@@ -58,34 +72,41 @@ class LapService {
   private slipSignature = "";
   private derivedSignature = "";
   private grids = new WeakMap<object, { d: number[]; t: number[] }>();
+  private sourceLog?: Log;
+  private cleared = new Set<LapSourceRole>();
+  private sourcesChecked = false;
+  setSource(role: LapSourceRole, key: string) {
+    this.fields();
+    this.settings[role] = key;
+    if (key) this.cleared.delete(role);
+    else this.cleared.add(role);
+    this.invalidate();
+  }
   fields(): string[] {
     const keys = window.log.getFieldKeys().filter((k) => !k.startsWith("Laps/"));
-    const find = (pattern: RegExp) => keys.find((k) => pattern.test(k)) ?? "";
+    const find = (pattern: RegExp) =>
+      keys.find((k) => pattern.test(k) && window.log.getType(k) === LoggableType.Number) ?? "";
     const s = this.settings;
-    if (keys.length) {
-      for (const key of [
-        "latitude",
-        "longitude",
-        "frontLeft",
-        "frontRight",
-        "speed",
-        "rpm",
-        "yaw",
-        "counter",
-        "beacon"
-      ] as const) {
-        if (s[key] && !keys.includes(s[key])) s[key] = "";
-      }
+    if (this.sourceLog !== window.log) {
+      this.sourceLog = window.log;
+      this.cleared.clear();
+      this.sourcesChecked = false;
     }
-    s.latitude ||= find(/front.*latitude$/i) || find(/(?:gps\/latitude|latitude)$/i);
-    s.longitude ||= find(/front.*longitude$/i) || find(/(?:gps\/longitude|longitude)$/i);
-    s.frontLeft ||= find(/(?:DASH_SpeedFL|wheel_speed_fl|WheelSpeedFL)$/i);
-    s.frontRight ||= find(/(?:DASH_SpeedFR|wheel_speed_fr|WheelSpeedFR)$/i);
-    s.speed ||= find(/(?:vehicle_speed|ground_speed|gps.*speed)$/i);
-    s.rpm ||= find(/(?:motor_speed|MotorSpeedRPM)$/i);
-    s.yaw ||= find(/(?:yaw_rate|YawRate)$/i);
-    s.counter ||= find(/(?:lap_counter|lapcounter|lap_count)$/i);
-    s.beacon ||= find(/(?:lap_beacon|beacon)$/i);
+    // Another log's paths give way once this log's fields arrive. After that a missing path stays, shown as missing.
+    if (keys.length && !this.sourcesChecked) {
+      this.sourcesChecked = true;
+      for (const role of SOURCE_ROLES) if (s[role] && !keys.includes(s[role])) s[role] = "";
+    }
+    if (!this.cleared.has("latitude")) s.latitude ||= find(/front.*latitude$/i) || find(/(?:gps\/latitude|latitude)$/i);
+    if (!this.cleared.has("longitude"))
+      s.longitude ||= find(/front.*longitude$/i) || find(/(?:gps\/longitude|longitude)$/i);
+    if (!this.cleared.has("frontLeft")) s.frontLeft ||= find(/(?:DASH_SpeedFL|wheel_speed_fl|WheelSpeedFL)$/i);
+    if (!this.cleared.has("frontRight")) s.frontRight ||= find(/(?:DASH_SpeedFR|wheel_speed_fr|WheelSpeedFR)$/i);
+    if (!this.cleared.has("speed")) s.speed ||= find(/(?:vehicle_speed|ground_speed|gps.*speed)$/i);
+    if (!this.cleared.has("rpm")) s.rpm ||= find(/(?:motor_speed|MotorSpeedRPM)$/i);
+    if (!this.cleared.has("yaw")) s.yaw ||= find(/(?:yaw_rate|YawRate)$/i);
+    if (!this.cleared.has("counter")) s.counter ||= find(/(?:lap_counter|lapcounter|lap_count)$/i);
+    if (!this.cleared.has("beacon")) s.beacon ||= find(/(?:lap_beacon|beacon)$/i);
     return [
       s.latitude,
       s.longitude,
@@ -98,6 +119,27 @@ class LapService {
       s.beacon,
       find(/(?:gps\/ground_speed|ground_speed)$/i)
     ].filter(Boolean);
+  }
+  /** A new start/finish line replaces manual splits. Either way the laps renumber, so overlays are chosen again. */
+  setStartLine(gate?: Gate) {
+    const config = this.settings.config;
+    if (gate) {
+      config.gate = gate;
+      delete config.manual;
+    } else delete config.gate;
+    this.reference = null;
+    this.overlays = [];
+    this.autoOverlays = true;
+    this.selected = null;
+    this.invalidate();
+  }
+  setOverlays(indices: number[]) {
+    this.overlays = indices;
+    this.autoOverlays = false;
+  }
+  /** A restored layout's paths get the same check as a new log's. */
+  recheckSources() {
+    this.sourcesChecked = false;
   }
   invalidate() {
     this.signature = "";
@@ -113,6 +155,7 @@ class LapService {
       this.slipSignature = "";
       this.reference = null;
       this.overlays = [];
+      this.autoOverlays = true;
       this.selected = null;
     }
     if (performance.now() < this.nextUpdate) return;
@@ -301,11 +344,11 @@ class LapService {
       this.result = analyze(samples, { ...s.config, length: ref.distance });
     if (this.reference === null || !this.result.laps.some((l) => l.index === this.reference))
       this.reference = this.result.best ?? null;
-    if (!this.overlays.length)
-      this.overlays = this.result.laps
-        .filter((l) => l.valid)
-        .slice(0, 4)
-        .map((l) => l.index);
+    // Until the user chooses, live overlays the latest laps and a log the first.
+    if (this.autoOverlays || !this.overlays.length) {
+      const valid = this.result.laps.filter((l) => l.valid).map((l) => l.index);
+      this.overlays = window.selection?.getCurrentLiveTime() != null ? valid.slice(-4) : valid.slice(0, 4);
+    }
     // Rebuild derived channels after edits or when the reference changes. Otherwise only append the active lap.
     const ds = JSON.stringify([
       s,
