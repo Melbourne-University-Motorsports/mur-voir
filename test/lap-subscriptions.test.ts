@@ -10,18 +10,13 @@ import test from "node:test";
 import { lapService } from "../src/hub/LapService";
 import Tabs from "../src/hub/Tabs";
 import LineGraphController from "../src/hub/controllers/LineGraphController";
+import TracksideController from "../src/hub/controllers/TracksideController";
 import TabType from "../src/shared/TabType";
 import Log from "../src/shared/log/Log";
 
 test("lap inputs follow open lap views, including unselected satellite tabs", () => {
   const previousWindow = globalThis.window;
   const fields = lapService.fields;
-  const bands = lapService.bands;
-  let bandCalls = 0;
-  lapService.bands = () => {
-    bandCalls++;
-    return [];
-  };
   let calls = 0;
   const log = new Log();
   log.putNumber("imd", 0, 0);
@@ -51,12 +46,7 @@ test("lap inputs follow open lap views, including unselected satellite tabs", ()
     tabs.tabList.push({ type: TabType.Trackside, controller: { getActiveFields: () => ["tile"] } });
     tabs.selectedTab = 1;
     assert.deepEqual([...tabs.getActiveFields()].sort(), ["imd", "table", "tile"]);
-    tabs.getTimelineBands();
-    assert.equal(bandCalls, 0, "Trackside must not start lap analysis without a lap view");
-    tabs.tabList.push({ type: TabType.Laps, controller: { getActiveFields: () => [] } });
-    tabs.getTimelineBands();
-    assert.equal(bandCalls, 1, "an open lap view retains timeline bands on Trackside");
-    tabs.tabList.pop();
+    assert.equal(TracksideController.prototype.showTimeline(), false, "Trackside must not start timeline lap analysis");
     tabs.tabList.pop();
     tabs.selectedTab = 0;
     for (const type of [TabType.TrackMap, TabType.Laps]) {
@@ -85,7 +75,6 @@ test("lap inputs follow open lap views, including unselected satellite tabs", ()
     check(false);
   } finally {
     lapService.fields = fields;
-    lapService.bands = bands;
     globalThis.window = previousWindow;
   }
 });

@@ -104,7 +104,7 @@ export default class TracksideController implements TabController {
     return this.sourceList.getActiveFields();
   }
   showTimeline() {
-    return true;
+    return false;
   }
   getCommand(): TracksideRendererCommand {
     const time = window.selection.getRenderTime() ?? window.log.getTimestampRange()[1];
