@@ -330,7 +330,7 @@ export default class Tabs {
 
     // Add timeline
     this.timeline = new Timeline(this.TIMELINE_CONTAINER);
-    this.setTimelineBandSupplier(() => lapService.bands());
+    this.setTimelineBandSupplier(() => this.getTimelineBands());
 
     const alertElement = document.createElement("div");
     alertElement.className = "trackside-alerts";
@@ -494,17 +494,26 @@ export default class Tabs {
     });
   }
 
-  /** Returns the set of fields currently being displayed. */
-  getActiveFields(): Set<string> {
-    const hasLapView = this.tabList.some(
+  private hasLapView(): boolean {
+    return this.tabList.some(
       (tab) =>
         tab.type === TabType.TrackMap ||
         tab.type === TabType.Laps ||
         (tab.type === TabType.LineGraph && (tab.controller as LineGraphController).getLapMode() !== "time")
     );
+  }
+
+  getTimelineBands(): TimelineBand[] {
+    // Trackside's time graph needs no lap analysis unless another tab uses laps.
+    if (this.tabList[this.selectedTab]?.type === TabType.Trackside && !this.hasLapView()) return [];
+    return lapService.bands();
+  }
+
+  /** Returns the set of fields currently being displayed. */
+  getActiveFields(): Set<string> {
     let activeFields = new Set<string>([
       ...window.log.getFieldKeys().filter((key) => dbcDefinition(window.log.getMetadataString(key), key)),
-      ...(hasLapView ? lapService.fields() : [])
+      ...(this.hasLapView() ? lapService.fields() : [])
     ]);
     this.tabList.forEach((tab) => {
       tab.controller.getActiveFields().forEach((field) => {
