@@ -1,0 +1,299 @@
+[
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 180,
+    "argv": ["npm", "run", "compile"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 90,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "pr-probe",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(2000);\nconst fields=['powertrain/inverter/motor_speed','dynamics/vehicle_speed','dynamics/wheel_speed_fl','dynamics/wheel_speed_fr','dynamics/yaw_rate','gps/latitude','gps/longitude','gps/ground_speed'].map(k=>'/vehicles/mur27/'+k);\nconst result=[];\nfor(const mode of ['plain','empty','tiles']){\nconst sources=(mode==='tiles'?fields:[]).map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:mode==='plain'?1:15,title:mode,controllerUUID:'probe',controller:mode==='plain'?{leftSources:[],rightSources:[],discreteSources:[]}:{sources,limits:{}},renderer:null,controlsHeight:240}]});\nawait sleep(4000);\nresult.push({mode,active:[...window.tabs.getActiveFields()],fields:window.log.getFieldKeys().map(k=>({key:k,n:window.log.getField(k)?.getTimestampCount()}))});\n}\nreturn result;"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "pr-bands",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:15,title:'Toggle isolation',controllerUUID:'isolate',controller:{sources,limits:{}},renderer:null,controlsHeight:240}]});\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=tab.controller.sourceList.refresh.bind(tab.controller.sourceList);\ntab.controller.sourceList.refresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=tab.controller.graphController.restoreState.bind(tab.controller.graphController);\ntab.controller.graphController.restoreState=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd.graph).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-f33b173e-eb0c7a11be4229a1/.review-soak/baseline",
+    "timeout_seconds": 90,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "main-empty",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(2000);\nconst fields=['powertrain/inverter/motor_speed','dynamics/vehicle_speed','dynamics/wheel_speed_fl','dynamics/wheel_speed_fr','dynamics/yaw_rate','gps/latitude','gps/longitude','gps/ground_speed'].map(k=>'/vehicles/mur27/'+k);\nconst result=[];\nfor(const mode of ['plain','empty','tiles']){\nconst sources=(mode==='tiles'?fields:[]).map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:mode==='plain'?1:15,title:mode,controllerUUID:'probe',controller:mode==='plain'?{leftSources:[],rightSources:[],discreteSources:[]}:{sources,limits:{}},renderer:null,controlsHeight:240}]});\nawait sleep(4000);\nresult.push({mode,active:[...window.tabs.getActiveFields()],fields:window.log.getFieldKeys().map(k=>({key:k,n:window.log.getField(k)?.getTimestampCount()}))});\n}\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 180,
+    "argv": ["npm", "run", "compile"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-f33b173e-eb0c7a11be4229a1/.review-soak/baseline",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "main-bands",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:1,title:'Same history',controllerUUID:'isolate',controller:{leftSources:sources.slice(0,4).map(s=>({...s,type:'stepped',options:{color:'red',size:'normal'}})),rightSources:[],discreteSources:[]},renderer:null,controlsHeight:240}]});\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=(()=>{});\ntab.controller.probeRefresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=(()=>{});\ntab.controller.probeRestore=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd.graph).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "run", "typecheck"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "run", "check-format"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-f33b173e-eb0c7a11be4229a1/.review-soak/baseline",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "main-bands",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:1,title:'Same history',controllerUUID:'isolate',controller:{leftSources:sources.slice(0,4).map(s=>({...s,type:'stepped',options:{color:'red',size:'normal'}})),rightSources:[],discreteSources:[]},renderer:null,controlsHeight:240}]});\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=(()=>{});\ntab.controller.probeRefresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=(()=>{});\ntab.controller.probeRestore=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 60,
+    "argv": ["node_modules/.bin/prettier", "--write", "test/lap-subscriptions.test.ts"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "fixed-bands",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:15,title:'Toggle isolation',controllerUUID:'isolate',controller:{sources,limits:{}},renderer:null,controlsHeight:240}]});\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=tab.controller.sourceList.refresh.bind(tab.controller.sourceList);\ntab.controller.sourceList.refresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=tab.controller.graphController.restoreState.bind(tab.controller.graphController);\ntab.controller.graphController.restoreState=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd.graph).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 180,
+    "argv": ["npm", "run", "lite-smoke"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "run", "check-format"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-f33b173e-eb0c7a11be4229a1/.review-soak/baseline",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "main-bands-visible",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:1,title:'Same history',controllerUUID:'isolate',controller:{leftSources:sources.slice(0,4).map(s=>({...s,type:'stepped',options:{color:'red',size:'normal'}})),rightSources:[],discreteSources:[]},renderer:null,controlsHeight:240}]});\nwindow.tabs.TIMELINE_CONTAINER.hidden=false;\ndocument.documentElement.style.setProperty(\"--show-timeline\",\"1\");\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=(()=>{});\ntab.controller.probeRefresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=(()=>{});\ntab.controller.probeRestore=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-f33b173e-eb0c7a11be4229a1/.review-soak/baseline",
+    "timeout_seconds": 1200,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--mock-args=--speed=1",
+      "--name",
+      "baseline-15min",
+      "--eval",
+      "const mode='baseline';\nconst fields = [\n'/vehicles/mur27/powertrain/inverter/motor_speed',\n'/vehicles/mur27/dynamics/vehicle_speed',\n'/vehicles/mur27/dynamics/wheel_speed_fl',\n'/vehicles/mur27/dynamics/wheel_speed_fr',\n'/vehicles/mur27/dynamics/yaw_rate',\n'/vehicles/mur27/gps/latitude',\n'/vehicles/mur27/gps/longitude',\n'/vehicles/mur27/gps/ground_speed'];\nconst sleep = ms => new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst sources = fields.map((logKey,i)=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:String(i<4)}}));\nconst graphSources = sources.slice(0,4).map((s,i)=>({...s,type:'stepped',options:{color:['red','blue','green','orange'][i],size:'normal'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:mode==='trackside'?15:1,title:'Soak '+mode,controllerUUID:'soak-review',controller:mode==='trackside'?{sources,limits:{}}:{leftSources:graphSources,rightSources:[],discreteSources:[]},renderer:null,controlsHeight:240}]});\nawait sleep(2000);\nlet longTasks=0,longestTask=0;\nconst observer = new PerformanceObserver(list=>{for(const e of list.getEntries()){longTasks++;longestTask=Math.max(longestTask,e.duration);}});\nobserver.observe({type:'longtask',buffered:false});\nconst start=performance.now();\nconst series=[];\nfor(let minute=0;minute<=15;minute++){\n await sleep(Math.max(0,start+minute*60000-performance.now()));\n const fps=await new Promise(resolve=>{let frames=0;const begin=performance.now();const tick=now=>{frames++;if(now-begin>=5000)resolve(frames*1000/(now-begin));else requestAnimationFrame(tick);};requestAnimationFrame(tick);});\n const keys=window.log.getFieldKeys();\n const counts=keys.map(k=>window.log.getField(k)?.getTimestampCount()??0);\n const controller=window.tabs.tabList[window.tabs.getSelectedTab()].controller;\n const cmd=controller.getCommand();\n series.push({minute,elapsedSeconds:Math.round((performance.now()-start)/1000),heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domNodes:document.getElementsByTagName('*').length,longTasks,longestTaskMs:Math.round(longestTask*10)/10,fps:Math.round(fps*10)/10,fieldCount:keys.length,sampleCount:counts.reduce((a,b)=>a+b,0),graphCommandBytes:JSON.stringify(mode==='trackside'?cmd.graph:cmd).length});\n console.log(\"[soak-minute]\",JSON.stringify(series.at(-1)));\n}\nobserver.disconnect();\nreturn {mode,fields,selected:window.tabs.getSelectedTab(),tabs:window.tabs.saveState(),series};\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 60,
+    "argv": ["node_modules/.bin/prettier", "--write", "test/lap-subscriptions.test.ts"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test", "--", "lap-subscriptions"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 180,
+    "argv": ["npm", "run", "compile"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 1200,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--mock-args=--speed=1",
+      "--name",
+      "trackside-15min",
+      "--eval",
+      "const mode='trackside';\nconst fields = [\n'/vehicles/mur27/powertrain/inverter/motor_speed',\n'/vehicles/mur27/dynamics/vehicle_speed',\n'/vehicles/mur27/dynamics/wheel_speed_fl',\n'/vehicles/mur27/dynamics/wheel_speed_fr',\n'/vehicles/mur27/dynamics/yaw_rate',\n'/vehicles/mur27/gps/latitude',\n'/vehicles/mur27/gps/longitude',\n'/vehicles/mur27/gps/ground_speed'];\nconst sleep = ms => new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst sources = fields.map((logKey,i)=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:String(i<4)}}));\nconst graphSources = sources.slice(0,4).map((s,i)=>({...s,type:'stepped',options:{color:['red','blue','green','orange'][i],size:'normal'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:mode==='trackside'?15:1,title:'Soak '+mode,controllerUUID:'soak-review',controller:mode==='trackside'?{sources,limits:{}}:{leftSources:graphSources,rightSources:[],discreteSources:[]},renderer:null,controlsHeight:240}]});\nawait sleep(2000);\nlet longTasks=0,longestTask=0;\nconst observer = new PerformanceObserver(list=>{for(const e of list.getEntries()){longTasks++;longestTask=Math.max(longestTask,e.duration);}});\nobserver.observe({type:'longtask',buffered:false});\nconst start=performance.now();\nconst series=[];\nfor(let minute=0;minute<=15;minute++){\n await sleep(Math.max(0,start+minute*60000-performance.now()));\n const fps=await new Promise(resolve=>{let frames=0;const begin=performance.now();const tick=now=>{frames++;if(now-begin>=5000)resolve(frames*1000/(now-begin));else requestAnimationFrame(tick);};requestAnimationFrame(tick);});\n const keys=window.log.getFieldKeys();\n const counts=keys.map(k=>window.log.getField(k)?.getTimestampCount()??0);\n const controller=window.tabs.tabList[window.tabs.getSelectedTab()].controller;\n const cmd=controller.getCommand();\n series.push({minute,elapsedSeconds:Math.round((performance.now()-start)/1000),heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domNodes:document.getElementsByTagName('*').length,longTasks,longestTaskMs:Math.round(longestTask*10)/10,fps:Math.round(fps*10)/10,fieldCount:keys.length,sampleCount:counts.reduce((a,b)=>a+b,0),graphCommandBytes:JSON.stringify(mode==='trackside'?cmd.graph:cmd).length});\n console.log(\"[soak-minute]\",JSON.stringify(series.at(-1)));\n}\nobserver.disconnect();\nreturn {mode,fields,selected:window.tabs.getSelectedTab(),tabs:window.tabs.saveState(),series};\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": [
+      "env",
+      "-u",
+      "ELECTRON_RUN_AS_NODE",
+      "npm",
+      "run",
+      "screenshot",
+      "--",
+      "--no-build",
+      "--mock",
+      "--name",
+      "controller-bands",
+      "--eval",
+      "const sleep=ms=>new Promise(r=>setTimeout(r,ms));\nawait sleep(3000);\nconst fields=['/vehicles/mur27/powertrain/inverter/motor_speed','/vehicles/mur27/dynamics/vehicle_speed','/vehicles/mur27/dynamics/wheel_speed_fl','/vehicles/mur27/dynamics/wheel_speed_fr','/vehicles/mur27/dynamics/yaw_rate','/vehicles/mur27/gps/latitude','/vehicles/mur27/gps/longitude','/vehicles/mur27/gps/ground_speed'];\nconst sources=fields.map(logKey=>({logKey,logType:'Number',type:'tile',visible:true,options:{showInGraph:'false'}}));\nwindow.tabs.restoreState({selected:0,tabs:[{type:15,title:'Toggle isolation',controllerUUID:'isolate',controller:{sources,limits:{}},renderer:null,controlsHeight:240}]});\nconst tab=window.tabs.tabList[0];\nlet tileRefreshes=0,graphRestores=0;\nconst refresh=tab.controller.sourceList.refresh.bind(tab.controller.sourceList);\ntab.controller.sourceList.refresh=(...args)=>{tileRefreshes++;return refresh(...args);};\nconst restore=tab.controller.graphController.restoreState.bind(tab.controller.graphController);\ntab.controller.graphController.restoreState=(...args)=>{graphRestores++;return restore(...args);};\nconst edge=window.selection.getCurrentLiveTime();\nfor(let i=0;i<45000;i++)for(let f=0;f<fields.length;f++)window.log.putNumber(fields[f],edge-900+i/50,f===5?-37.7+Math.sin(i/1000)*0.0001:f===6?144.6+Math.cos(i/1000)*0.0001:100+Math.sin(i/30+f)*20);\nwindow.selection.setTimelineRange([edge-900,edge],true);\nlet bandCalls=0,bandMs=0,bandMaxMs=0;\nconst originalBands=window.tabs.timeline.bandSupplier;\nwindow.tabs.timeline.bandSupplier=()=>{const start=performance.now();const r=originalBands();const ms=performance.now()-start;bandCalls++;bandMs+=ms;bandMaxMs=Math.max(bandMaxMs,ms);return r;};\nconst result=[];\nfor(const enabled of [false,true,false]){\n if(enabled!==false || result.length) [...document.querySelectorAll('.show-in-graph')].slice(0,4).forEach(button=>button.click());\n const before={tileRefreshes,graphRestores};\n let tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\n for(let second=0;second<=10;second+=10){\n  if(second)await sleep(10000);else await sleep(1000);\n  const cmd=tab.controller.getCommand();\n  let nodes=0;const walker=document.createTreeWalker(document,NodeFilter.SHOW_ALL);while(walker.nextNode())nodes++;\n  result.push({enabled,second,bandCalls,bandMs,bandMaxMs,tasks,longest,heapMB:Math.round(performance.memory.usedJSHeapSize/1048576*10)/10,domElements:document.getElementsByTagName('*').length,allDomNodes:nodes,tiles:document.querySelectorAll('.trackside-tile').length,graph:!!cmd.graph,graphBytes:JSON.stringify(cmd.graph).length,fields:window.log.getFieldCount(),samples:window.log.getFieldKeys().reduce((n,k)=>n+(window.log.getField(k)?.getTimestampCount()??0),0),tileRefreshes:tileRefreshes-before.tileRefreshes,graphRestores:graphRestores-before.graphRestores,alertElements:document.querySelectorAll('.trackside-alerts').length});\n }\n observer.disconnect();\n}\nwindow.tabs.timeline.bandSupplier=()=>[];\nlet tasks=0,longest=0;const observer=new PerformanceObserver(list=>list.getEntries().forEach(e=>{tasks++;longest=Math.max(longest,e.duration);}));observer.observe({type:'longtask'});\nconst fps=await new Promise(resolve=>{let n=0;const start=performance.now();function tick(t){n++;if(t-start>=10000)resolve(n*1000/(t-start));else requestAnimationFrame(tick);}requestAnimationFrame(tick);});\nobserver.disconnect();result.push({phase:'lap-bands-disabled',tasks,longest,fps,bandCalls,bandMs,bandMaxMs});\nreturn result;\n"
+    ]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "test"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "run", "typecheck"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 180,
+    "argv": ["npm", "run", "compile"]
+  },
+  {
+    "cwd": "/Users/jasper/.t3/worktrees/app/t3-81fbc63d-6b7d8af88ad56d20",
+    "timeout_seconds": 120,
+    "argv": ["npm", "run", "check-format"]
+  }
+]

@@ -1,0 +1,3425 @@
+{
+  "before": {
+    "trackside": {
+      "mode": "trackside",
+      "fields": [
+        "/vehicles/mur27/powertrain/inverter/motor_speed",
+        "/vehicles/mur27/dynamics/vehicle_speed",
+        "/vehicles/mur27/dynamics/wheel_speed_fl",
+        "/vehicles/mur27/dynamics/wheel_speed_fr",
+        "/vehicles/mur27/dynamics/yaw_rate",
+        "/vehicles/mur27/gps/latitude",
+        "/vehicles/mur27/gps/longitude",
+        "/vehicles/mur27/gps/ground_speed"
+      ],
+      "selected": 0,
+      "tabs": {
+        "selected": 0,
+        "tabs": [
+          {
+            "type": 15,
+            "title": "Soak trackside",
+            "controller": {
+              "sources": [
+                {
+                  "logKey": "/vehicles/mur27/powertrain/inverter/motor_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/vehicle_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fl",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fr",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/yaw_rate",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/latitude",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/longitude",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/ground_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                }
+              ],
+              "limits": {}
+            },
+            "controllerUUID": "soak-review",
+            "renderer": null,
+            "controlsHeight": 240
+          }
+        ]
+      },
+      "series": [
+        {
+          "minute": 0,
+          "elapsedSeconds": 5,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 68,
+          "sampleCount": 4524,
+          "graphCommandBytes": 10908
+        },
+        {
+          "minute": 1,
+          "elapsedSeconds": 65,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 68,
+          "sampleCount": 35624,
+          "graphCommandBytes": 174162
+        },
+        {
+          "minute": 2,
+          "elapsedSeconds": 125,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 68,
+          "sampleCount": 69064,
+          "graphCommandBytes": 339234
+        },
+        {
+          "minute": 3,
+          "elapsedSeconds": 185,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 68,
+          "sampleCount": 102807,
+          "graphCommandBytes": 504548
+        },
+        {
+          "minute": 4,
+          "elapsedSeconds": 245,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 68,
+          "sampleCount": 137003,
+          "graphCommandBytes": 671340
+        },
+        {
+          "minute": 5,
+          "elapsedSeconds": 305,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 1,
+          "longestTaskMs": 52,
+          "fps": 59.9,
+          "fieldCount": 68,
+          "sampleCount": 171129,
+          "graphCommandBytes": 838928
+        },
+        {
+          "minute": 6,
+          "elapsedSeconds": 365,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 1,
+          "longestTaskMs": 52,
+          "fps": 59.7,
+          "fieldCount": 68,
+          "sampleCount": 205702,
+          "graphCommandBytes": 1005848
+        },
+        {
+          "minute": 7,
+          "elapsedSeconds": 425,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 11,
+          "longestTaskMs": 55,
+          "fps": 57.3,
+          "fieldCount": 68,
+          "sampleCount": 240116,
+          "graphCommandBytes": 1173509
+        },
+        {
+          "minute": 8,
+          "elapsedSeconds": 485,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 44,
+          "longestTaskMs": 64,
+          "fps": 57.3,
+          "fieldCount": 68,
+          "sampleCount": 274340,
+          "graphCommandBytes": 1341667
+        },
+        {
+          "minute": 9,
+          "elapsedSeconds": 545,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 157,
+          "longestTaskMs": 108,
+          "fps": 54.1,
+          "fieldCount": 68,
+          "sampleCount": 308775,
+          "graphCommandBytes": 1508821
+        },
+        {
+          "minute": 10,
+          "elapsedSeconds": 605,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 275,
+          "longestTaskMs": 147,
+          "fps": 52.5,
+          "fieldCount": 68,
+          "sampleCount": 343189,
+          "graphCommandBytes": 1675955
+        },
+        {
+          "minute": 11,
+          "elapsedSeconds": 665,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 394,
+          "longestTaskMs": 200,
+          "fps": 51,
+          "fieldCount": 68,
+          "sampleCount": 377080,
+          "graphCommandBytes": 1841103
+        },
+        {
+          "minute": 12,
+          "elapsedSeconds": 725,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 512,
+          "longestTaskMs": 200,
+          "fps": 49.8,
+          "fieldCount": 68,
+          "sampleCount": 411115,
+          "graphCommandBytes": 2006882
+        },
+        {
+          "minute": 13,
+          "elapsedSeconds": 785,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 631,
+          "longestTaskMs": 203,
+          "fps": 44.8,
+          "fieldCount": 68,
+          "sampleCount": 445059,
+          "graphCommandBytes": 2172706
+        },
+        {
+          "minute": 14,
+          "elapsedSeconds": 845,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 755,
+          "longestTaskMs": 251,
+          "fps": 30.7,
+          "fieldCount": 68,
+          "sampleCount": 479188,
+          "graphCommandBytes": 2337261
+        },
+        {
+          "minute": 15,
+          "elapsedSeconds": 905,
+          "heapMB": 26.3,
+          "domNodes": 578,
+          "longTasks": 880,
+          "longestTaskMs": 251,
+          "fps": 34.1,
+          "fieldCount": 68,
+          "sampleCount": 513374,
+          "graphCommandBytes": 2502491
+        }
+      ]
+    },
+    "baseline": {
+      "mode": "baseline",
+      "fields": [
+        "/vehicles/mur27/powertrain/inverter/motor_speed",
+        "/vehicles/mur27/dynamics/vehicle_speed",
+        "/vehicles/mur27/dynamics/wheel_speed_fl",
+        "/vehicles/mur27/dynamics/wheel_speed_fr",
+        "/vehicles/mur27/dynamics/yaw_rate",
+        "/vehicles/mur27/gps/latitude",
+        "/vehicles/mur27/gps/longitude",
+        "/vehicles/mur27/gps/ground_speed"
+      ],
+      "selected": 0,
+      "tabs": {
+        "selected": 0,
+        "tabs": [
+          {
+            "type": 1,
+            "title": "Soak baseline",
+            "controller": {
+              "leftSources": [
+                {
+                  "logKey": "/vehicles/mur27/powertrain/inverter/motor_speed",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "red",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/vehicle_speed",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "blue",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fl",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "green",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fr",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "orange",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [],
+              "discreteSources": [],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "soak-review",
+            "renderer": null,
+            "controlsHeight": 240
+          }
+        ]
+      },
+      "series": [
+        {
+          "minute": 0,
+          "elapsedSeconds": 5,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 1093,
+          "graphCommandBytes": 11018
+        },
+        {
+          "minute": 1,
+          "elapsedSeconds": 65,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 11859,
+          "graphCommandBytes": 175831
+        },
+        {
+          "minute": 2,
+          "elapsedSeconds": 125,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 22674,
+          "graphCommandBytes": 341324
+        },
+        {
+          "minute": 3,
+          "elapsedSeconds": 185,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 33626,
+          "graphCommandBytes": 508671
+        },
+        {
+          "minute": 4,
+          "elapsedSeconds": 245,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 44567,
+          "graphCommandBytes": 675802
+        },
+        {
+          "minute": 5,
+          "elapsedSeconds": 305,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 55510,
+          "graphCommandBytes": 843542
+        },
+        {
+          "minute": 6,
+          "elapsedSeconds": 365,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 66448,
+          "graphCommandBytes": 1010816
+        },
+        {
+          "minute": 7,
+          "elapsedSeconds": 425,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 77394,
+          "graphCommandBytes": 1178311
+        },
+        {
+          "minute": 8,
+          "elapsedSeconds": 485,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 88383,
+          "graphCommandBytes": 1346556
+        },
+        {
+          "minute": 9,
+          "elapsedSeconds": 545,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 99320,
+          "graphCommandBytes": 1513890
+        },
+        {
+          "minute": 10,
+          "elapsedSeconds": 605,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 1,
+          "longestTaskMs": 58,
+          "fps": 60.2,
+          "fieldCount": 62,
+          "sampleCount": 110141,
+          "graphCommandBytes": 1679428
+        },
+        {
+          "minute": 11,
+          "elapsedSeconds": 665,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 1,
+          "longestTaskMs": 58,
+          "fps": 59.6,
+          "fieldCount": 62,
+          "sampleCount": 120947,
+          "graphCommandBytes": 1844525
+        },
+        {
+          "minute": 12,
+          "elapsedSeconds": 725,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 1,
+          "longestTaskMs": 58,
+          "fps": 59.4,
+          "fieldCount": 62,
+          "sampleCount": 131794,
+          "graphCommandBytes": 2010749
+        },
+        {
+          "minute": 13,
+          "elapsedSeconds": 785,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 2,
+          "longestTaskMs": 65,
+          "fps": 51.8,
+          "fieldCount": 62,
+          "sampleCount": 142564,
+          "graphCommandBytes": 2175502
+        },
+        {
+          "minute": 14,
+          "elapsedSeconds": 845,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 2,
+          "longestTaskMs": 65,
+          "fps": 52.7,
+          "fieldCount": 62,
+          "sampleCount": 153321,
+          "graphCommandBytes": 2340433
+        },
+        {
+          "minute": 15,
+          "elapsedSeconds": 905,
+          "heapMB": 18.4,
+          "domNodes": 474,
+          "longTasks": 2,
+          "longestTaskMs": 65,
+          "fps": 59.8,
+          "fieldCount": 62,
+          "sampleCount": 164294,
+          "graphCommandBytes": 2508210
+        }
+      ]
+    }
+  },
+  "after": {
+    "baseline": {
+      "mode": "baseline",
+      "fields": [
+        "/vehicles/mur27/powertrain/inverter/motor_speed",
+        "/vehicles/mur27/dynamics/vehicle_speed",
+        "/vehicles/mur27/dynamics/wheel_speed_fl",
+        "/vehicles/mur27/dynamics/wheel_speed_fr",
+        "/vehicles/mur27/dynamics/yaw_rate",
+        "/vehicles/mur27/gps/latitude",
+        "/vehicles/mur27/gps/longitude",
+        "/vehicles/mur27/gps/ground_speed"
+      ],
+      "selected": 0,
+      "tabs": {
+        "selected": 0,
+        "tabs": [
+          {
+            "type": 1,
+            "title": "Soak baseline",
+            "controller": {
+              "leftSources": [
+                {
+                  "logKey": "/vehicles/mur27/powertrain/inverter/motor_speed",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "red",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/vehicle_speed",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "blue",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fl",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "green",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fr",
+                  "logType": "Number",
+                  "type": "stepped",
+                  "visible": true,
+                  "options": {
+                    "color": "orange",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [],
+              "discreteSources": [],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "soak-review",
+            "renderer": null,
+            "controlsHeight": 240
+          }
+        ]
+      },
+      "series": [
+        {
+          "minute": 0,
+          "elapsedSeconds": 5,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 1169,
+          "graphCommandBytes": 11988
+        },
+        {
+          "minute": 1,
+          "elapsedSeconds": 65,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 12141,
+          "graphCommandBytes": 180008
+        },
+        {
+          "minute": 2,
+          "elapsedSeconds": 125,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 23216,
+          "graphCommandBytes": 349590
+        },
+        {
+          "minute": 3,
+          "elapsedSeconds": 185,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 34262,
+          "graphCommandBytes": 518392
+        },
+        {
+          "minute": 4,
+          "elapsedSeconds": 245,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 45385,
+          "graphCommandBytes": 688464
+        },
+        {
+          "minute": 5,
+          "elapsedSeconds": 305,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 56550,
+          "graphCommandBytes": 859416
+        },
+        {
+          "minute": 6,
+          "elapsedSeconds": 365,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 67718,
+          "graphCommandBytes": 1030070
+        },
+        {
+          "minute": 7,
+          "elapsedSeconds": 425,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 78908,
+          "graphCommandBytes": 1201360
+        },
+        {
+          "minute": 8,
+          "elapsedSeconds": 485,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 90070,
+          "graphCommandBytes": 1372323
+        },
+        {
+          "minute": 9,
+          "elapsedSeconds": 545,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 101232,
+          "graphCommandBytes": 1543087
+        },
+        {
+          "minute": 10,
+          "elapsedSeconds": 605,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 112279,
+          "graphCommandBytes": 1712039
+        },
+        {
+          "minute": 11,
+          "elapsedSeconds": 665,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 1,
+          "longestTaskMs": 69,
+          "fps": 50.7,
+          "fieldCount": 62,
+          "sampleCount": 123209,
+          "graphCommandBytes": 1879100
+        },
+        {
+          "minute": 12,
+          "elapsedSeconds": 725,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 14,
+          "longestTaskMs": 150,
+          "fps": 47.1,
+          "fieldCount": 62,
+          "sampleCount": 133970,
+          "graphCommandBytes": 2043877
+        },
+        {
+          "minute": 13,
+          "elapsedSeconds": 785,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 25,
+          "longestTaskMs": 150,
+          "fps": 40.8,
+          "fieldCount": 62,
+          "sampleCount": 144769,
+          "graphCommandBytes": 2208992
+        },
+        {
+          "minute": 14,
+          "elapsedSeconds": 845,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 34,
+          "longestTaskMs": 150,
+          "fps": 47.7,
+          "fieldCount": 62,
+          "sampleCount": 155742,
+          "graphCommandBytes": 2377056
+        },
+        {
+          "minute": 15,
+          "elapsedSeconds": 905,
+          "heapMB": 19.6,
+          "domNodes": 474,
+          "longTasks": 38,
+          "longestTaskMs": 150,
+          "fps": 51.3,
+          "fieldCount": 62,
+          "sampleCount": 166820,
+          "graphCommandBytes": 2546475
+        }
+      ]
+    },
+    "trackside": {
+      "mode": "trackside",
+      "fields": [
+        "/vehicles/mur27/powertrain/inverter/motor_speed",
+        "/vehicles/mur27/dynamics/vehicle_speed",
+        "/vehicles/mur27/dynamics/wheel_speed_fl",
+        "/vehicles/mur27/dynamics/wheel_speed_fr",
+        "/vehicles/mur27/dynamics/yaw_rate",
+        "/vehicles/mur27/gps/latitude",
+        "/vehicles/mur27/gps/longitude",
+        "/vehicles/mur27/gps/ground_speed"
+      ],
+      "selected": 0,
+      "tabs": {
+        "selected": 0,
+        "tabs": [
+          {
+            "type": 15,
+            "title": "Soak trackside",
+            "controller": {
+              "sources": [
+                {
+                  "logKey": "/vehicles/mur27/powertrain/inverter/motor_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/vehicle_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fl",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/wheel_speed_fr",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "true"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/dynamics/yaw_rate",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/latitude",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/longitude",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                },
+                {
+                  "logKey": "/vehicles/mur27/gps/ground_speed",
+                  "logType": "Number",
+                  "type": "tile",
+                  "visible": true,
+                  "options": {
+                    "showInGraph": "false"
+                  }
+                }
+              ],
+              "limits": {}
+            },
+            "controllerUUID": "soak-review",
+            "renderer": null,
+            "controlsHeight": 240
+          }
+        ]
+      },
+      "series": [
+        {
+          "minute": 0,
+          "elapsedSeconds": 5,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 1921,
+          "graphCommandBytes": 12087
+        },
+        {
+          "minute": 1,
+          "elapsedSeconds": 65,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60,
+          "fieldCount": 62,
+          "sampleCount": 19363,
+          "graphCommandBytes": 178301
+        },
+        {
+          "minute": 2,
+          "elapsedSeconds": 125,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 36728,
+          "graphCommandBytes": 343593
+        },
+        {
+          "minute": 3,
+          "elapsedSeconds": 185,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 54267,
+          "graphCommandBytes": 510488
+        },
+        {
+          "minute": 4,
+          "elapsedSeconds": 245,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 59.9,
+          "fieldCount": 62,
+          "sampleCount": 71602,
+          "graphCommandBytes": 675387
+        },
+        {
+          "minute": 5,
+          "elapsedSeconds": 305,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 59.5,
+          "fieldCount": 62,
+          "sampleCount": 88953,
+          "graphCommandBytes": 840527
+        },
+        {
+          "minute": 6,
+          "elapsedSeconds": 365,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 106236,
+          "graphCommandBytes": 1004889
+        },
+        {
+          "minute": 7,
+          "elapsedSeconds": 425,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 0,
+          "longestTaskMs": 0,
+          "fps": 60.1,
+          "fieldCount": 62,
+          "sampleCount": 123628,
+          "graphCommandBytes": 1170401
+        },
+        {
+          "minute": 8,
+          "elapsedSeconds": 485,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 1,
+          "longestTaskMs": 54,
+          "fps": 59.9,
+          "fieldCount": 62,
+          "sampleCount": 140913,
+          "graphCommandBytes": 1335012
+        },
+        {
+          "minute": 9,
+          "elapsedSeconds": 545,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 1,
+          "longestTaskMs": 54,
+          "fps": 57.6,
+          "fieldCount": 62,
+          "sampleCount": 158386,
+          "graphCommandBytes": 1501300
+        },
+        {
+          "minute": 10,
+          "elapsedSeconds": 605,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 4,
+          "longestTaskMs": 62,
+          "fps": 50.2,
+          "fieldCount": 62,
+          "sampleCount": 175556,
+          "graphCommandBytes": 1664239
+        },
+        {
+          "minute": 11,
+          "elapsedSeconds": 665,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 8,
+          "longestTaskMs": 62,
+          "fps": 59.4,
+          "fieldCount": 62,
+          "sampleCount": 192802,
+          "graphCommandBytes": 1828065
+        },
+        {
+          "minute": 12,
+          "elapsedSeconds": 725,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 12,
+          "longestTaskMs": 68,
+          "fps": 44.8,
+          "fieldCount": 62,
+          "sampleCount": 209861,
+          "graphCommandBytes": 1990332
+        },
+        {
+          "minute": 13,
+          "elapsedSeconds": 785,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 18,
+          "longestTaskMs": 68,
+          "fps": 52.1,
+          "fieldCount": 62,
+          "sampleCount": 227209,
+          "graphCommandBytes": 2155296
+        },
+        {
+          "minute": 14,
+          "elapsedSeconds": 845,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 40,
+          "longestTaskMs": 92,
+          "fps": 26.7,
+          "fieldCount": 62,
+          "sampleCount": 244121,
+          "graphCommandBytes": 2316118
+        },
+        {
+          "minute": 15,
+          "elapsedSeconds": 905,
+          "heapMB": 22,
+          "domNodes": 566,
+          "longTasks": 128,
+          "longestTaskMs": 127,
+          "fps": 36.6,
+          "fieldCount": 62,
+          "sampleCount": 260488,
+          "graphCommandBytes": 2470925
+        }
+      ]
+    }
+  },
+  "probes": {
+    "pr-probe": [
+      {
+        "mode": "plain",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 6
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 168
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 81
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 3
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          }
+        ]
+      },
+      {
+        "mode": "empty",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 7
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 168
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 81
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 4
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          },
+          {
+            "key": "Laps/SlipRatio",
+            "n": 210
+          },
+          {
+            "key": "Laps/Number",
+            "n": 1
+          },
+          {
+            "key": "Laps/Time",
+            "n": 209
+          },
+          {
+            "key": "Laps/Distance",
+            "n": 209
+          },
+          {
+            "key": "Laps/Sector",
+            "n": 1
+          },
+          {
+            "key": "Laps/DeltaToReference",
+            "n": 209
+          }
+        ]
+      },
+      {
+        "mode": "tiles",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state",
+          "/vehicles/mur27/powertrain/inverter/motor_speed",
+          "/vehicles/mur27/dynamics/vehicle_speed",
+          "/vehicles/mur27/dynamics/wheel_speed_fl",
+          "/vehicles/mur27/dynamics/wheel_speed_fr",
+          "/vehicles/mur27/dynamics/yaw_rate",
+          "/vehicles/mur27/gps/latitude",
+          "/vehicles/mur27/gps/longitude",
+          "/vehicles/mur27/gps/ground_speed"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 567
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 7
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 369
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 568
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 568
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 1260
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 149
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 149
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 616
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 4
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          },
+          {
+            "key": "Laps/SlipRatio",
+            "n": 1258
+          },
+          {
+            "key": "Laps/Number",
+            "n": 1
+          },
+          {
+            "key": "Laps/Time",
+            "n": 1259
+          },
+          {
+            "key": "Laps/Distance",
+            "n": 1259
+          },
+          {
+            "key": "Laps/Sector",
+            "n": 3
+          },
+          {
+            "key": "Laps/DeltaToReference",
+            "n": 1259
+          }
+        ]
+      }
+    ],
+    "main-empty": [
+      {
+        "mode": "plain",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 6
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 171
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 80
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 3
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          }
+        ]
+      },
+      {
+        "mode": "empty",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 7
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 171
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 80
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 4
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          }
+        ]
+      },
+      {
+        "mode": "tiles",
+        "active": [
+          "/vehicles/mur27/powertrain/inverter/vsm_state",
+          "/vehicles/mur27/accumulator/imd_state",
+          "/vehicles/mur27/ecu/car_state"
+        ],
+        "fields": [
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_command",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/torque_feedback",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_bus_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/phase_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/dc_power",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/motor_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/module_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/coolant_temperature",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/vsm_state",
+            "n": 7
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/inverter_state",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/powertrain/inverter/enabled",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/pack_current",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/state_of_charge",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/cell_voltage_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_max",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/temperature_min",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/discharge_current_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/imd_state",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/accumulator/airs_closed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/throttle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_front",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/brake_pressure_rear",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/driver/steering_angle",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/vehicle_speed",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fl",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/wheel_speed_fr",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/rear_axle_speed",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/yaw_rate",
+            "n": 171
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_x",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/accel_y",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_fr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rl",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/dynamics/shock_rr",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/latitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/longitude",
+            "n": 29
+          },
+          {
+            "key": "/vehicles/mur27/gps/altitude",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/heading",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/ground_speed",
+            "n": 80
+          },
+          {
+            "key": "/vehicles/mur27/gps/solution_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/gps/utc_time",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/car_state",
+            "n": 4
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ts_active",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/ready_to_drive",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/drive_mode",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/ecu/torque_limit",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/pump_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/fan_duty",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/pdu/lv_battery_voltage",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/cpu_load",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/can_frame_count",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/link_rssi",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/system/status/message",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/pose",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/planned_trajectory",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/autonomy/cones",
+            "n": 0
+          },
+          {
+            "key": "/vehicles/mur27/timing/lap_count",
+            "n": 1
+          },
+          {
+            "key": "/vehicles/mur27/timing/last_lap_time",
+            "n": 0
+          }
+        ]
+      }
+    ],
+    "pr-bands": [
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 106,
+        "bandMs": 158.4999999962747,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 3,
+        "longest": 202,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 68,
+        "samples": 541303,
+        "tileRefreshes": 37,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 1252,
+        "bandMs": 1127.9000000357628,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 9,
+        "longest": 202,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 68,
+        "samples": 543816,
+        "tileRefreshes": 472,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 0,
+        "bandCalls": 1364,
+        "bandMs": 1220.2000000365078,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 2,
+        "longest": 60,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5883555,
+        "fields": 68,
+        "samples": 544114,
+        "tileRefreshes": 38,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 10,
+        "bandCalls": 2472,
+        "bandMs": 2214.7000000551343,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 22,
+        "longest": 71,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5911505,
+        "fields": 68,
+        "samples": 547073,
+        "tileRefreshes": 438,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 2590,
+        "bandMs": 2309.2000000588596,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 68,
+        "samples": 547369,
+        "tileRefreshes": 46,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 3742,
+        "bandMs": 3275.100000049919,
+        "bandMaxMs": 105.59999999776483,
+        "tasks": 6,
+        "longest": 57,
+        "heapMB": 48.1,
+        "domElements": 578,
+        "allDomNodes": 1335,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 68,
+        "samples": 550325,
+        "tileRefreshes": 511,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "phase": "lap-bands-disabled",
+        "tasks": 0,
+        "longest": 0,
+        "fps": 60.09459148675722,
+        "bandCalls": 3742,
+        "bandMs": 3275.100000049919,
+        "bandMaxMs": 105.59999999776483
+      }
+    ],
+    "main-bands": [
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 1,
+        "longest": 266,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5786817,
+        "fields": 62,
+        "samples": 360471,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 1,
+        "longest": 266,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5809561,
+        "fields": 62,
+        "samples": 361958,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": true,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5812504,
+        "fields": 62,
+        "samples": 362150,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": true,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5839842,
+        "fields": 62,
+        "samples": 363947,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5842774,
+        "fields": 62,
+        "samples": 364137,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 77.6,
+        "domElements": 474,
+        "allDomNodes": 1140,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5870443,
+        "fields": 62,
+        "samples": 365955,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "phase": "lap-bands-disabled",
+        "tasks": 2,
+        "longest": 57,
+        "fps": 46.429890864787254,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0
+      }
+    ],
+    "main-bands-visible": [
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 3,
+        "longest": 236,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5498825,
+        "fields": 68,
+        "samples": 541381,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 3,
+        "longest": 236,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5521740,
+        "fields": 68,
+        "samples": 542880,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": true,
+        "second": 0,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5524702,
+        "fields": 68,
+        "samples": 543072,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": true,
+        "second": 10,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5552374,
+        "fields": 68,
+        "samples": 544891,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5555276,
+        "fields": 68,
+        "samples": 545079,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 168.8,
+        "domElements": 486,
+        "allDomNodes": 1159,
+        "tiles": 0,
+        "graph": false,
+        "graphBytes": 5583339,
+        "fields": 68,
+        "samples": 546920,
+        "tileRefreshes": 0,
+        "graphRestores": 0,
+        "alertElements": 0
+      },
+      {
+        "phase": "lap-bands-disabled",
+        "tasks": 0,
+        "longest": 0,
+        "fps": 55.2193797056462,
+        "bandCalls": 2,
+        "bandMs": 146.10000000149012,
+        "bandMaxMs": 146.10000000149012
+      }
+    ],
+    "fixed-bands": [
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 122,
+        "bandMs": 0.3999999985098839,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 1,
+        "longest": 349,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 360672,
+        "tileRefreshes": 44,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 1322,
+        "bandMs": 1.2000000067055225,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 1,
+        "longest": 349,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 363358,
+        "tileRefreshes": 534,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 0,
+        "bandCalls": 1406,
+        "bandMs": 1.2000000067055225,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 1,
+        "longest": 59,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5598026,
+        "fields": 62,
+        "samples": 363642,
+        "tileRefreshes": 7,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 10,
+        "bandCalls": 2252,
+        "bandMs": 2.1999999955296516,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 3,
+        "longest": 59,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5625617,
+        "fields": 62,
+        "samples": 366553,
+        "tileRefreshes": 81,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 2376,
+        "bandMs": 2.2999999970197678,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 366868,
+        "tileRefreshes": 61,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 3576,
+        "bandMs": 3.5999999903142452,
+        "bandMaxMs": 0.10000000149011612,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 42.6,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 369838,
+        "tileRefreshes": 569,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "phase": "lap-bands-disabled",
+        "tasks": 0,
+        "longest": 0,
+        "fps": 60.0537586058735,
+        "bandCalls": 3576,
+        "bandMs": 3.5999999903142452,
+        "bandMaxMs": 0.10000000149011612
+      }
+    ],
+    "controller-bands": [
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 1,
+        "longest": 436,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 360695,
+        "tileRefreshes": 46,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 1,
+        "longest": 436,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 363397,
+        "tileRefreshes": 533,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 1,
+        "longest": 62,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5125394,
+        "fields": 62,
+        "samples": 363681,
+        "tileRefreshes": 7,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": true,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 5,
+        "longest": 68,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": true,
+        "graphBytes": 5149979,
+        "fields": 62,
+        "samples": 366290,
+        "tileRefreshes": 74,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 0,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 366606,
+        "tileRefreshes": 48,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "enabled": false,
+        "second": 10,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0,
+        "tasks": 0,
+        "longest": 0,
+        "heapMB": 37.8,
+        "domElements": 566,
+        "allDomNodes": 1316,
+        "tiles": 8,
+        "graph": false,
+        "graphBytes": 4,
+        "fields": 62,
+        "samples": 369465,
+        "tileRefreshes": 534,
+        "graphRestores": 1,
+        "alertElements": 1
+      },
+      {
+        "phase": "lap-bands-disabled",
+        "tasks": 0,
+        "longest": 0,
+        "fps": 60.08317671048524,
+        "bandCalls": 0,
+        "bandMs": 0,
+        "bandMaxMs": 0
+      }
+    ]
+  }
+}
