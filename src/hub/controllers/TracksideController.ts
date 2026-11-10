@@ -41,16 +41,11 @@ export default class TracksideController implements TabController {
   private sourceList: SourceList;
 
   constructor(root: HTMLElement) {
-    this.sourceList = new SourceList(root.firstElementChild as HTMLElement, TracksideController_Config, [], (rect) => {
-      window.sendMainMessage("ask-edit-trackside-limits", {
-        uuid: this.UUID,
-        rect,
-        fields: this.sourceList.getState().map((source) => ({
-          key: source.logKey,
-          unit: limitUnit(window.log.getChannelProfile(source.logKey)),
-          limits: this.limits[source.logKey] ?? {}
-        }))
-      });
+    this.sourceList = new SourceList(root.firstElementChild as HTMLElement, TracksideController_Config, []);
+    this.sourceList.getCriticalLimits = (key) => ({
+      uuid: this.UUID,
+      unit: limitUnit(window.log.getChannelProfile(key)),
+      limits: this.limits[key] ?? {}
     });
   }
   dispose() {
