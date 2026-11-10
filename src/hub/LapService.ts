@@ -637,3 +637,5 @@ export class LapService {
   }
 }
 export const lapService = new LapService();
+
+if (typeof window !== "undefined") Object.assign(window, { __reviewLapService: lapService, __reviewLapStats: {} });

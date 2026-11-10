@@ -2663,6 +2663,8 @@ if (process.platform === "linux") {
   app.setName("mur-voir");
 }
 
+app.commandLine.appendSwitch("enable-precise-memory-info");
+app.commandLine.appendSwitch("js-flags", "--expose-gc");
 app.whenReady().then(async () => {
   // Check preferences and set theme
   let prefs = DEFAULT_PREFS;
