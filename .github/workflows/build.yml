@@ -54,6 +54,7 @@ jobs:
         with:
           name: desktop-bundles
           path: bundles/
+          retention-days: 1
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -96,6 +97,7 @@ jobs:
         with:
           name: mur-voir-lite
           path: dist/mur-voir-lite-*.zip
+          retention-days: 1
 
   desktop:
     name: Package ${{ matrix.os }} ${{ matrix.arch }}
@@ -155,6 +157,7 @@ jobs:
             dist/mur-voir-*.exe
             dist/mur-voir-*.AppImage
           if-no-files-found: error
+          retention-days: 1
 
   release:
     name: Publish mur-voir release
@@ -186,3 +189,10 @@ jobs:
           cd ..
           gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag \
             --title "mur-voir $VERSION" --notes-file "docs/release-notes/$VERSION.md" --latest
+      - name: Verify published downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --dir published-assets
+          cd published-assets
+          sha256sum --check SHA256SUMS.txt
