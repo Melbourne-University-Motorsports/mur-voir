@@ -2,9 +2,16 @@ name: Build
 
 on:
   push:
-    branches: ["**"]
+    branches: ["mur-voir/main"]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      soak_seconds:
+        description: Cellular soak duration in seconds
+        type: choice
+        options: ["120", "960"]
+        default: "120"
 
 permissions:
   contents: read
@@ -16,7 +23,8 @@ concurrency:
 jobs:
   verify:
     name: Verify dashboard
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -29,15 +37,19 @@ jobs:
       - run: npm ci
       - run: npm run check-format
       - run: npm run typecheck
-      - run: npm test
-      - run: node --test tools/mock-backend/test/*.test.ts
+      - name: Run dashboard unit tests
+        run: npm test
+      - name: Run telemetry backend unit tests
+        run: node --test tools/mock-backend/test/*.test.ts
       - run: npx tsc -p tools/mock-backend
       - run: npm run compile
       - run: npm run wasm:compile
       - run: npx playwright install --with-deps chromium
       - name: Exercise the cellular API in Electron
-        run: xvfb-run -a npm run cellular-smoke -- --soak-seconds 120 --retention-seconds 330
-        timeout-minutes: 5
+        env:
+          SOAK_SECONDS: ${{ inputs.soak_seconds || '120' }}
+        run: xvfb-run -a npm run cellular-smoke -- --soak-seconds "$SOAK_SECONDS" --retention-seconds 330
+        timeout-minutes: 20
       - uses: actions/upload-artifact@v7
         with:
           name: desktop-bundles
@@ -47,10 +59,12 @@ jobs:
         with:
           name: cellular-verification
           path: .screenshots/cellular/
+          retention-days: 7
 
   lite:
     name: Verify and package Lite
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -72,6 +86,12 @@ jobs:
           cp docs/cellular-telemetry.md dist/lite/README.md
           cd dist/lite
           zip -qr ../mur-voir-lite-${VERSION}.zip .
+      - name: Verify standalone Lite archive
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          unzip -q "dist/mur-voir-lite-${VERSION}.zip" -d dist/lite-check
+          LITE_SMOKE_SERVER=dist/lite-check/tools/lite-serve/main.mjs npm run lite-smoke -- --skip-build
+        timeout-minutes: 5
       - uses: actions/upload-artifact@v7
         with:
           name: mur-voir-lite
@@ -84,13 +104,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-latest, os: mac, arch: arm64 }
-          - { runner: macos-latest, os: mac, arch: x64 }
-          - { runner: windows-latest, os: win, arch: x64 }
-          - { runner: windows-latest, os: win, arch: arm64 }
-          - { runner: ubuntu-24.04, os: linux, arch: x64 }
-          - { runner: ubuntu-24.04, os: linux, arch: arm64 }
+          - { runner: blacksmith-6vcpu-macos-15, os: mac, arch: arm64 }
+          - { runner: blacksmith-6vcpu-macos-15, os: mac, arch: x64 }
+          - { runner: blacksmith-2vcpu-windows-2025, os: win, arch: x64 }
+          - { runner: blacksmith-2vcpu-windows-2025, os: win, arch: arm64 }
+          - { runner: blacksmith-2vcpu-ubuntu-2404, os: linux, arch: x64 }
+          - { runner: blacksmith-2vcpu-ubuntu-2404, os: linux, arch: arm64 }
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -113,6 +134,19 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           ELECTRON_BUILDER_7Z_FILTER: BCJ
+      - name: Verify macOS disk image
+        if: matrix.os == 'mac'
+        run: hdiutil verify dist/*.dmg
+      - name: Exercise packaged macOS app
+        if: matrix.os == 'mac' && matrix.arch == 'arm64'
+        run: npm run cellular-smoke -- --executable dist/mac-arm64/mur-voir.app/Contents/MacOS/mur-voir --out .screenshots/packaged
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@v7
+        if: always() && matrix.os == 'mac' && matrix.arch == 'arm64'
+        with:
+          name: packaged-verification-mac-arm64
+          path: .screenshots/packaged/
+          retention-days: 7
       - uses: actions/upload-artifact@v7
         with:
           name: mur-voir-${{ matrix.os }}-${{ matrix.arch }}
@@ -126,7 +160,8 @@ jobs:
     name: Publish mur-voir release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [verify, lite, desktop]
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:

@@ -79,6 +79,14 @@ Live lap analysis keeps at most 30 seconds of context beyond the log's retention
 
 The Build workflow runs the checks on Node 22 and packages macOS, Windows, Linux and Lite. A `v` tag matching `package.json` publishes the checked installers and checksums after every job passes. Add `docs/release-notes/<version>.md` before tagging. Desktop artifacts are unsigned.
 
+All jobs run on [Blacksmith runners](https://docs.blacksmith.sh/blacksmith-runners/overview). Enable the Blacksmith GitHub App for this repository before merging changes to the runner labels. Linux and Windows use the smallest 2 vCPU runners; macOS uses the smallest 6 vCPU runner, pinned to macOS 15. Each host builds both target architectures, matching the existing cross-compilation setup.
+
+Pull requests, pushes to `mur-voir/main` and version tags run CI. Feature-branch pushes wait for a PR, avoiding duplicate push and PR builds. The checks include dashboard and mock-backend unit tests, formatting, type checking, desktop/WASM compilation, Lite browser checks and a two-minute cellular soak. CI also verifies macOS disk images, runs the packaged arm64 macOS app headlessly and tests the extracted standalone Lite ZIP. Smoke-test screenshots and logs are retained for seven days.
+
+To run the longer retention check, select **Actions > Build > Run workflow** and set `soak_seconds` to `960`. It uses the same 330-second retention window to exercise trimming and lap-cache checkpoints. Normal PR runs use `120` seconds.
+
+Blacksmith's free allowance is shared across the organisation and measured in 3,000 x64 2 vCPU minutes per month. Windows minutes count twice and macOS minutes count twenty times. These workflows use no paid cache add-ons. They do not impose an account spending cap; check usage and billing settings in the Blacksmith dashboard to stay within the free allowance.
+
 ## Build and serve Lite
 
 ```sh

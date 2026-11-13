@@ -45,7 +45,7 @@ try {
   ]);
   await ready(`http://127.0.0.1:${mockPort}/api/v1/catalogue`);
   start(process.execPath, [
-    "tools/lite-serve/main.mjs",
+    process.env.LITE_SMOKE_SERVER ?? "tools/lite-serve/main.mjs",
     "--port",
     String(port),
     "--backend",
