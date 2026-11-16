@@ -28,6 +28,13 @@ Open tabs, visible sidebar values and DBC fault monitoring determine live subscr
 
 ## Browser version
 
+For the hosted dashboard, join the MUR tailnet, open
+`https://voir.melbourneuniracing.com/` and use
+`https://voir.melbourneuniracing.com` as the MUR Telemetry connection address.
+The HTTPS proxy forwards requests to the private backend. Browsers block the
+plain HTTP/WebSocket backend address from this HTTPS page. The public page can
+open without the VPN, but its live API requires a tailnet connection.
+
 The Lite archive needs Node.js 22.18 or newer. Unzip it and run this command from the extracted directory, using the actual backend address:
 
 ```sh

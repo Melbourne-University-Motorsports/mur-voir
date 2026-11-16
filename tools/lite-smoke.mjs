@@ -6,14 +6,22 @@
 // at the root directory of this project.
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import http from "node:http";
+import https from "node:https";
+import net from "node:net";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 process.chdir(fileURLToPath(new URL("../", import.meta.url)));
 const children = [];
 let browser;
+let tlsProxy;
+let tlsDirectory;
 function start(command, args, options = {}) {
   const child = spawn(command, args, { stdio: "inherit", ...options });
   children.push(child);
@@ -114,11 +122,99 @@ try {
   });
   await frame.waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("Speed")));
   assert.deepEqual(errors, [], "Browser errors");
+
+  // Exercise the same TLS termination used by the hosted dashboard.
+  tlsDirectory = await mkdtemp(path.join(os.tmpdir(), "mur-voir-lite-tls-"));
+  const key = path.join(tlsDirectory, "key.pem");
+  const cert = path.join(tlsDirectory, "cert.pem");
+  execFileSync(
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-days",
+      "1",
+      "-subj",
+      "/CN=localhost",
+      "-keyout",
+      key,
+      "-out",
+      cert
+    ],
+    { stdio: "ignore" }
+  );
+  tlsProxy = https.createServer({ key: await readFile(key), cert: await readFile(cert) }, (req, res) => {
+    const upstream = http.request(
+      { hostname: "127.0.0.1", port, path: req.url, method: req.method, headers: req.headers },
+      (reply) => {
+        res.writeHead(reply.statusCode, reply.headers);
+        reply.pipe(res);
+      }
+    );
+    upstream.on("error", () => {
+      res.writeHead(502);
+      res.end();
+    });
+    req.pipe(upstream);
+  });
+  tlsProxy.on("upgrade", (req, socket, head) => {
+    const peer = net.connect(port, "127.0.0.1", () => {
+      peer.write(
+        `${req.method} ${req.url} HTTP/1.1\r\n${req.rawHeaders.reduce(
+          (lines, value, i) => lines + value + (i % 2 ? "\r\n" : ": "),
+          ""
+        )}\r\n`
+      );
+      if (head.length) peer.write(head);
+      socket.pipe(peer).pipe(socket);
+    });
+    peer.on("error", () => socket.destroy());
+    socket.on("error", () => peer.destroy());
+    socket.on("close", () => peer.destroy());
+  });
+  tlsProxy.listen(0, "127.0.0.1");
+  await once(tlsProxy, "listening");
+  const secureOrigin = `https://127.0.0.1:${tlsProxy.address().port}`;
+  const securePage = await browser.newPage({ ignoreHTTPSErrors: true });
+  const secureErrors = [];
+  const sockets = [];
+  securePage.on("pageerror", (error) => secureErrors.push(error.message));
+  securePage.on("console", (message) => {
+    if (message.type() === "error") secureErrors.push(message.text());
+  });
+  securePage.on("websocket", (socket) => sockets.push(socket.url()));
+  await securePage.goto(secureOrigin);
+  const secureHub = securePage.frameLocator(".hub-frame");
+  await secureHub.locator(".connect-source").waitFor({ state: "attached" });
+  await secureHub.locator("body").press("Control+k");
+  await secureHub.locator(".connect-source").selectOption("mur");
+  assert.equal(await secureHub.locator(".connect-address").inputValue(), secureOrigin);
+  await secureHub.locator(".connect-confirm").click();
+  await secureHub.locator(".connect-dialog-backdrop").waitFor({ state: "hidden" });
+  const secureFrame = securePage.frames().find((frame) => frame.url().endsWith("hub.html"));
+  await secureFrame.waitForFunction(() => {
+    const key = window.log.getFieldKeys().find((key) => key.endsWith("/vehicle_speed"));
+    return key && window.log.getNumber(key, -Infinity, Infinity)?.values.some(Number.isFinite);
+  });
+  const secureFetch = await secureFrame.evaluate(async () => {
+    const response = await fetch("/api/v1/catalogue");
+    return { status: response.status, signals: (await response.json()).signals.length };
+  });
+  assert.equal(secureFetch.status, 200);
+  assert.ok(secureFetch.signals > 0);
+  assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
+  assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS, live value, graph, shared timeline, experimental lap modes, layout download/upload, CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, graph, shared timeline, experimental lap modes, layout download/upload, CSV picker."
   );
 } finally {
   await browser?.close();
+  tlsProxy?.closeAllConnections();
+  if (tlsProxy) await new Promise((resolve) => tlsProxy.close(resolve));
+  if (tlsDirectory) await rm(tlsDirectory, { recursive: true, force: true });
   for (const child of children.reverse()) if (child.exitCode === null) child.kill("SIGTERM");
   await Promise.all(children.filter((child) => child.exitCode === null).map((child) => once(child, "exit")));
 }
