@@ -11,6 +11,7 @@ import { AdvantageScopeAssets } from "../../shared/AdvantageScopeAssets";
 import { BUILD_DATE, COPYRIGHT, LITE_VERSION } from "../../shared/buildConstants";
 import ButtonRect from "../../shared/ButtonRect";
 import { ensureThemeContrast } from "../../shared/Colors";
+import { DEFAULT_LAYOUTS, getDefaultLayout } from "../../shared/DefaultLayouts";
 import { Field2dCameraMode } from "../../shared/Field2dCameraMode";
 import { HubState } from "../../shared/HubState";
 import LineGraphFilter from "../../shared/LineGraphFilter";
@@ -348,7 +349,20 @@ async function initHub() {
   if (stateStr !== null) {
     state = JSON.parse(stateStr);
   }
+  // A browser with no saved layout starts with the bundled default layout.
+  const firstOpen = state === null;
+  if (state === null) state = getDefaultLayout("default")?.state ?? null;
   if (state !== null) sendMessage(hubPort, "restore-state", state);
+  // ?layout=<id> adds a bundled layout's tabs, then leaves the URL so a reload doesn't add them again.
+  const url = new URL(window.location.href);
+  const layoutId = url.searchParams.get("layout");
+  if (layoutId !== null) {
+    if (getDefaultLayout(layoutId) !== undefined && !(firstOpen && layoutId === "default")) {
+      sendMessage(hubPort, "add-default-layout", layoutId);
+    }
+    url.searchParams.delete("layout");
+    window.history.replaceState(null, "", url.toString());
+  }
   sendMessage(hubPort, "show-when-ready");
 
   // Add cursor event handlers
@@ -580,6 +594,15 @@ async function handleHubMessage(message: NamedMessage) {
               { content: "Browse Base Station Logs…", callback: openDownload },
               { content: "Export Layout…", callback: requestLayoutExport },
               { content: "Import Layout…", callback: importLayout },
+              {
+                content: "Default Layouts",
+                items: DEFAULT_LAYOUTS.map((layout) => ({
+                  content: layout.title,
+                  callback() {
+                    sendMessage(hubPort, "add-default-layout", layout.id);
+                  }
+                }))
+              },
               {
                 content: `Connect\u2026 (${modifier} K)`,
                 callback() {

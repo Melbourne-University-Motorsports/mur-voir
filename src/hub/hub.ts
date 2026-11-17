@@ -6,6 +6,7 @@
 // at the root directory of this project.
 
 import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
+import { getDefaultLayout } from "../shared/DefaultLayouts";
 import { HubState } from "../shared/HubState";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
@@ -621,6 +622,13 @@ async function handleMainMessage(message: NamedMessage) {
     case "restore-state":
       restoreState(message.data);
       break;
+
+    case "add-default-layout": {
+      // Adds a bundled layout's tabs after the open ones (File > Default Layouts, Lite's ?layout=).
+      const layout = getDefaultLayout(message.data);
+      if (layout !== undefined) window.tabs.appendState(layout.state.tabs);
+      break;
+    }
 
     case "restore-type-memory":
       window.typeMemory = message.data;

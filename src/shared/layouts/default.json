@@ -1,0 +1,1110 @@
+{
+  "version": "0.2.0",
+  "hubs": [
+    {
+      "sidebar": {
+        "width": 300,
+        "expanded": []
+      },
+      "tabs": {
+        "selected": 1,
+        "tabs": [
+          {
+            "type": 0,
+            "title": "",
+            "controller": null,
+            "controllerUUID": "defaultview0",
+            "renderer": "",
+            "controlsHeight": 0
+          },
+          {
+            "type": 15,
+            "title": "Track day",
+            "controller": {
+              "sources": [
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_ecustate",
+                  "logType": "String",
+                  "dbcSignal": "ECU_ECUState",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata3/ecu_startstage",
+                  "logType": "String",
+                  "dbcSignal": "ECU_StartStage",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_tsactive",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_TSActive",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_vsmstate",
+                  "logType": "String",
+                  "dbcSignal": "INV_VSMState",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata3/ecu_dashmode",
+                  "logType": "String",
+                  "dbcSignal": "ECU_DashMode",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata3/ecu_torqueset",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_TorqueSet",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata/ecu_accusoc",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_AccuSOC",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata/ecu_accutempmax",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_AccuTempMax",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemin",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMin",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemax",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMax",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ennoid_vtot/ennoid_packvoltage",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_PackVoltage",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ttcs_limits/ttcs_dcl",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_DCL",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata2/ecu_motortemp",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_MotorTemp",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata2/ecu_invertertemp",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_InverterTemp",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/telemetry_lvbattery/telem_lvbatteryvoltage",
+                  "logType": "Number",
+                  "dbcSignal": "TELEM_LVBatteryVoltage",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/dashboard_speed/dash_speedcar",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_SpeedCar",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/dashboard_lap/dash_lastlap",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_LastLap",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/dashboard_lap/dash_bestlap",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_BestLap",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_imdstate",
+                  "logType": "String",
+                  "dbcSignal": "TTCS_IMDState",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata3/ecu_abpcactive",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_ABPCActive",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_dashinputsstale",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_DashInputsStale",
+                  "visible": true,
+                  "options": {}
+                }
+              ],
+              "limits": {
+                "/vehicles/mur27/can1/ecu_dashdata/ecu_accutempmax": {
+                  "high": 60
+                },
+                "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemin": {
+                  "low": 2.5
+                },
+                "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemax": {
+                  "high": 4.2
+                },
+                "/vehicles/mur27/can0/ennoid_vtot/ennoid_packvoltage": {
+                  "low": 270,
+                  "high": 453.6
+                }
+              }
+            },
+            "controllerUUID": "defaultview1",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 15,
+            "title": "Faults",
+            "controller": {
+              "sources": [
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_sdcstatus1",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_SDCStatus1",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_sdcstatus2",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_SDCStatus2",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_inverterenablelockout",
+                  "logType": "String",
+                  "dbcSignal": "INV_InverterEnableLockout",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/mur_hb_ttcs/hb_ttcs_faultbits",
+                  "logType": "Number",
+                  "dbcSignal": "HB_TTCS_FaultBits",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/mur_hb_pedalbox/hb_pedal_faultbits",
+                  "logType": "Number",
+                  "dbcSignal": "HB_PEDAL_FaultBits",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/mur_hb_dash/hb_dash_faultbits",
+                  "logType": "Number",
+                  "dbcSignal": "HB_DASH_FaultBits",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/mur_hb_rear/hb_rear_faultbits",
+                  "logType": "Number",
+                  "dbcSignal": "HB_REAR_FaultBits",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_faultflags",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_FaultFlags",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte0",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte0",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte1",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte1",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte2",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte2",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte3",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte3",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte4",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte4",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte5",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte5",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte6",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte6",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can0/inv_faultcodes/inv_faultbyte7",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FaultByte7",
+                  "visible": true,
+                  "options": {}
+                }
+              ],
+              "limits": {}
+            },
+            "controllerUUID": "defaultview2",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "States",
+            "controller": {
+              "leftSources": [],
+              "rightSources": [],
+              "discreteSources": [
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_ecustate",
+                  "logType": "String",
+                  "dbcSignal": "ECU_ECUState",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_tsactive",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_TSActive",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_sdcstatus1",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_SDCStatus1",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_sdcstatus2",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_SDCStatus2",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_vsmstate",
+                  "logType": "String",
+                  "dbcSignal": "INV_VSMState",
+                  "visible": true,
+                  "options": {
+                    "color": "#e48b32"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_inverterenablestate",
+                  "logType": "Number",
+                  "dbcSignal": "INV_InverterEnableState",
+                  "visible": true,
+                  "options": {
+                    "color": "#3b875a"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ttcs_status/ttcs_imdstate",
+                  "logType": "String",
+                  "dbcSignal": "TTCS_IMDState",
+                  "visible": true,
+                  "options": {
+                    "color": "#d993aa"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata3/ecu_abpcactive",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_ABPCActive",
+                  "visible": true,
+                  "options": {
+                    "color": "#858584"
+                  }
+                }
+              ],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview3",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "HV voltage",
+            "controller": {
+              "leftSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ennoid_vtot/ennoid_packvoltage",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_PackVoltage",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_voltages/inv_dcbusvoltage",
+                  "logType": "Number",
+                  "dbcSignal": "INV_DCBusVoltage",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemin",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMin",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemax",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMax",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "discreteSources": [],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": "volts",
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": "volts",
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview4",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "Accu temp and current",
+            "controller": {
+              "leftSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata/ecu_accutempmax",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_AccuTempMax",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata/ecu_accutempmin",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_AccuTempMin",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ttcs_limits/ttcs_batthightemp",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_BattHighTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_currents/inv_dcbuscurrent",
+                  "logType": "Number",
+                  "dbcSignal": "INV_DCBusCurrent",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ttcs_diagnostics/ttcs_hvcurrent",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_HVCurrent",
+                  "visible": true,
+                  "options": {
+                    "color": "#e48b32",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ttcs_limits/ttcs_dcl",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_DCL",
+                  "visible": true,
+                  "options": {
+                    "color": "#3b875a",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ttcs_limits/ttcs_ccl",
+                  "logType": "Number",
+                  "dbcSignal": "TTCS_CCL",
+                  "visible": true,
+                  "options": {
+                    "color": "#d993aa",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "discreteSources": [],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": "celsius",
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview5",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "Motor and torque",
+            "controller": {
+              "leftSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_motorposition/inv_motorspeedrpm",
+                  "logType": "Number",
+                  "dbcSignal": "INV_MotorSpeedRPM",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/ecu_control/ecu_torquerequest",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_TorqueRequest",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_torquetimer/inv_commandedtorque",
+                  "logType": "Number",
+                  "dbcSignal": "INV_CommandedTorque",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_torquetimer/inv_feedbacktorque",
+                  "logType": "Number",
+                  "dbcSignal": "INV_FeedbackTorque",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "discreteSources": [
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_bmslimitingtorque",
+                  "logType": "Number",
+                  "dbcSignal": "INV_BMSLimitingTorque",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2"
+                  }
+                }
+              ],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": "rotations/minute",
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview6",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "Drive temps",
+            "controller": {
+              "leftSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata2/ecu_motortemp",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_MotorTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/ecu_dashdata2/ecu_invertertemp",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_InverterTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures1/inv_moduleatemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_ModuleATemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures1/inv_modulebtemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_ModuleBTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures1/inv_modulectemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_ModuleCTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#e48b32",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures1/inv_gatedrivertemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_GateDriverTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#3b875a",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures2/inv_controlboardtemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_ControlBoardTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#d993aa",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures3_torque/inv_coolanttemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_CoolantTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#858584",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/inv_temperatures3_torque/inv_hotspottemp",
+                  "logType": "Number",
+                  "dbcSignal": "INV_HotSpotTemp",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/rear_thermal/rear_radiatortempin",
+                  "logType": "Number",
+                  "dbcSignal": "REAR_RadiatorTempIn",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/rear_thermal/rear_radiatortempout",
+                  "logType": "Number",
+                  "dbcSignal": "REAR_RadiatorTempOut",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/pdu_status/pdu_fan1duty",
+                  "logType": "Number",
+                  "dbcSignal": "PDU_Fan1Duty",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can1/pdu_status/pdu_fan2duty",
+                  "logType": "Number",
+                  "dbcSignal": "PDU_Fan2Duty",
+                  "visible": true,
+                  "options": {
+                    "color": "#e48b32",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "discreteSources": [
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can1/pdu_status/pdu_pumpstate",
+                  "logType": "Number",
+                  "dbcSignal": "PDU_PumpState",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_coolanttemplimiting",
+                  "logType": "Number",
+                  "dbcSignal": "INV_CoolantTempLimiting",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b"
+                  }
+                },
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/inv_internalstates/inv_limithotspot",
+                  "logType": "Number",
+                  "dbcSignal": "INV_LimitHotSpot",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437"
+                  }
+                }
+              ],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": "celsius",
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": null,
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview7",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 1,
+            "title": "Pedals",
+            "controller": {
+              "leftSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/pedal_status/pedal_position1",
+                  "logType": "Number",
+                  "dbcSignal": "PEDAL_Position1",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/pedal_status/pedal_position2",
+                  "logType": "Number",
+                  "dbcSignal": "PEDAL_Position2",
+                  "visible": true,
+                  "options": {
+                    "color": "#e5b31b",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "rightSources": [
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/pedal_status/pedal_brakepressure1",
+                  "logType": "Number",
+                  "dbcSignal": "PEDAL_BrakePressure1",
+                  "visible": true,
+                  "options": {
+                    "color": "#af2437",
+                    "size": "normal"
+                  }
+                },
+                {
+                  "type": "stepped",
+                  "logKey": "/vehicles/mur27/can0/pedal_status/pedal_brakepressure2",
+                  "logType": "Number",
+                  "dbcSignal": "PEDAL_BrakePressure2",
+                  "visible": true,
+                  "options": {
+                    "color": "#80588e",
+                    "size": "normal"
+                  }
+                }
+              ],
+              "discreteSources": [
+                {
+                  "type": "stripes",
+                  "logKey": "/vehicles/mur27/can0/ecu_status/ecu_braketorquecut",
+                  "logType": "Number",
+                  "dbcSignal": "ECU_BrakeTorqueCut",
+                  "visible": true,
+                  "options": {
+                    "color": "#2b66a2"
+                  }
+                }
+              ],
+              "leftLockedRange": null,
+              "rightLockedRange": null,
+              "leftUnitConversion": {
+                "autoTarget": "percent",
+                "preset": null
+              },
+              "rightUnitConversion": {
+                "autoTarget": "psi",
+                "preset": null
+              },
+              "leftFilter": 0,
+              "rightFilter": 0,
+              "showRobotMode": false,
+              "lapMode": "time"
+            },
+            "controllerUUID": "defaultview8",
+            "renderer": null,
+            "controlsHeight": 260
+          },
+          {
+            "type": 17,
+            "title": "Car",
+            "controller": {
+              "sources": [
+                {
+                  "type": "steering",
+                  "logKey": "/vehicles/mur27/can1/dashboard_dynamics/dash_steeringangle",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_SteeringAngle",
+                  "visible": true,
+                  "options": {
+                    "invert": "normal"
+                  }
+                },
+                {
+                  "type": "speedFL",
+                  "logKey": "/vehicles/mur27/can1/dashboard_speed/dash_speedfl",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_SpeedFL",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "speedFR",
+                  "logKey": "/vehicles/mur27/can1/dashboard_speed/dash_speedfr",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_SpeedFR",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "yawRate",
+                  "logKey": "/vehicles/mur27/can1/sbg_front_gyro/sbg_front_gyroz",
+                  "logType": "Number",
+                  "dbcSignal": "SBG_FRONT_GyroZ",
+                  "visible": true,
+                  "options": {
+                    "invert": "normal"
+                  }
+                },
+                {
+                  "type": "accelX",
+                  "logKey": "/vehicles/mur27/can1/sbg_front_accel/sbg_front_accely",
+                  "logType": "Number",
+                  "dbcSignal": "SBG_FRONT_AccelY",
+                  "visible": true,
+                  "options": {
+                    "invert": "inverted"
+                  }
+                },
+                {
+                  "type": "accelY",
+                  "logKey": "/vehicles/mur27/can1/sbg_front_accel/sbg_front_accelx",
+                  "logType": "Number",
+                  "dbcSignal": "SBG_FRONT_AccelX",
+                  "visible": true,
+                  "options": {
+                    "invert": "normal"
+                  }
+                },
+                {
+                  "type": "shockFL",
+                  "logKey": "/vehicles/mur27/can1/dashboard_dynamics/dash_shockpotfrontleft",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_ShockPotFrontLeft",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "shockFR",
+                  "logKey": "/vehicles/mur27/can1/dashboard_dynamics/dash_shockpotfrontright",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_ShockPotFrontRight",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "shockRL",
+                  "logKey": "/vehicles/mur27/can0/rear_dynamics/rear_shockpotrearleft",
+                  "logType": "Number",
+                  "dbcSignal": "REAR_ShockPotRearLeft",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "shockRR",
+                  "logKey": "/vehicles/mur27/can0/rear_dynamics/rear_shockpotrearright",
+                  "logType": "Number",
+                  "dbcSignal": "REAR_ShockPotRearRight",
+                  "visible": true,
+                  "options": {}
+                }
+              ]
+            },
+            "controllerUUID": "defaultview9",
+            "renderer": null,
+            "controlsHeight": 260
+          }
+        ]
+      }
+    }
+  ],
+  "satellites": []
+}

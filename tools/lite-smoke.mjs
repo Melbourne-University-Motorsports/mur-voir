@@ -74,10 +74,11 @@ try {
   await hub.locator(".connect-confirm").click();
   await hub.locator(".connect-dialog-backdrop").waitFor({ state: "hidden" });
   const frame = page.frames().find((frame) => frame.url().endsWith("hub.html"));
-  // Check that the live connection imports values.
+  // Check that the live connection imports values. The default layout's ENNOID_CellVoltageMin tile
+  // re-points from its cellular path to the mock's field by DBC signal name and subscribes to it.
   await frame
     .waitForFunction(() => {
-      const key = window.log.getFieldKeys().find((key) => key.endsWith("/vehicle_speed"));
+      const key = window.log.getFieldKeys().find((key) => key.endsWith("/cell_voltage_min"));
       return key && window.log.getNumber(key, -Infinity, Infinity)?.values.some(Number.isFinite);
     })
     .catch(async (error) => {
@@ -100,6 +101,11 @@ try {
   await hub.locator(".side-bar-live-filter").selectOption("all");
   await hub.locator(".side-bar-search").fill("");
   await hub.locator(".side-bar-title", { hasText: /^\d+ fields/ }).waitFor();
+  // A browser with no saved layout opens with the bundled default layout.
+  const defaultTitles = ["", "Track day", "Faults", "States", "HV voltage", "Accu temp and current"];
+  const tabTitles = () => frame.evaluate(() => window.tabs.saveState().tabs.map((tab) => tab.title));
+  assert.deepEqual((await tabTitles()).slice(0, defaultTitles.length), defaultTitles);
+  assert.equal((await tabTitles()).length, 10);
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
@@ -109,7 +115,10 @@ try {
     await axisMode.selectOption(mode);
     assert.equal(await hub.locator(".timeline").isVisible(), false, `Line Graph uses its own timeline in ${mode} mode`);
   }
-  await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 13)));
+  await frame.evaluate(() => {
+    if (!window.tabs.tabList.some((tab) => tab.type === 13)) window.tabs.addTab(13);
+    window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 13));
+  });
   await hub.locator(".timeline").waitFor({ state: "visible" });
   await frame.evaluate(() => window.tabs.addTab(15));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
@@ -127,6 +136,27 @@ try {
   await (await layoutPicker).setFiles(layoutPath);
   await page.waitForTimeout(500);
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
+
+  // File > Default Layouts adds the layout's tabs after the open ones.
+  const beforeDefault = (await tabTitles()).length;
+  await hub.getByText("File", { exact: true }).click();
+  await page.getByText("Default Layouts", { exact: true }).click();
+  await page.getByText("Track Day", { exact: true }).click();
+  await frame.waitForFunction((count) => window.tabs.saveState().tabs.length === count + 9, beforeDefault);
+  assert.equal((await tabTitles())[beforeDefault], "Track day");
+
+  // ?layout=default in a fresh browser loads the layout once and leaves the URL.
+  const linkContext = await browser.newContext();
+  const linkPage = await linkContext.newPage();
+  linkPage.on("pageerror", (error) => errors.push(error.message));
+  await linkPage.goto(`http://127.0.0.1:${port}/?layout=default`);
+  await linkPage.frameLocator(".hub-frame").locator(".connect-source").waitFor({ state: "attached" });
+  const linkFrame = linkPage.frames().find((frame) => frame.url().endsWith("hub.html"));
+  await linkFrame.waitForFunction(() => window.tabs.saveState().tabs.some((tab) => tab.title === "Track day"));
+  await linkPage.waitForTimeout(500);
+  assert.equal(await linkFrame.evaluate(() => window.tabs.saveState().tabs.length), 10);
+  assert.equal(new URL(linkPage.url()).searchParams.has("layout"), false);
+  await linkContext.close();
 
   const picking = page.waitForEvent("filechooser");
   await hub.locator("body").press("Control+Shift+o");
@@ -212,7 +242,7 @@ try {
   await secureHub.locator(".connect-dialog-backdrop").waitFor({ state: "hidden" });
   const secureFrame = securePage.frames().find((frame) => frame.url().endsWith("hub.html"));
   await secureFrame.waitForFunction(() => {
-    const key = window.log.getFieldKeys().find((key) => key.endsWith("/vehicle_speed"));
+    const key = window.log.getFieldKeys().find((key) => key.endsWith("/cell_voltage_min"));
     return key && window.log.getNumber(key, -Infinity, Infinity)?.values.some(Number.isFinite);
   });
   const secureFetch = await secureFrame.evaluate(async () => {
@@ -224,7 +254,7 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, CSV picker."
   );
 } finally {
   await browser?.close();

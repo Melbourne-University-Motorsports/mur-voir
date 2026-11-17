@@ -97,6 +97,7 @@ BO_ 290 ECU_Status: 8 ECU
  SG_ ECU_TSActive : 56|1@1+ (1,0) [0|1] "" TELEMETRY,BENCH
  SG_ ECU_RTDButton : 57|1@1+ (1,0) [0|1] "" TELEMETRY,BENCH
  SG_ ECU_DashInputsStale : 58|1@1+ (1,0) [0|1] "" TELEMETRY,BENCH
+ SG_ ECU_BrakeTorqueCut : 59|1@1+ (1,0) [0|1] "" TELEMETRY,PEDALBOX,BENCH
 
 BO_ 291 ECU_PowerMapSet: 8 BENCH
  SG_ BENCH_PowerMapLSTorque : 0|16@1- (0.1,0) [-3276.8|3276.7] "Nm" ECU
@@ -199,6 +200,26 @@ BO_ 280 CHARGER_Status: 8 CHARGER
  SG_ CHG_MeasCurrent : 40|16@1+ (0.1,0) [0|6553.5] "A" Vector__XXX
  SG_ CHG_StatusCounter : 56|8@1+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1760 PARAM_Request: 8 Vector__XXX
+ SG_ PARAM_ReqIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1768 PARAM_Response: 8 Vector__XXX
+ SG_ PARAM_RspIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
 CM_ BU_ PEDALBOX "Pedalbox Sensor Node";
 CM_ BU_ TTCS "Tractive System / Thermal / Cooling Sensor Node (SDC, IMD, HV cell temps)";
 CM_ BU_ ECU "Engine/Electronic Control Unit - VCU role, arbitrates torque and cooling";
@@ -239,7 +260,8 @@ CM_ SG_ 274 TTCS_BattTempValid "1 = ENNOID pack/summary comms are fresh and a va
 CM_ BO_ 274 "MUR ADDITION (PROVISIONAL): computed pack current limits, the Orion BMS 2 DCL/CCL replacement. The ENNOID only produces voltage-proximity throttle percentages (no amps, no temperature derating, no internal-resistance model - verified against its modPowerElectronics.c), so the TTCS node computes amp-denominated limits from ENNOID cell-voltage extremes + an R-vs-temperature calibration table + temperature derate curves (firmware/lib/ttcs/ttcs_limits). The ECU MUST treat TTCS_DCL as a live torque/current cap (graceful derate path); the TTCS separately latches a fault and opens the SDC if actual current grossly exceeds the limit for a sustained window (enforcement path). 0 A is what an unconfigured/faulted TTCS broadcasts - consumers must treat 0 as 'no traction allowed', never as 'no limit'. Transmit rate 10 Hz.";
 CM_ BO_ 288 "ECU torque arbitration message, consumed internally by ECU/VCU logic before being translated into the Cascadia PM100DZ M192_Command_Message (vendor ID 0xC0) - these are NOT the same CAN message. Transmit rate capped at 100 Hz (Tractive CAN load; design brief said 200 Hz).";
 CM_ SG_ 288 ECU_TorqueRequest "Signed to allow negative (regen) torque requests per can_standard.md signedness rule.";
-CM_ SG_ 288 ECU_DriveMode "ASSUMPTION placeholder enum - exact drive mode set (Eco/Normal/Attack/etc.) TBD, see VAL_ table below.";
+CM_ SG_ 288 ECU_DriveMode "The driver-selected mode, the same value as Telemetry CAN ECU_DashData3.ECU_DashMode (1 Accel, 2 Skidpad, 3 AutoX, 4 Endurance, 5 Custom; see VAL_). Each mode has its own torque limit (Custom's set from the dash); after a change the new limit takes over once the driver is off the throttle. ECU_TorqueLimit shows the cap in force.";
+CM_ SG_ 288 ECU_TorqueLimit "The torque cap in force at speed: the lowest of the power map's HS value (ECU_PowerMapSet), the driver torque limit in force (Telemetry CAN ECU_DashData3.ECU_TorqueSet: the mode's limit) and the ECU's 160 Nm ceiling. 120.0 Nm at power-up. At low speed the power map's LS value applies in place of HS.";
 CM_ BO_ 289 "ECU cooling loop temps/pressures, inlet and outlet. Transmit rate 20 Hz (MEDIUM).";
 CM_ BO_ 290 "ECU bitfield faults + state machine + heartbeat. Transmit rate 10 Hz, EVENT-driven on change permitted in addition.";
 CM_ SG_ 288 ECU_ControlCounter "Rolling counter for the ECU_Control stream. Renamed from ECU_HeartbeatCounter: signal names must be unique across the bus because the telemetry pipeline keys ZMQ topics on signal name alone - two messages sharing a signal name silently merge into one topic.";
@@ -249,8 +271,9 @@ CM_ SG_ 290 ECU_FaultFlags "32-bit bitfield per design brief FaultFlags conventi
 CM_ SG_ 290 ECU_ECUState "ASSUMPTION placeholder state machine enum - TBD, see VAL_ table below. Standby -> ReadyToDrive requires ALL of: ECU_TSActive held for the full startup wait, average brake pressure (Pedal_Status PEDAL_BrakePressure1/2) above the ECU's RTD threshold, and a HELD press of the dash RTD button - a rising edge followed by 500 ms of continuous hold (Dashboard_Inputs DASH_ButtonStates bit 2, i.e. the dash's DIN[2], Telemetry CAN 0x201) - while that brake stays applied. Both halves are deliberate. The rising edge means a button already held - stuck, taped, or still down from a previous attempt - cannot start the car, and a drop back to Standby cannot re-arm itself without the driver releasing and pressing again. The 500 ms means a brush past the button or a knock in the cockpit is not a press; releasing early abandons the hold and does not accumulate. A stale (> 250 ms) or absent Dashboard_Inputs stream reads as not-pressed, cannot start or complete a hold, and never counts towards one. Watch ECU_RTDButton/ECU_DashInputsStale in this frame to see what the ECU makes of the button. Same in TEST and TRACK mode; on the bench ECU_RTDTest (CM_ BO_ 298) substitutes for both the brake and the button.";
 CM_ SG_ 290 ECU_RTDButton "MUR ADDITION (PROVISIONAL): 1 = the ECU currently sees the driver's ready-to-drive button pressed, i.e. a fresh Dashboard_Inputs (<= 250 ms, Telemetry CAN 0x201) with DASH_ButtonStates bit 2 set. This is the ECU's OWN view of the button, not the dash's claim about it, which is the point: the dashboard transmits on a different bus from this frame, so without this bit there is no way to tell a button that is not being pressed from a press that never reaches the ECU. Reads 0 whenever ECU_DashInputsStale is 1. It is the raw level - holding it for CTRL_RTD_HOLD_MS (500 ms) is what actually arms the car, so expect to see this sit at 1 for several frames before ECU_ECUState changes. Watch with tools/bench/can_watch.py rtd.";
 CM_ SG_ 290 ECU_DashInputsStale "MUR ADDITION (PROVISIONAL): 1 = no Dashboard_Inputs (0x201) within the last 250 ms, so the ECU has no button state and ECU_RTDButton reads 0 regardless of what the driver is doing. Distinguishes \"not pressed\" from \"not heard\", which is the first thing worth knowing when a press does nothing. Deliberately NOT a fault: a dead dashboard only means no NEW ready-to-drive request can be made, it never drops a car that is already driving, so this bit informs and gates nothing.";
+CM_ SG_ 290 ECU_BrakeTorqueCut "MUR ADDITION (PROVISIONAL): 1 = the ECU's brake override is forcing commanded torque to 0 this cycle: front + rear Pedal_Status brake pressure above CTRL_BRAKE_OVERRIDE_PSI_X10 while the car is in ReadyToDrive/Driving. Plain braking, not the throttle+brake TempBlock latch (though TempBlock also satisfies this check). Not a fault and gates nothing on its own; the pedalbox uses it to drive the BSE lamp on PC9. 0 during shutdown, inverter lock/not-ready and bench inverter-TX inhibit, where no torque is being commanded anyway.";
 CM_ SG_ 290 ECU_TrackMode "MUR ADDITION (PROVISIONAL): 0 = TEST mode (the boot default; bench overrides active, but NOT over the Ready-to-drive sequence - see CM_ BO_ 296), 1 = TRACK mode (every override off). See CM_ BO_ 296. The pedalbox follows this signal rather than ECU_TrackModeSet, so the ECU is the single source of truth for the car's mode.";
-CM_ BO_ 291 "MUR ADDITION (PROVISIONAL, bench-only): sets firmware/lib/ctrl's power-map calibration (Car.Tasks.InverterControlTask.Power Limit Map.Torq Map.m1scr) live, replacing main_compute/src/main.c's compiled-in gs_mc_power_map so bench spin-testing doesn't require a reflash per calibration change. Raw domains match ctrl_torque_map_cal_t exactly (0.1 Nm/count signed torque, whole-rpm transition points) - no rescaling on receipt. RAM-only: lost on power-cycle/reflash, defaults back to main_compute's bench default (LS 80 Nm / HS 80 Nm, can_mur.c) until BENCH sets it again. EVENT-sent by the bench tool on operator change, not cyclic.";
+CM_ BO_ 291 "MUR ADDITION (PROVISIONAL, bench-only): sets firmware/lib/ctrl's power-map calibration (Car.Tasks.InverterControlTask.Power Limit Map.Torq Map.m1scr) live, replacing main_compute/src/main.c's compiled-in gs_mc_power_map so bench spin-testing doesn't require a reflash per calibration change. Raw domains match ctrl_torque_map_cal_t exactly (0.1 Nm/count signed torque, whole-rpm transition points) - no rescaling on receipt. RAM-only: lost on power-cycle/reflash, defaults back to main_compute's boot map (flat at the 160 Nm ECU ceiling, can_mur.c) until BENCH sets it again. Since 2026-11-14 the driver torque limit (each mode's own, Custom's from the dash; ECU_DashData3.ECU_TorqueSet, 120 Nm at power-up) also caps torque, and the lower of the two wins, so this can lower torque but cannot raise it above the mode's limit or 160 Nm. EVENT-sent by the bench tool on operator change, not cyclic.";
 CM_ BO_ 292 "MUR ADDITION (PROVISIONAL, bench-only): see ECU_PowerMapSet - identical layout, sets the pit-limiter map (gs_mc_pit_map) instead.";
 CM_ BO_ 293 "MUR ADDITION (PROVISIONAL, bench-only): read-back broadcast of the power-map calibration main_compute is CURRENTLY using (gs_mc_power_map, after the latest ECU_PowerMapSet applied or the all-zero boot default) - lets the bench tool confirm a set actually landed instead of trusting the CAN send alone. Transmit rate matches ECU_Control/ECU_Cooling's best-effort thread cadence.";
 CM_ BO_ 294 "MUR ADDITION (PROVISIONAL, bench-only): see ECU_PowerMapStatus - identical layout, mirrors gs_mc_pit_map instead.";
@@ -334,7 +357,7 @@ BA_ "GenMsgSendType" BO_ 280 0;
 
 VAL_ 280 CHG_State 0 "Idle" 1 "Precheck" 2 "CC" 3 "CV" 4 "Done" 5 "Fault" ;
 VAL_ 272 TTCS_IMDState 0 "Normal" 1 "Undervoltage" 2 "Speed Start" 3 "Device Error" 4 "Earth Fault" 5 "Ground Fault Warning" 6 "SST Warning" 7 "SST Fault" 255 "Invalid/Init" ;
-VAL_ 288 ECU_DriveMode 0 "Off" 1 "Eco" 2 "Normal" 3 "Attack" 255 "Invalid/Init" ;
+VAL_ 288 ECU_DriveMode 0 "Off" 1 "Accel" 2 "Skidpad" 3 "AutoX" 4 "Endurance" 5 "Custom" 255 "Invalid/Init" ;
 VAL_ 290 ECU_ECUState 0 "Init" 1 "Standby" 2 "Ready To Drive" 3 "Driving" 4 "Fault" 5 "Shutdown" 255 "Invalid/Init" ;
 VAL_ 290 ECU_TrackMode 0 "Test" 1 "Track" ;
 VAL_ 321 TELEM_SystemState 0 "Nominal" 1 "Degraded" 2 "Safe State" 3 "Fault" ;
@@ -346,3 +369,8 @@ BA_ "GenMsgSendType" BO_ 576 0;
 CM_ SG_ 576 ECU_AccuTempMax "Canonical car accumulator maximum, converted by ECU using voltage recovery and Table 5. Prefer complete fresh sweeps; if no sweep frames are fresh, use a fresh mapped summary maximum (1 degC input resolution). Partial or invalid live sweeps prevent fallback. 0x7FFF is invalid. Identical ECU_DashData bytes reach TTCS on Control CAN and screen on Telemetry/Dash CAN.";
 
 CM_ SG_ 576 ECU_AccuTempMin "Corrected minimum from complete fresh sensor sweeps. 0x7FFF is invalid, including during summary-maximum fallback; summary supplies no minimum.";
+
+CM_ BO_ 1760 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage request endpoint for node 0, ID 0x6E0 + node. Classic-CAN ISO-TP: this frame is one 8-byte fragment (ISO-TP PCI byte + 7 data bytes), reassembled by the parameter service; telemetry must not treat the bytes as signals. Reserved block 0x6E0-0x6E7 requests, 0x6E8-0x6EF responses; canboot uses 0x7E0/0x7E8. ISO-TP flow control for a request arrives on 0x6E8 + node. Wire format, catalog and validation: generated/params/mur_params.h and mur_msgs.params. No parameter signal is finalized and no proto exists.";
+CM_ BO_ 1768 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage response endpoint for node 0, ID 0x6E8 + node. ISO-TP fragment of the shared 16-byte header plus at most 4096 payload bytes; see PARAM_Request and generated/params/mur_params.h. Never decoded as a signal.";
+BA_ "GenMsgSendType" BO_ 1760 2;
+BA_ "GenMsgSendType" BO_ 1768 2;

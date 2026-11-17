@@ -49,6 +49,7 @@ BO_ 512 Dashboard_Dynamics: 8 DASH
 BO_ 513 Dashboard_Inputs: 4 DASH
  SG_ DASH_ButtonStates : 0|16@1+ (1,0) [0|65535] "" TELEMETRY
  SG_ DASH_RotarySwitch : 16|8@1+ (1,0) [0|15] "" TELEMETRY
+ SG_ DASH_ScreenSw : 24|8@1+ (1,0) [0|255] "" TELEMETRY,ECU
 
 BO_ 514 Dashboard_Environment: 4 DASH
  SG_ DASH_WindSpeed : 0|16@1+ (0.1,0) [0|6553.5] "m/s" TELEMETRY
@@ -60,10 +61,18 @@ BO_ 515 Dashboard_WheelSpeed: 8 DASH
  SG_ DASH_WheelFreqFR : 44|12@1+ (1,0) [0|4095] "Hz" TELEMETRY
  SG_ DASH_WheelCounter : 56|8@1+ (1,0) [0|255] "" TELEMETRY
 
-BO_ 516 Dashboard_Speed: 6 DASH
+BO_ 516 Dashboard_Speed: 8 DASH
  SG_ DASH_SpeedFL : 0|16@1+ (0.1,0) [0|6553.4] "km/h" TELEMETRY
  SG_ DASH_SpeedFR : 16|16@1+ (0.1,0) [0|6553.4] "km/h" TELEMETRY
  SG_ DASH_SpeedRear : 32|16@1+ (0.1,0) [0|6553.4] "km/h" TELEMETRY
+ SG_ DASH_SpeedCar : 48|16@1+ (0.1,0) [0|6553.4] "km/h" TELEMETRY
+
+BO_ 518 Dashboard_Lap: 8 DASH
+ SG_ DASH_LastLap : 0|16@1+ (0.01,0) [0|655.34] "s" TELEMETRY
+ SG_ DASH_CurrentLap : 16|16@1+ (0.01,0) [0|655.34] "s" TELEMETRY
+ SG_ DASH_LapCount : 32|8@1+ (1,0) [0|255] "" TELEMETRY
+ SG_ DASH_LapMarker : 40|8@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ DASH_BestLap : 48|16@1+ (0.01,0) [0|655.34] "s" TELEMETRY
 
 BO_ 528 PDU_Status: 8 PDU
  SG_ PDU_PumpState : 0|1@1+ (1,0) [0|1] "" TELEMETRY,ECU
@@ -100,9 +109,10 @@ BO_ 560 Telemetry_System: 8 TELEMETRY
  SG_ TELEM_SystemDiskUsage : 16|8@1+ (1,0) [0|100] "%" DASH
  SG_ TELEM_PiTemperature : 24|16@1- (0.1,0) [-3276.8|3276.7] "degC" DASH
 
-BO_ 561 Telemetry_LVBattery: 4 TELEMETRY
+BO_ 561 Telemetry_LVBattery: 5 TELEMETRY
  SG_ TELEM_LVBatteryVoltage : 0|16@1+ (0.01,0) [0|655.35] "V" DASH,ECU
  SG_ TELEM_LVBatteryCurrent : 16|16@1- (0.1,0) [-3276.8|3276.7] "A" DASH,ECU
+ SG_ TELEM_LVBatterySOC : 32|8@1+ (1,0) [0|100] "%" DASH,ECU
 
 BO_ 576 ECU_DashData: 8 ECU
  SG_ ECU_MotorSpeed : 0|16@1+ (1,0) [0|10000] "rpm" DASH,TELEMETRY
@@ -117,6 +127,15 @@ BO_ 577 ECU_DashData2: 8 ECU
  SG_ ECU_MotorTemp : 40|8@1+ (1,-40) [-40|214] "degC" DASH,TELEMETRY
  SG_ ECU_InverterTemp : 48|8@1+ (1,-40) [-40|214] "degC" DASH,TELEMETRY
 
+BO_ 578 ECU_DashData3: 8 ECU
+ SG_ ECU_DCBusVolt : 0|16@1+ (0.1,0) [0|500] "V" DASH,TELEMETRY
+ SG_ ECU_DashMode : 16|8@1+ (1,0) [0|5] "" DASH,TELEMETRY
+ SG_ ECU_StartStage : 24|8@1+ (1,0) [0|4] "" DASH,TELEMETRY
+ SG_ ECU_TorqueSet : 32|8@1+ (1,0) [0|254] "Nm" DASH,TELEMETRY
+ SG_ ECU_TCEnabled : 40|8@1+ (1,0) [0|1] "" DASH,TELEMETRY
+ SG_ ECU_FanRequest : 48|8@1+ (1,0) [0|1] "" DASH,TELEMETRY
+ SG_ ECU_ABPCActive : 56|8@1+ (1,0) [0|1] "" DASH,TELEMETRY
+
 BO_ 128 MUR_Fault: 8 Vector__XXX
  SG_ FAULT_Node : 0|8@1+ (1,0) [0|255] "" TELEMETRY
  SG_ FAULT_Bitmask : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
@@ -128,6 +147,26 @@ BO_ 1794 MUR_HB_Dash: 8 DASH
  SG_ HB_DASH_RxErr : 40|8@1+ (1,0) [0|255] "" TELEMETRY
  SG_ HB_DASH_FaultBits : 48|16@1+ (1,0) [0|65535] "" TELEMETRY
 
+BO_ 1760 PARAM_Request: 8 Vector__XXX
+ SG_ PARAM_ReqIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_ReqIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1768 PARAM_Response: 8 Vector__XXX
+ SG_ PARAM_RspIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_RspIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
 CM_ BU_ DASH "Dashboard Sensor Node - steering, shock pots, driver buttons, front wheel speeds, wind speed";
 CM_ BU_ PDU "Power Distribution Unit - 4 switched high-side outputs (Pump, Fan1, Fan2, HighCurrent) each with current sense + hardware diagnostic feedback, per the PDM_M26 hardware bring-up. Design brief only defined PDU_Status (receive-only feedback, no command messages); PDU_Control and PDU_Diagnostics are MUR additions (see their CM_ comments).";
 CM_ BU_ SBG "2x SBG Ellipse-D GNSS/INS units (front + rear). CAN ID block 0x220-0x22F reserved for SBG traffic: front 0x220-0x227, rear 0x228-0x22F. Frames are defined in vendor/SBG_Ellipse.dbc (derived from SBG's official sbgCan.dbc, IDs remapped in sbgCenter), not here - load that file alongside this one.";
@@ -137,8 +176,9 @@ CM_ BO_ 336 "ECU rear shockpots, 100 Hz on Telemetry CAN. Same wire layout as th
 CM_ BO_ 512 "Dashboard steering/suspension + heartbeat. Transmit rate 100 Hz (FAST).";
 CM_ SG_ 512 DASH_SteeringAngle "Signed to allow left/right steering deflection.";
 CM_ BO_ 513 "Dashboard driver button states + rotary mode switch. Transmit rate 20 Hz.";
-CM_ SG_ 513 DASH_ButtonStates "Bit-per-button. Exact button map TBD - to be locked down with driver interface design per Telemetry_CAN.md notes.";
+CM_ SG_ 513 DASH_ButtonStates "Bit-per-button: bit i = the dashboard's din-gpios[i], debounced, 1 = pressed. Per the team's pinout (2026-11-14): bit 2 = ready-to-drive (DIN[2], PC0), bit 4 = torque down (DIN[4], PA3), bit 5 = torque up (DIN[5], PA4), bit 6 = fans on/off (DIN[6], PA5), bit 7 = drive mode (DIN[7], PA7). Bits 3 and 8 are the wheel-speed encoder DINs, always 0 here. main_compute's MC_DASH_BTN_* constants must match.";
 CM_ SG_ 513 DASH_RotarySwitch "Rotary switch position index (0-15). ASSUMPTION - confirm number of switch positions.";
+CM_ SG_ 513 DASH_ScreenSw "MUR ADDITION (PROVISIONAL): the screen's CAN switches as last received on Dash CAN (Screen_Switches there), relayed so the ECU can act on them: bits 0-6 = CAN switches 1-7 (bit n-1 = switch n): 1 = torque down, 2 = torque up, 3 = traction control, 4 = lap marker (the dashboard acts on 4 itself). Bit 7 = 1 while the screen is being heard (a Screen_Switches frame within the last 500 ms); while it is 0 the whole byte is 0 and means nothing. The screen's switches are toggles, so a CHANGE of bits 0-6 is one press, in either direction - but only between two samples with bit 7 set: the ECU takes the first sample after the screen (re)appears as its new baseline, since a rebooted screen comes back with its switches reset.";
 CM_ BO_ 514 "Dashboard wind speed sensor. Transmit rate 10 Hz (MEDIUM).";
 CM_ BO_ 515 "MUR ADDITION (PROVISIONAL): front wheel speeds from the two encoder DINs on the dashboard node (DIN[3] PC13 = FL, DIN[8] PC5 = FR), measured by EXTI edge timing (firmware/lib/dash/dash_wheel). Transmit rate 100 Hz (FAST).";
 CM_ SG_ 515 DASH_WheelSpeedFL "Wheel rpm = pulse frequency x 60 / pulses-per-rev. 0xFFFF (6553.5) = invalid: encoder pulses-per-rev not calibrated yet (TODO(calib)) - read DASH_WheelFreqFL instead. 0 after ~0.5 s with no pulse.";
@@ -150,7 +190,10 @@ CM_ BO_ 528 "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): super
 CM_ BO_ 530 "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): PDU per-channel hardware diagnostic pin state (fault while driven) and latched software overcurrent-trip flags, split out of PDU_Status since these change far less often. Also carries PDU_BatteryRefVoltage (PDM_M26's PA0 sense channel) for LV rail monitoring. Transmit rate 2 Hz (SLOW).";
 CM_ BO_ 529 "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): ECU-to-PDU command, added because PDU_Status (0x210) is receive-only feedback with no corresponding command message defined anywhere in this bus's design brief, yet the ECU/VCU role genuinely needs to drive pump/fan/high-current state (cooling-loop control tied to Car.Data.State and DrivingState in the ported control logic). Extended alongside PDU_Status's 2026 hardware-accurate redesign: PDU_CMD_Fan1Duty/PDU_CMD_Fan2Duty (0-100% PWM) replace the old single fan on/off bit, PDU_CMD_HighCurrentState added. ControlCounter kept at the end of the frame so a frozen command stream is detectable the same way other MUR-added messages already are (see MUR_HB_* / Rear_* counter convention) - PDM firmware fails all four channels to OFF/0% if this counter stops advancing. Transmit rate: on-change plus a slow cyclic backstop, TBD alongside the rest of this file's provisional messages.";
 CM_ BO_ 560 "Telemetry Pi system health (CPU/mem/disk/temp), broadcast for dashboard display. Transmit rate 5 Hz.";
-CM_ BO_ 561 "Telemetry Pi LV battery voltage/current monitoring. Transmit rate 2 Hz (SLOW).";
+CM_ BO_ 561 "Telemetry Pi: the LV battery with the lower state of charge. The Pi reads both Allion AL1220-BT batteries over Bluetooth (bms_telemetry) and sends this frame for whichever fresh battery reports the lower SoC; voltage and current are that same battery's. A battery is fresh if it reported in the last 10 s. With no fresh battery the frame is still sent, with every signal at its invalid value. No frame at all means the Pi or its bridge is down. Transmit rate 2 Hz (SLOW).";
+CM_ SG_ 561 TELEM_LVBatteryVoltage "LV battery terminal voltage, from the battery's own BMS. Raw 0xFFFF = invalid (no fresh battery). Battery reports mV: assumed from its readings, not yet checked against a meter.";
+CM_ SG_ 561 TELEM_LVBatteryCurrent "LV battery current, from the battery's own BMS; positive = discharging, negative = charging (the battery's own sign). Raw 0x7FFF = invalid (no fresh battery). Battery reports mA: assumed, not yet checked against a clamp meter.";
+CM_ SG_ 561 TELEM_LVBatterySOC "State of charge of the lower of the LV batteries, whole percent, rounded down from the battery BMS's 0.01 % value. Raw 0xFF = invalid (no fresh battery). Only as good as the battery's own SoC estimate.";
 CM_ BO_ 128 "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): latched fault broadcast, any MUR sensor node transmits on fault raise (EVENT). FAULT_Node identifies the sender (1=Pedalbox 2=Dashboard 3=Rear 4=TTCS). Same message exists on Control CAN for nodes homed there.";
 CM_ BO_ 576 "MUR ADDITION (PROVISIONAL): driver-display data from the ECU, which sits on both Tractive and Telemetry CAN and can see what the dashboard cannot. Transmit rate 10 Hz (the ECU's best-effort thread). 8 bytes from day one; byte 7 is still reserved: add new display signals there, byte-aligned and 8 or 16 bits wide so the MFD28's DSS import reads them cleanly, and never move, resize or rescale an existing one. The dashboard forwards this frame to Dash CAN byte-for-byte, so it must stay identical in mur_dashboard_can.dbc (scripts/validate.py checks); adding a signal then needs no dashboard firmware change.";
 CM_ SG_ 576 ECU_MotorSpeed "Motor speed magnitude in rpm, from the inverter's INV_MotorPosition on Tractive CAN, clipped to 0-10000 by the ECU; no direction. 0xFFFF = invalid: the ECU has not heard the inverter yet, or has lost it (comms timeout).";
@@ -160,13 +203,28 @@ CM_ SG_ 576 ECU_AccuSOC "MUR ADDITION (PROVISIONAL): accumulator state of charge
 CM_ BO_ 516 "MUR ADDITION (PROVISIONAL): wheel speeds in km/h for the driver's screen, computed on the dashboard node (firmware/lib/dash/dash_speed) and sent with identical bytes on Telemetry and Dash CAN (scripts/validate.py FORWARDED keeps the two definitions the same). Transmit rate 20 Hz. Same equations as mur-embedded's tools/bench/mur_can.py: 0.0766 km/h per wheel rpm (a 16 in tyre, assumed from the factor, not measured on the car).";
 CM_ SG_ 516 DASH_SpeedFL "Front left wheel km/h = DASH_WheelSpeedFL x 0.0766. 0xFFFF (6553.5) = invalid whenever DASH_WheelSpeedFL is.";
 CM_ SG_ 516 DASH_SpeedFR "Front right wheel km/h; see DASH_SpeedFL.";
-CM_ SG_ 516 DASH_SpeedRear "Rear wheel km/h from motor speed, there being no rear wheel sensor: ECU_MotorSpeed / (39/9, the 9:39 chain drive) x 0.0766. The diff makes it the average of the two rear wheels, so it reads a little off from either one in a corner. 0xFFFF (6553.5) = invalid: ECU_MotorSpeed is invalid, or the dashboard has had no ECU_DashData for 500 ms.";
+CM_ BO_ 518 "MUR ADDITION (PROVISIONAL): lap timing for the driver's screen, computed on the dashboard node (firmware/lib/dash/dash_lap) from the front SBG Ellipse-D's EKF position, and sent with identical bytes on Telemetry and Dash CAN (scripts/validate.py FORWARDED). Transmit rate 10 Hz. Bytes 6-7 carry the best lap. The driver sets the start/finish marker with the screen's lap-marker CAN switch (Screen_Switches, Dash CAN): the car's position at that moment becomes the marker and the lap clock starts. A lap ends at the car's closest approach to the marker on a pass within 10 m of it, at least 10 s after the lap started, and only after the car has left that 10 m circle since. Position arrives at 10 Hz, so a lap time is good to about +/-0.1 s. Bench-unverified. The marker lives in RAM: a dashboard reset clears it.";
+CM_ SG_ 518 DASH_LastLap "Time of the last completed lap. 0xFFFF (655.35) = none yet: no marker set, or no lap completed since it was. A lap longer than 655.34 s reads 655.34.";
+CM_ SG_ 518 DASH_CurrentLap "Time since the current lap started. 0xFFFF (655.35) = no marker set. Saturates at 655.34.";
+CM_ SG_ 518 DASH_LapCount "Laps completed since the marker was last set; wraps at 255.";
+CM_ SG_ 518 DASH_BestLap "Fastest lap completed since the marker was last set. 0xFFFF (655.35) = none yet.";
+CM_ SG_ 518 DASH_LapMarker "1 = a start/finish marker is set. Stays 0 after a press of the lap-marker switch if the front SBG had no valid position (SBG_FRONT_PositionValid) at that moment: press it again once it has.";
+CM_ SG_ 516 DASH_SpeedRear "Rear wheel km/h from motor speed, there being no rear wheel sensor: ECU_MotorSpeed / 4.777 (the final drive ratio as given by the team 2026-11-01) x 0.0766. The diff makes it the average of the two rear wheels, so it reads a little off from either one in a corner. 0xFFFF (6553.5) = invalid: ECU_MotorSpeed is invalid, or the dashboard has had no ECU_DashData for 500 ms.";
+CM_ SG_ 516 DASH_SpeedCar "MUR ADDITION (PROVISIONAL): one car speed for the screen's speed readouts (the lap-timing and autocross pages): the mean of DASH_SpeedFL and DASH_SpeedFR, or whichever one is valid. The fronts are undriven, so wheelspin does not inflate it, unlike DASH_SpeedRear. 0xFFFF (6553.5) = invalid: neither front speed is valid.";
 CM_ BO_ 577 "MUR ADDITION (PROVISIONAL): more driver-display data from the ECU, ECU_DashData being full: brake pressures and throttle from the pedalbox's Pedal_Status, motor and inverter temperatures from the inverter, all on Tractive CAN. Transmit rate 10 Hz (the ECU's best-effort thread). The dashboard forwards it to Dash CAN byte-for-byte, so it must stay identical in mur_dashboard_can.dbc (scripts/validate.py FORWARDED). Byte 7 reserved: add display signals there, byte-aligned and 8 or 16 bits wide, never moving, resizing or rescaling an existing one.";
 CM_ SG_ 577 ECU_BrakePressFront "PEDAL_BrakePressure1 (front circuit) as the ECU last received it. 0xFFFF (6553.5) = invalid: the ECU has not heard Pedal_Status yet, or it has timed out or frozen (the ECU's pedal comm_err).";
 CM_ SG_ 577 ECU_BrakePressRear "PEDAL_BrakePressure2 (rear circuit); see ECU_BrakePressFront.";
 CM_ SG_ 577 ECU_ThrottlePos "Accelerator pedal: the mean of PEDAL_Position1 and PEDAL_Position2, rounded to whole %. Shown even when the two disagree; APPS plausibility is the ECU's fault logic, not the screen's. 0xFF = invalid, as for ECU_BrakePressFront.";
 CM_ SG_ 577 ECU_MotorTemp "Motor temperature, whole degC, from the inverter's INV_MotorRawTemp (its motor temperature input). Offset -40: raw 0 = -40 degC, clamped to -40..214. 0xFF (215) = invalid: the ECU has not heard the inverter, has lost it (comms timeout), or the inverter reports its 1381 sensor-fault value.";
 CM_ SG_ 577 ECU_InverterTemp "Inverter temperature: the hottest of its three IGBT module temperatures (INV_ModuleA/B/CTemp), whole degC, offset -40, clamped to -40..214. 0xFF (215) = invalid: the ECU has not heard the inverter, or has lost it.";
+CM_ BO_ 578 "MUR ADDITION (PROVISIONAL): the driver-interface state the ECU owns, for the screen: drive mode, the torque setting, traction control and fan requests, the startup stage and the APPS/brake plausibility (ABPC) state, plus the inverter's DC bus voltage for the precharge bar. Transmit rate 10 Hz (the ECU's best-effort thread). The dashboard forwards it to Dash CAN byte-for-byte, so it must stay identical in mur_dashboard_can.dbc (scripts/validate.py FORWARDED); every signal is byte-aligned and 8 or 16 bits wide for the MFD28. The mode selects a torque limit and that limit is applied (see ECU_TorqueSet). TC and the fan request are still DISPLAY ONLY: there is no traction control, and PDU_Control is unchanged.";
+CM_ SG_ 578 ECU_DCBusVolt "Inverter DC bus voltage (INV_DCBusVoltage), as the ECU last received it on Tractive CAN. 0xFFFF (6553.5) = invalid: the ECU has not heard the inverter yet, or has lost it (comms timeout).";
+CM_ SG_ 578 ECU_DashMode "Driver-selected mode, 1-5 (see VAL_). Cycled 1-2-3-4-5-1 by the dash mode button (Dashboard_Inputs DASH_ButtonStates bit 7); boots in Endurance. The ABPC page is not a mode: see ECU_ABPCActive. Selects the torque limit: each preset its own, Custom the driver's (see ECU_TorqueSet, including the wait for the throttle to lift after a change).";
+CM_ SG_ 578 ECU_StartStage "Where the driver is in the ready-to-drive sequence (see VAL_). 0 = not available: tractive system off, or the car in Init/Fault/Shutdown. 1 = wait: tractive system on, the inverter fault-clear and 5 s startup wait still running. 2 = press the brake: Standby, the wait over, brake below the ready threshold. 3 = press the start button: as 2 with the brake above it. 4 = ready to drive (ReadyToDrive or Driving).";
+CM_ SG_ 578 ECU_TorqueSet "The driver torque limit IN FORCE, whole Nm, APPLIED by the ECU (2026-11-14): commanded torque is capped at the lowest of this, the ECU power map (ECU_PowerMapSet) and the ECU's 160 Nm ceiling, with the pedal scaled to that cap so full pedal reaches it. Each preset mode has its own limit set in firmware: Accel 140, Skidpad 80, AutoX 120, Endurance 120 Nm (team values, 2026-11-14). In Custom the torque-down/up buttons - the screen's CAN switches 1 and 2, or the physical dash buttons (DASH_ButtonStates bits 4 and 5) - step it by 5 Nm within 10-160 Nm, taking effect at once; they do nothing in the presets, and Custom keeps its value while another mode is selected. After a MODE CHANGE the old mode's limit stays in force until the driver is off the throttle (deadzone, pedal stream lost, or not ReadyToDrive/Driving), so this shows the new mode's limit only once it has taken over. 120 Nm at power-up (Endurance). RAM only. If the dash goes quiet the ECU keeps the last selection.";
+CM_ SG_ 578 ECU_TCEnabled "1 = traction control switched on by the driver (screen CAN switch 3, toggles on each change). Boots 0. There is no traction control in the firmware yet: this is the setting only.";
+CM_ SG_ 578 ECU_FanRequest "1 = the driver interface wants the cooling fans running: always 1 while ECU_TSActive, otherwise the dash fan button's toggle (DASH_ButtonStates bit 6; boots 0). NOT SENT TO THE PDM yet - PDU_Control still requests Fan2 in every state (switching Fan2 off would also stop the pump and HighCurrent, see docs/PDM-Docs.md). PDU_Status shows the fans' actual state.";
+CM_ SG_ 578 ECU_ABPCActive "1 = the APPS/brake pedal plausibility check is cutting torque: the ECU's TempBlock latch (brake above the ready threshold with more than 25 % throttle, held until throttle drops below 5 %) while ReadyToDrive or Driving. The dashboard flashes the screen's ABPC page (Dashboard_Display DASH_DispState = 9) while this is 1.";
 CM_ BO_ 1794 "MUR ADDITION (PROVISIONAL): 1 Hz dashboard node heartbeat, ID 0x700 + node id (Dashboard = 2). Uptime, CAN error counters, low 16 bits of latched fault mask. Signals node-prefixed for bus-wide uniqueness.";
 
 BA_DEF_ BO_ "GenMsgCycleTime" INT 0 100000;
@@ -190,6 +248,8 @@ BA_ "GenMsgCycleTime" BO_ 128 0;
 BA_ "GenMsgCycleTime" BO_ 576 100;
 BA_ "GenMsgCycleTime" BO_ 516 50;
 BA_ "GenMsgCycleTime" BO_ 577 100;
+BA_ "GenMsgCycleTime" BO_ 578 100;
+BA_ "GenMsgCycleTime" BO_ 518 100;
 BA_ "GenMsgCycleTime" BO_ 1794 1000;
 BA_ "GenMsgSendType" BO_ 336 0;
 BA_ "GenMsgSendType" BO_ 512 0;
@@ -205,4 +265,14 @@ BA_ "GenMsgSendType" BO_ 128 2;
 BA_ "GenMsgSendType" BO_ 576 0;
 BA_ "GenMsgSendType" BO_ 516 0;
 BA_ "GenMsgSendType" BO_ 577 0;
+BA_ "GenMsgSendType" BO_ 578 0;
+BA_ "GenMsgSendType" BO_ 518 0;
 BA_ "GenMsgSendType" BO_ 1794 0;
+
+VAL_ 578 ECU_DashMode 1 "Accel" 2 "Skidpad" 3 "AutoX" 4 "Endurance" 5 "Custom" ;
+VAL_ 578 ECU_StartStage 0 "NotAvailable" 1 "Wait" 2 "PressBrake" 3 "PressStart" 4 "ReadyToDrive" ;
+
+CM_ BO_ 1760 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage request endpoint for node 0, ID 0x6E0 + node. Classic-CAN ISO-TP: this frame is one 8-byte fragment (ISO-TP PCI byte + 7 data bytes), reassembled by the parameter service; telemetry must not treat the bytes as signals. Reserved block 0x6E0-0x6E7 requests, 0x6E8-0x6EF responses; canboot uses 0x7E0/0x7E8. ISO-TP flow control for a request arrives on 0x6E8 + node. Wire format, catalog and validation: generated/params/mur_params.h and mur_msgs.params. No parameter signal is finalized and no proto exists.";
+CM_ BO_ 1768 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage response endpoint for node 0, ID 0x6E8 + node. ISO-TP fragment of the shared 16-byte header plus at most 4096 payload bytes; see PARAM_Request and generated/params/mur_params.h. Never decoded as a signal.";
+BA_ "GenMsgSendType" BO_ 1760 2;
+BA_ "GenMsgSendType" BO_ 1768 2;

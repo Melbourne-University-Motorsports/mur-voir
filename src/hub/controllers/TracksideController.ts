@@ -7,7 +7,7 @@
 
 import { GraphColors } from "../../shared/Colors";
 import { SourceListState } from "../../shared/SourceListConfig";
-import { dbcDefinition, isTracksideLive, Limits, limitUnit, tileState } from "../../shared/Trackside";
+import { dbcDefinition, isTracksideLive, Limits, limitUnit, tileLabel, tileState } from "../../shared/Trackside";
 import { TracksideRendererCommand } from "../../shared/renderers/TracksideRenderer";
 import { createUUID } from "../../shared/util";
 import SourceList from "../SourceList";
@@ -74,10 +74,18 @@ export default class TracksideController implements TabController {
       unit: limitUnit(window.log.getChannelProfile(key)),
       limits: this.limits[key] ?? {}
     });
+    // Limits follow a tile when the DBC fallback moves it, e.g. from a cellular path to an MF4 key.
+    this.sourceList.onFieldRemapped = (from, to) => this.moveLimits(from, to);
   }
   dispose() {
     this.sourceList.stop();
     this.graphController.dispose();
+  }
+  /** Moves a tile's limits to its new key, unless that key already has its own. */
+  moveLimits(from: string, to: string) {
+    if (!(from in this.limits) || to in this.limits) return;
+    this.limits[to] = this.limits[from];
+    delete this.limits[from];
   }
   reorderTiles(from: number, to: number) {
     this.sourceList.setState(reorderTiles(this.sourceList.getState(), from, to));
@@ -87,9 +95,10 @@ export default class TracksideController implements TabController {
   }
   restoreState(state: unknown) {
     if (typeof state !== "object" || state === null) return;
-    if ("sources" in state) this.sourceList.setState(state.sources as SourceListState);
+    // Limits first: setting the sources can re-point tiles, which moves their limits.
     if ("limits" in state && typeof state.limits === "object" && state.limits !== null)
-      this.limits = state.limits as typeof this.limits;
+      this.limits = { ...(state.limits as typeof this.limits) };
+    if ("sources" in state) this.sourceList.setState(state.sources as SourceListState);
   }
   refresh() {
     this.sourceList.refresh();
@@ -141,7 +150,8 @@ export default class TracksideController implements TabController {
                   freshness: window.liveStatus!.getFieldFreshness(source.logKey),
                   age: window.liveStatus!.getFieldAge(source.logKey)
                 }
-              : undefined
+              : undefined,
+            tileLabel(window.log.getMetadataString(source.logKey), source.logKey, source.dbcSignal)
           );
         })
     };
