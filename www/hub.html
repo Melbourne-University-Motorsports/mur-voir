@@ -73,14 +73,17 @@
 
     <div class="loading-glow"></div>
 
-    <div class="search-results" hidden></div>
-
     <div class="side-bar">
       <div class="side-bar-title">Open a log or connect to view data</div>
 
       <div class="side-bar-search-container">
         <input class="side-bar-search" type="search" placeholder="Search" title="Search fields" />
         <img class="side-bar-search-icon" src="symbols/search.svg" />
+        <select class="side-bar-live-filter mv-select" title="Filter fields by live state">
+          <option value="all">All</option>
+          <option value="live">Live</option>
+          <option value="not-live">Not live</option>
+        </select>
         <button class="side-bar-tuning-button" title="Toggle tuning mode" hidden>
           <img src="symbols/tune.svg" />
         </button>

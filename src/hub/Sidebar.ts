@@ -8,9 +8,10 @@
 import { IS_LITE } from "../shared/buildConstants";
 import { formatChannelValue, rawChannelValue } from "../shared/display/ChannelProfile";
 import { SidebarState } from "../shared/HubState";
+import { FieldFilter, FieldFilterResult, filterFieldTree, isFilterActive, LiveFilter } from "../shared/log/FieldFilter";
 import LogFieldTree from "../shared/log/LogFieldTree";
 import LoggableType from "../shared/log/LoggableType";
-import { getOrDefault, searchFields, TYPE_KEY } from "../shared/log/LogUtil";
+import { getOrDefault, TYPE_KEY } from "../shared/log/LogUtil";
 import { RenderGuard } from "../shared/RenderGuard";
 import { SelectionMode } from "../shared/Selection";
 import { arraysEqual, htmlEncode, setsEqual } from "../shared/util";
@@ -25,12 +26,11 @@ export default class Sidebar {
   private SIDEBAR_SHADOW = document.getElementsByClassName("side-bar-shadow")[0] as HTMLElement;
   private SIDEBAR_TITLE = document.getElementsByClassName("side-bar-title")[0] as HTMLElement;
   private SEARCH_INPUT = document.getElementsByClassName("side-bar-search")[0] as HTMLInputElement;
+  private LIVE_FILTER = document.getElementsByClassName("side-bar-live-filter")[0] as HTMLSelectElement;
   private TUNING_BUTTON = document.getElementsByClassName("side-bar-tuning-button")[0] as HTMLButtonElement;
   private FIELD_LIST = document.getElementById("fieldList") as HTMLElement;
   private ICON_TEMPLATES = document.getElementById("fieldItemIconTemplates") as HTMLElement;
   private DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
-
-  private SEARCH_RESULTS = document.getElementsByClassName("search-results")[0] as HTMLElement;
 
   private MERGED_KEY = "Log";
   private KNOWN_KEYS = [
@@ -58,6 +58,7 @@ export default class Sidebar {
   private INDENT_SIZE_PX = 20;
   private FIELD_DRAG_THRESHOLD_PX = 3;
   private VALUE_WIDTH_MARGIN_PX = 12;
+  private LIVE_FILTER_PERIOD_MS = 1000;
 
   private getFilenames: () => string[];
   private sidebarWidth = this.DEFAULT_SIDEBAR_WIDTH;
@@ -73,10 +74,17 @@ export default class Sidebar {
   private updateValueCallbacks: ((time: number | null) => void)[] = [];
   private selectGroup: string[] = [];
   private selectGroupClearCallbacks: (() => void)[] = [];
-  private searchKey: string | null = null;
-  private searchExpandCallbacks: (() => void)[] = [];
-  private searchHoveredIndex: number | null = null;
-  private searchResults: string[] = [];
+  private revealKey: string | null = null;
+  private revealCallbacks: (() => void)[] = [];
+  private fieldMouseMove: ((event: MouseEvent) => void) | null = null;
+
+  // Field filter, per window and never saved in layouts
+  private filter: FieldFilter = { query: "", live: "all" };
+  private filterResult: FieldFilterResult | null = null;
+  private filterExpanded = new Map<string, boolean>(); // Folders opened or closed by hand while filtering
+  private filterCursorKey: string | null = null;
+  private unfilteredScroll = 0;
+  private aliasCache = new Map<string, { metadata: string; aliases: string[] }>();
   private setTuningModeActiveCallbacks: ((active: boolean) => void)[] = [];
   private tuningModePublishCallbacks: (() => void)[] = [];
   private tuningValueCache: { [key: string]: string } = {};
@@ -148,61 +156,32 @@ export default class Sidebar {
       });
     });
 
-    // Search controls
-    let searchInputFocused = false;
-    this.SEARCH_INPUT.addEventListener("focus", () => (searchInputFocused = true));
-    this.SEARCH_INPUT.addEventListener("blur", () => (searchInputFocused = false));
+    // Field filter controls
     this.SEARCH_INPUT.addEventListener("input", () => {
-      this.updateSearchResults();
+      this.filter.query = this.SEARCH_INPUT.value;
+      this.applyFilter();
     });
-    this.SIDEBAR.addEventListener("scroll", () => {
-      if (this.SIDEBAR.scrollTop > 50 && searchInputFocused) {
-        this.SEARCH_INPUT.blur();
-      }
-    });
-    let lastInputRectBottom: number | null = null;
-    let lastInputRectWidth: number | null = null;
-    let searchPeriodic = () => {
-      let inputRect = this.SEARCH_INPUT.getBoundingClientRect();
-      if (inputRect.bottom !== lastInputRectBottom) {
-        lastInputRectBottom = inputRect.bottom;
-        this.SEARCH_RESULTS.style.top = inputRect.bottom.toString() + "px";
-      }
-      if (inputRect.width !== lastInputRectWidth) {
-        lastInputRectWidth = inputRect.width;
-        this.SEARCH_RESULTS.style.minWidth = inputRect.width.toString() + "px";
-      }
-      let hidden =
-        !searchInputFocused || this.SEARCH_INPUT.value.length === 0 || this.SEARCH_RESULTS.childElementCount === 0;
-      if (hidden !== this.SEARCH_RESULTS.hidden) {
-        if (hidden && !this.SEARCH_RESULTS.hidden) {
-          this.SEARCH_RESULTS.scrollTop = 0;
-          this.searchHoveredIndex = null;
-          this.updateSearchHovered(false);
-        }
-        this.SEARCH_RESULTS.hidden = hidden;
-      }
-    };
     this.SEARCH_INPUT.addEventListener("keydown", (event) => {
-      const resultsCount = this.SEARCH_RESULTS.children.length;
-      if (event.code === "ArrowDown") {
-        if (this.searchHoveredIndex === null || this.searchHoveredIndex >= resultsCount) {
-          this.searchHoveredIndex = 0;
-        } else if (this.searchHoveredIndex < resultsCount - 1) {
-          this.searchHoveredIndex++;
-        }
-        this.updateSearchHovered(true);
-      } else if (event.code === "ArrowUp") {
-        if (this.searchHoveredIndex === null || this.searchHoveredIndex >= resultsCount) {
-          this.searchHoveredIndex = 0;
-        } else if (this.searchHoveredIndex > 0) {
-          this.searchHoveredIndex--;
-        }
-        this.updateSearchHovered(true);
+      if (event.code === "ArrowDown" || event.code === "ArrowUp") {
+        event.preventDefault();
+        this.moveFilterCursor(event.code === "ArrowDown" ? 1 : -1);
       } else if (event.code === "Enter") {
-        this.runSearch();
+        this.revealFilterCursor();
+      } else if (event.code === "Escape" && this.SEARCH_INPUT.value.length > 0) {
+        event.preventDefault();
+        this.SEARCH_INPUT.value = "";
+        this.filter.query = "";
+        this.applyFilter();
       }
     });
+    this.LIVE_FILTER.addEventListener("change", () => {
+      this.filter.live = this.LIVE_FILTER.value as LiveFilter;
+      this.applyFilter();
+    });
+
+    // Dragging fields (one listener for every field, since the tree is rebuilt as the filter changes)
+    window.addEventListener("mousemove", (event) => this.fieldMouseMove?.(event));
+    window.addEventListener("mouseup", () => (this.fieldMouseMove = null));
 
     // Tuning button
     this.TUNING_BUTTON.addEventListener("click", () => {
@@ -226,7 +205,7 @@ export default class Sidebar {
     let periodic = () => {
       window.requestAnimationFrame(periodic);
       guard.run(() => {
-        searchPeriodic();
+        this.updateLiveFilterControl();
         this.updateTitle();
         this.updateValues();
         this.updateTuningButton();
@@ -236,6 +215,9 @@ export default class Sidebar {
     setInterval(() => {
       this.tuningModePublishCallbacks.forEach((callback) => callback());
     }, 250);
+    // Fields go live or stale continuously; follow them at most once per period, never per sample
+    const liveFilterGuard = new RenderGuard();
+    setInterval(() => liveFilterGuard.run(() => this.updateLiveFilter()), this.LIVE_FILTER_PERIOD_MS);
   }
 
   /** Returns the current state. */
@@ -267,65 +249,108 @@ export default class Sidebar {
     this.updateWidth();
   }
 
-  /** Updates the hovering effect on the search results. */
-  private updateSearchHovered(scroll: boolean) {
-    Array.from(this.SEARCH_RESULTS.children).forEach((element, index) => {
-      if (index === this.searchHoveredIndex) {
-        element.classList.add("hovered");
-        if (scroll) {
-          element.scrollIntoView({ block: "nearest" });
-        }
-      } else {
-        element.classList.remove("hovered");
+  /** The filter applied to the tree. Live state only filters while a live source reports it. */
+  private getEffectiveFilter(): FieldFilter {
+    return { query: this.filter.query, live: window.liveStatus ? this.filter.live : "all" };
+  }
+
+  /** Filters the field tree, or returns null when no filter is active. */
+  private computeFilter(tree: { [id: string]: LogFieldTree }): FieldFilterResult | null {
+    const filter = this.getEffectiveFilter();
+    if (!isFilterActive(filter)) return null;
+    return filterFieldTree(tree, filter, {
+      freshness: (key) => window.liveStatus?.getFieldFreshness(key) ?? null,
+      aliases: (key) => this.getAliases(key),
+      isGenerated: (key) => window.log.isGenerated(key),
+      hiddenKeys: this.HIDDEN_KEYS
+    });
+  }
+
+  /** Display label and DBC signal name from a field's metadata. */
+  private getAliases(key: string): string[] {
+    const metadata = window.log.getMetadataString(key);
+    const cached = this.aliasCache.get(key);
+    if (cached && cached.metadata === metadata) return cached.aliases;
+    let aliases: string[] = [];
+    if (metadata.length > 0) {
+      try {
+        const parsed = JSON.parse(metadata);
+        aliases = [parsed?.label, parsed?.dbcSignal].filter((x) => typeof x === "string" && x.length > 0);
+      } catch {
+        // Not every field has JSON metadata
       }
-    });
-  }
-
-  /** Updates the set of results based on the current query. */
-  private updateSearchResults() {
-    let query = this.SEARCH_INPUT.value;
-    this.searchResults = query.length === 0 ? [] : searchFields(window.log, query);
-    this.searchResults = this.searchResults.filter((field) => {
-      let show = true;
-      this.HIDDEN_KEYS.forEach((hiddenKey) => {
-        if (field.startsWith("/" + hiddenKey)) show = false;
-        if (field.startsWith("NT:/" + hiddenKey)) show = false;
-        if (field.startsWith("NT:/AdvantageKit/" + hiddenKey)) show = false;
-        if (field.startsWith("DS:/" + hiddenKey)) show = false;
-        if (field.includes("/" + hiddenKey + "/")) show = false;
-        if (field.endsWith("/" + hiddenKey)) show = false;
-      });
-      return show;
-    });
-    while (this.SEARCH_RESULTS.firstChild) {
-      this.SEARCH_RESULTS.removeChild(this.SEARCH_RESULTS.firstChild);
     }
-    this.searchResults.forEach((field, index) => {
-      let div = document.createElement("div");
-      this.SEARCH_RESULTS.appendChild(div);
-      div.classList.add("search-results-item");
-      div.innerText = field;
-      div.addEventListener("mousedown", () => {
-        this.searchHoveredIndex = index;
-        this.runSearch();
-      });
-      div.addEventListener("touchdown", () => {
-        this.searchHoveredIndex = index;
-        this.runSearch();
-      });
-      div.addEventListener("mousemove", () => {
-        this.searchHoveredIndex = index;
-        this.updateSearchHovered(false);
-      });
-    });
+    this.aliasCache.set(key, { metadata: metadata, aliases: aliases });
+    return aliases;
   }
 
-  /** Close the search and highlight the selected field. */
-  private runSearch() {
-    if (this.searchHoveredIndex === null || this.searchHoveredIndex >= this.searchResults.length) return;
-    this.searchKey = this.searchResults[this.searchHoveredIndex];
-    this.searchExpandCallbacks.forEach((callback) => callback());
-    this.searchKey = null;
+  /** Rebuilds the tree after the user changes the filter. */
+  private applyFilter() {
+    const wasActive = this.filterResult !== null;
+    const active = isFilterActive(this.getEffectiveFilter());
+    if (!wasActive && active) this.unfilteredScroll = this.SIDEBAR.scrollTop;
+    this.filterExpanded.clear();
+    this.filterCursorKey = null;
+    this.refresh(true);
+    if (active) {
+      this.SIDEBAR.scrollTop = 0;
+    } else if (wasActive) {
+      this.SIDEBAR.scrollTop = this.unfilteredScroll;
+    }
+  }
+
+  /** Re-filters by live state, rebuilding only when the visible tree changes. */
+  private updateLiveFilter() {
+    if (this.filterResult === null || this.getEffectiveFilter().live === "all") return;
+    const result = this.computeFilter(this.getDisplayTree());
+    if (result === null || result.signature !== this.filterResult.signature) this.refresh(true);
+  }
+
+  /** Enables the live state filter only while a live source reports field freshness. */
+  private updateLiveFilterControl() {
+    const available = window.liveStatus !== null;
+    if (this.LIVE_FILTER.disabled === !available) return;
+    this.LIVE_FILTER.disabled = !available;
+    this.LIVE_FILTER.title = available
+      ? "Filter fields by live state"
+      : "Connect to a live source to filter fields by live state";
+    if (!available && this.filter.live !== "all") {
+      this.filter.live = "all";
+      this.LIVE_FILTER.value = "all";
+      this.applyFilter();
+    }
+  }
+
+  /** Moves the keyboard selection through the matching fields. */
+  private moveFilterCursor(step: number) {
+    if (this.filterResult === null) return;
+    const matches = Array.from(
+      this.FIELD_LIST.querySelectorAll<HTMLElement>("div.field-item-container.filter-match")
+    ).filter((element) => element.offsetParent !== null);
+    if (matches.length === 0) return;
+    let index = matches.findIndex((element) => element.dataset.key === this.filterCursorKey);
+    index =
+      index === -1 ? (step > 0 ? 0 : matches.length - 1) : Math.min(Math.max(index + step, 0), matches.length - 1);
+    this.filterCursorKey = matches[index].dataset.key!;
+    matches.forEach((element, i) => element.classList.toggle("filter-cursor", i === index));
+    matches[index].scrollIntoView({ block: "nearest" });
+  }
+
+  /** Clears the text filter and shows the selected (or first) matching field in the tree. */
+  private revealFilterCursor() {
+    if (this.filterResult === null) return;
+    let key = this.filterCursorKey;
+    if (key === null) {
+      const first = this.FIELD_LIST.querySelector<HTMLElement>("div.field-item-container.filter-match");
+      if (first === null) return;
+      key = first.dataset.key!;
+    }
+    this.SEARCH_INPUT.value = "";
+    this.filter.query = "";
+    this.applyFilter();
+    this.revealKey = key;
+    this.revealCallbacks.forEach((callback) => callback());
+    this.revealKey = null;
     this.SEARCH_INPUT.blur();
   }
 
@@ -358,6 +383,7 @@ export default class Sidebar {
         runtimeUnit = "h";
       }
       title =
+        (this.filterResult === null ? "" : this.filterResult.matchCount.toString() + " of ") +
         this.fieldCount.toString() +
         " field" +
         (this.fieldCount === 1 ? "" : "s") +
@@ -412,34 +438,24 @@ export default class Sidebar {
     }
   }
 
-  private freshnessFilter: "stale" | "offline" | null = null;
-  private freshnessMatches = "";
-  private freshnessFilterButton: HTMLButtonElement | null = null;
-
-  toggleFreshnessFilter(filter: "stale" | "offline") {
-    this.freshnessFilter = this.freshnessFilter === filter ? null : filter;
-    this.SEARCH_INPUT.placeholder = this.freshnessFilter
-      ? `Showing ${this.freshnessFilter} · click count to clear`
-      : "Search";
-    if (this.freshnessFilterButton === null) {
-      this.freshnessFilterButton = document.createElement("button");
-      this.freshnessFilterButton.className = "sidebar-freshness-filter mv-chip";
-      this.SEARCH_INPUT.parentElement!.appendChild(this.freshnessFilterButton);
-      this.freshnessFilterButton.addEventListener("click", () => {
-        if (this.freshnessFilter) this.toggleFreshnessFilter(this.freshnessFilter);
-      });
+  /** The field tree as the sidebar shows it, rooted at a lone table when there is one. */
+  private getDisplayTree(): { [id: string]: LogFieldTree } {
+    let tree = window.log.getFieldTree();
+    let rootKeys = Object.keys(tree).filter((x) => !x.startsWith("."));
+    if (rootKeys.length === 1 && tree[rootKeys[0]].fullKey === null) {
+      // If only one table, use it as the root
+      tree = tree[rootKeys[0]].children;
     }
-    this.freshnessFilterButton.hidden = this.freshnessFilter === null;
-    this.freshnessFilterButton.innerText = `Showing ${this.freshnessFilter} · Clear`;
-    this.refresh(true);
-  }
-
-  private matchesFreshness(field: LogFieldTree): boolean {
-    return (
-      this.freshnessFilter === null ||
-      (field.fullKey !== null && window.liveStatus?.getFieldFreshness(field.fullKey) === this.freshnessFilter) ||
-      Object.values(field.children).some((child) => this.matchesFreshness(child))
-    );
+    // Repeat to use "DS:/Dscomm/" as the root if available
+    let secondaryRootKeys = Object.keys(tree).filter((x) => !x.startsWith("."));
+    if (
+      secondaryRootKeys.length === 1 &&
+      secondaryRootKeys[0] === "Dscomm" &&
+      tree[secondaryRootKeys[0]].fullKey === null
+    ) {
+      tree = tree[secondaryRootKeys[0]].children;
+    }
+    return tree;
   }
 
   /** Refresh based on new log data or expanded field list. */
@@ -451,17 +467,8 @@ export default class Sidebar {
         : window.log.getFieldKeys();
     this.fieldKeysLog = window.log;
     this.fieldKeysVersion = version;
-    // Availability changes without catalogue changes. Keep a filtered tree current as
-    // producers go stale, disconnect, or recover, including newly matching fields.
-    const freshnessMatches =
-      this.freshnessFilter === null
-        ? ""
-        : JSON.stringify(fieldKeys.filter((key) => window.liveStatus?.getFieldFreshness(key) === this.freshnessFilter));
     let fieldsChanged =
-      forceRefresh ||
-      freshnessMatches !== this.freshnessMatches ||
-      (fieldKeys !== this.lastFieldKeys && !arraysEqual(fieldKeys, this.lastFieldKeys));
-    this.freshnessMatches = freshnessMatches;
+      forceRefresh || (fieldKeys !== this.lastFieldKeys && !arraysEqual(fieldKeys, this.lastFieldKeys));
     this.lastFieldKeys = fieldKeys;
 
     if (fieldsChanged) {
@@ -482,32 +489,27 @@ export default class Sidebar {
       this.tuningModePublishCallbacks = [];
       this.updateMetadataCallbacks = [];
 
+      this.revealCallbacks = [];
+
       // Add new list
-      let tree = window.log.getFieldTree();
-      let rootKeys = Object.keys(tree).filter((x) => !x.startsWith("."));
-      if (rootKeys.length === 1 && tree[rootKeys[0]].fullKey === null) {
-        // If only one table, use it as the root
-        tree = tree[rootKeys[0]].children;
-      }
-      // Repeat to use "DS:/Dscomm/" as the root if available
-      let secondaryRootKeys = Object.keys(tree).filter((x) => !x.startsWith("."));
-      if (
-        secondaryRootKeys.length === 1 &&
-        secondaryRootKeys[0] === "Dscomm" &&
-        tree[secondaryRootKeys[0]].fullKey === null
-      ) {
-        tree = tree[secondaryRootKeys[0]].children;
-      }
+      let tree = this.getDisplayTree();
+      this.filterResult = this.computeFilter(tree);
       Object.keys(tree)
         .filter((key) => !this.HIDDEN_KEYS.includes(key))
         .sort((a, b) => this.sortKeys(a, b, true))
         .forEach((key) => {
           this.addFields(key, "/" + key, tree[key], this.FIELD_LIST, 0);
         });
+      if (this.filterResult !== null && this.filterResult.matchCount === 0 && this.fieldCount > 0) {
+        let empty = document.createElement("div");
+        empty.classList.add("side-bar-empty");
+        empty.innerText = "No matching fields";
+        this.FIELD_LIST.appendChild(empty);
+      }
       this.SIDEBAR.scrollTop = originalScroll;
 
-      // Update search
-      this.updateSearchResults();
+      // Fill in values now so rebuilt rows never show blank for a frame
+      this.updateValues();
     } else {
       // Update type warnings and metadata
       this.updateTypeWarningCallbacks.forEach((callback) => callback());
@@ -525,7 +527,7 @@ export default class Sidebar {
     indent: number,
     generated = false
   ) {
-    if (!this.matchesFreshness(field)) return;
+    if (this.filterResult !== null && !this.filterResult.visible.has(fullTitle)) return;
     let hasChildren = Object.keys(field.children).length > 0;
     let childrenGenerated = generated || (field.fullKey !== null && window.log.isGeneratedParent(field.fullKey));
 
@@ -543,6 +545,11 @@ export default class Sidebar {
     fieldElementContainer.appendChild(valueElement);
     valueElement.classList.add("field-value");
     fieldElementContainer.style.setProperty("--value-width", "0px");
+    if (this.filterResult !== null && field.fullKey !== null && this.filterResult.matches.has(fullTitle)) {
+      fieldElementContainer.classList.add("filter-match");
+      fieldElementContainer.dataset.key = field.fullKey;
+      if (field.fullKey === this.filterCursorKey) fieldElementContainer.classList.add("filter-cursor");
+    }
 
     // Active fields callback
     this.activeFieldCallbacks.push(() => {
@@ -748,10 +755,7 @@ export default class Sidebar {
             this.selectGroupClearCallbacks.forEach((callback) => callback());
           }
         };
-        label.addEventListener("mousedown", (event) => {
-          mouseDownInfo = [event.clientX, event.clientY, event.offsetX, event.offsetY];
-        });
-        window.addEventListener("mousemove", (event) => {
+        let mouseMove = (event: MouseEvent) => {
           if (mouseDownInfo !== null) {
             if (
               Math.abs(event.clientX - mouseDownInfo[0]) >= this.FIELD_DRAG_THRESHOLD_PX ||
@@ -761,6 +765,10 @@ export default class Sidebar {
               mouseDownInfo = null;
             }
           }
+        };
+        label.addEventListener("mousedown", (event) => {
+          mouseDownInfo = [event.clientX, event.clientY, event.offsetX, event.offsetY];
+          this.fieldMouseMove = mouseMove;
         });
         label.addEventListener("mouseup", (event) => {
           if (mouseDownInfo !== null) {
@@ -797,17 +805,17 @@ export default class Sidebar {
         label.style.fontWeight = "initial";
       });
 
-      // Search expand callback
-      let highlightForSearch = () => {
-        if (this.searchKey !== null && field.fullKey === this.searchKey) {
+      // Reveal callback
+      let highlightForReveal = () => {
+        if (this.revealKey !== null && field.fullKey === this.revealKey) {
           // @ts-expect-error
           fieldElement.scrollIntoViewIfNeeded(); // Available in Chromium but not standard
           fieldElementContainer.classList.add("highlight");
           setTimeout(() => fieldElementContainer.classList.remove("highlight"), 3000);
         }
       };
-      this.searchExpandCallbacks.push(highlightForSearch);
-      highlightForSearch(); // Try immediately in case this field was generating while expanding for search
+      this.revealCallbacks.push(highlightForReveal);
+      highlightForReveal(); // Try immediately in case this field was generating while expanding to reveal it
 
       // Update value callback
       let type = window.log.getType(field.fullKey);
@@ -1069,10 +1077,13 @@ export default class Sidebar {
         childSpan.hidden = !expanded;
         closedIcon.style.display = expanded ? "none" : "initial";
         openIcon.style.display = expanded ? "initial" : "none";
-        if (expanded) {
-          this.expandedFields.add(fullTitle);
-        } else {
-          this.expandedFields.delete(fullTitle);
+        // While filtering, leave the saved expand state alone so clearing the filter restores it
+        if (this.filterResult === null) {
+          if (expanded) {
+            this.expandedFields.add(fullTitle);
+          } else {
+            this.expandedFields.delete(fullTitle);
+          }
         }
 
         // Add children if first time
@@ -1098,12 +1109,12 @@ export default class Sidebar {
         }
       };
 
-      // Search expand callback
-      let expandForSearch = () => {
-        if (this.searchKey === null) return;
+      // Reveal callback
+      let expandForReveal = () => {
+        if (this.revealKey === null) return;
         let foundSearchKey = false;
         let searchTree = (tree: LogFieldTree) => {
-          if (tree.fullKey === this.searchKey) {
+          if (tree.fullKey === this.revealKey) {
             foundSearchKey = true;
           } else {
             Object.values(tree.children).forEach((tree) => searchTree(tree));
@@ -1114,14 +1125,22 @@ export default class Sidebar {
           setExpanded(true);
         }
       };
-      this.searchExpandCallbacks.push(expandForSearch);
-      if (this.freshnessFilter !== null) setExpanded(true);
-      expandForSearch(); // Try immediately in case this field was generating while expanding for search
+      this.revealCallbacks.push(expandForReveal);
+      expandForReveal(); // Try immediately in case this field was generating while expanding to reveal it
 
       // User controls
-      closedIcon.addEventListener("click", () => setExpanded(true));
-      openIcon.addEventListener("click", () => setExpanded(false));
-      if (this.expandedFields.has(fullTitle)) setExpanded(true);
+      let toggle = (expanded: boolean) => {
+        // Changes made while filtering last until the filter changes and never reach the layout
+        if (this.filterResult !== null) this.filterExpanded.set(fullTitle, expanded);
+        setExpanded(expanded);
+      };
+      closedIcon.addEventListener("click", () => toggle(true));
+      openIcon.addEventListener("click", () => toggle(false));
+      if (this.filterResult !== null) {
+        if (this.filterExpanded.get(fullTitle) ?? this.filterResult.expand.has(fullTitle)) setExpanded(true);
+      } else if (this.expandedFields.has(fullTitle)) {
+        setExpanded(true);
+      }
     }
   }
 

@@ -5,14 +5,12 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import Fuse from "fuse.js";
 import { arraysEqual } from "../util";
 import Log from "./Log";
 import LoggableType from "./LoggableType";
 
 export const ARRAY_TEXT_SIZE_LIMIT = 500;
 export const TYPE_KEY = ".type";
-export const MAX_SEARCH_RESULTS = 128;
 
 /** Returns a human-readable string representation of a log value. */
 export function getLogValueText(value: any, type: LoggableType): string {
@@ -79,17 +77,6 @@ export function getURCLKeys(log: Log): string[] {
     let wpilibType = log.getWpilibType(key);
     return wpilibType !== null && wpilibType.startsWith("URCL");
   });
-}
-
-const SEARCH_FUSE = new Fuse([] as string[], { findAllMatches: true, ignoreLocation: true });
-
-/** Searches for log fields matching a given query string. */
-export function searchFields(log: Log, query: string): string[] {
-  if (query.length === 0) return [];
-  SEARCH_FUSE.setCollection(log.getFieldKeys());
-  return SEARCH_FUSE.search(query)
-    .slice(0, MAX_SEARCH_RESULTS)
-    .map((field) => field.item);
 }
 
 /**
