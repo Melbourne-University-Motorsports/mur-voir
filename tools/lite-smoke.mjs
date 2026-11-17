@@ -84,6 +84,22 @@ try {
       console.error(await frame.evaluate(() => ({ keys: window.log.getFieldKeys(), text: document.body.innerText })));
       throw error;
     });
+  // The sidebar filters fields by text and live state, and a cleared filter shows them all again.
+  // Every path starts with "vehicles", so this finds each speed field, including vehicle_speed.
+  await hub.locator(".side-bar-search").fill("vehicle_speed");
+  const filterTitle = hub.locator(".side-bar-title", { hasText: /^\d+ of \d+ fields/ });
+  await filterTitle.waitFor();
+  const [shown, total] = (await filterTitle.innerText())
+    .match(/^(\d+) of (\d+)/)
+    .slice(1)
+    .map(Number);
+  assert.ok(shown >= 1 && shown < total, `Filter shows ${shown} of ${total} fields`);
+  assert.equal(await hub.locator(".field-item-container.filter-match").count(), shown);
+  await hub.locator(".side-bar-live-filter").selectOption("not-live");
+  await hub.locator(".side-bar-empty").waitFor();
+  await hub.locator(".side-bar-live-filter").selectOption("all");
+  await hub.locator(".side-bar-search").fill("");
+  await hub.locator(".side-bar-title", { hasText: /^\d+ fields/ }).waitFor();
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
@@ -208,7 +224,7 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, graph, shared timeline, experimental lap modes, layout download/upload, CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, CSV picker."
   );
 } finally {
   await browser?.close();
