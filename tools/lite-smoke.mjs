@@ -85,9 +85,16 @@ try {
       throw error;
     });
   // The sidebar filters fields by text and live state, and a cleared filter shows them all again.
+  // Every path starts with "vehicles", so this finds each speed field, including vehicle_speed.
   await hub.locator(".side-bar-search").fill("vehicle_speed");
-  await hub.locator(".side-bar-title", { hasText: /^1 of \d+ fields/ }).waitFor();
-  assert.equal(await hub.locator(".field-item-container.filter-match").count(), 1);
+  const filterTitle = hub.locator(".side-bar-title", { hasText: /^\d+ of \d+ fields/ });
+  await filterTitle.waitFor();
+  const [shown, total] = (await filterTitle.innerText())
+    .match(/^(\d+) of (\d+)/)
+    .slice(1)
+    .map(Number);
+  assert.ok(shown >= 1 && shown < total, `Filter shows ${shown} of ${total} fields`);
+  assert.equal(await hub.locator(".field-item-container.filter-match").count(), shown);
   await hub.locator(".side-bar-live-filter").selectOption("not-live");
   await hub.locator(".side-bar-empty").waitFor();
   await hub.locator(".side-bar-live-filter").selectOption("all");

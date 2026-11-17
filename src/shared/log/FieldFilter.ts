@@ -44,9 +44,20 @@ export interface FieldFilterResult {
   signature: string;
 }
 
+/**
+ * Splits a search query into lowercase words. Spaces, "_", "/" and "." separate words, so
+ * "pack volt", "volt pack" and "pack_voltage" all find "pack_voltage".
+ */
+export function queryWords(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/[\s_/.]+/)
+    .filter((word) => word.length > 0);
+}
+
 /** Whether a filter hides anything. */
 export function isFilterActive(filter: FieldFilter): boolean {
-  return filter.query.trim().length > 0 || filter.live !== "all";
+  return queryWords(filter.query).length > 0 || filter.live !== "all";
 }
 
 /** Whether a single field matches the filter. */
@@ -56,10 +67,11 @@ export function fieldMatches(key: string, filter: FieldFilter, context: FieldFil
     if (freshness === null) return false;
     if ((freshness === "online") !== (filter.live === "live")) return false;
   }
-  const query = filter.query.trim().toLowerCase();
-  if (query.length === 0) return true;
-  if (key.toLowerCase().includes(query)) return true;
-  return (context.aliases?.(key) ?? []).some((alias) => alias.toLowerCase().includes(query));
+  // Every word must appear, in any order, somewhere in the path, display label or DBC signal name.
+  const words = queryWords(filter.query);
+  if (words.length === 0) return true;
+  const names = [key, ...(context.aliases?.(key) ?? [])].map((name) => name.toLowerCase());
+  return words.every((word) => names.some((name) => name.includes(word)));
 }
 
 /**

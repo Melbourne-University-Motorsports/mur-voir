@@ -7,7 +7,13 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fieldMatches, filterFieldTree, isFilterActive, type FieldFilterContext } from "../src/shared/log/FieldFilter";
+import {
+  fieldMatches,
+  filterFieldTree,
+  isFilterActive,
+  queryWords,
+  type FieldFilterContext
+} from "../src/shared/log/FieldFilter";
 import type LogFieldTree from "../src/shared/log/LogFieldTree";
 
 /** Builds a tree the way Log.getFieldTree does, rooted below "/". */
@@ -52,6 +58,7 @@ test("an empty query with All filters nothing", () => {
   assert.equal(isFilterActive({ query: "  ", live: "all" }), false);
   assert.equal(isFilterActive({ query: "x", live: "all" }), true);
   assert.equal(isFilterActive({ query: "", live: "not-live" }), true);
+  assert.equal(isFilterActive({ query: " _ / . ", live: "all" }), false, "separators alone are not a query");
 });
 
 test("text matches the full path case-insensitively, plus display labels and DBC signal names", () => {
@@ -69,6 +76,17 @@ test("text matches the full path case-insensitively, plus display labels and DBC
     ["/vehicles/mur27/bms/cell_max_temp", "/vehicles/mur27/can0/inverter/motor_temp"],
     "hidden keys never match"
   );
+});
+
+test("every word must match, in any order, across the path and its other names", () => {
+  const filter = (query: string) => ({ query: query, live: "all" as const });
+  assert.deepEqual(queryWords("  Pack_Volt/can0.x  y "), ["pack", "volt", "can0", "x", "y"]);
+  assert.equal(fieldMatches("/vehicles/mur27/can0/inverter/motor_temp", filter("temp motor"), context), true);
+  assert.equal(fieldMatches("/vehicles/mur27/can0/inverter/motor_temp", filter("motor temp"), context), true);
+  assert.equal(fieldMatches("/vehicles/mur27/can0/inverter/dc_bus_voltage", filter("inverter volt"), context), true);
+  assert.equal(fieldMatches("/vehicles/mur27/can1/pedals/throttle", filter("can1 apps"), context), true);
+  assert.equal(fieldMatches("/vehicles/mur27/bms/pack_soc", filter("pack temp"), context), false);
+  assert.equal(filterFieldTree(tree(keys), filter("max temp"), context).matchCount, 1);
 });
 
 test("Live keeps fresh fields; Not live keeps every other catalogued field", () => {
