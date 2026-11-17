@@ -69,6 +69,7 @@ import {
 import StateTracker, { ApplicationState, SatelliteWindowState, WindowState } from "./StateTracker";
 import { VideoProcessor } from "./VideoProcessor";
 import { createAssetFolders, getUserAssetsPath, loadAssets } from "./assetLoader";
+import { DownloadRuns } from "./downloadRuns";
 import { readCandumpExtras } from "./importerFiles";
 
 // Dynamically load lzma-native to handle platforms without prebuilt binaries
@@ -102,6 +103,7 @@ let advantageScopeAssets: AdvantageScopeAssets = {
 
 // Live sources (from LiveSourceRegistry, reported by the hub)
 let liveSources: LiveSourceInfo[] = [];
+const downloadRuns = new DownloadRuns((window, name, data) => sendMessage(window, name, data));
 
 // WINDOW MESSAGE HANDLING
 
@@ -244,6 +246,18 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         detail: message.data.content,
         icon: WINDOW_ICON
       });
+      break;
+
+    case "set-view-source":
+      downloadRuns.setViewSource(window, message.data);
+      break;
+
+    case "open-download-runs":
+      downloadRuns.open(window);
+      break;
+
+    case "copy-run-link":
+      downloadRuns.copyLink(window, message.data);
       break;
 
     case "show-open-log": {
@@ -1511,6 +1525,14 @@ function setupMenu() {
                   sendMessage(window!, "open-files", { files: files.filePaths, merge: true });
                 }
               });
+          }
+        },
+        {
+          label: "Download Runs\u2026",
+          click(_, baseWindow) {
+            const window = baseWindow as BrowserWindow | undefined;
+            if (window === undefined || !hubWindows.includes(window)) return;
+            downloadRuns.open(window);
           }
         },
         {

@@ -16,33 +16,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="global.css" />
     <link rel="stylesheet" href="download.css" />
-    <link rel="stylesheet" href="loadingAnimation.css" />
     <script type="module" src="../bundles/download.js"></script>
-    <title>Download Logs &mdash; mur-voir</title>
+    <title>Download Runs &mdash; mur-voir</title>
   </head>
 
   <body>
-    <div class="file-list">
-      <span></span>
-      <div class="loading">
-        <div class="loading-bar"></div>
-        <div class="loading-bar"></div>
-        <div class="loading-bar"></div>
-        <div class="loading-bar"></div>
-        <div class="loading-bar"></div>
+    <div class="header">
+      <span class="heading">Download runs</span>
+      <span class="filters" role="radiogroup" aria-label="Show runs">
+        <button data-filter="all" role="radio">All</button>
+        <button data-filter="driving" role="radio">Driving</button>
+        <button data-filter="parked" role="radio">Parked</button>
+      </span>
+      <button class="close" title="Close">
+        <img src="symbols/close.svg" />
+      </button>
+    </div>
+
+    <div class="runs" role="listbox" aria-multiselectable="true" aria-label="Runs"></div>
+
+    <div class="footer">
+      <div class="what"></div>
+      <button class="action copy-link" disabled>Copy link</button>
+      <button class="action download" disabled>Download</button>
+      <button class="action open primary" disabled>Open</button>
+      <div class="fault-list" hidden></div>
+    </div>
+
+    <div class="scrim" hidden>
+      <div class="dialog" role="alertdialog" aria-labelledby="dialog-title">
+        <div class="dialog-title" id="dialog-title">Live telemetry is on</div>
+        <p class="dialog-text"></p>
+        <div class="dialog-buttons"></div>
       </div>
     </div>
 
-    <div class="alert-text" hidden></div>
-    <progress min="0" max="1" hidden></progress>
-    <div class="progress-details" hidden></div>
-
-    <button id="exit" title="Cancel">
-      <img src="symbols/close.svg" />
-    </button>
-    <button id="download" title="Download">
-      <img src="symbols/download.svg" />
-      <img src="symbols/east.svg" hiden />
-    </button>
+    <div class="toast" role="status" hidden></div>
   </body>
 </html>

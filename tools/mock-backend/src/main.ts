@@ -32,6 +32,9 @@ Usage: node tools/mock-backend/src/main.ts [options]
   --no-history            GET /api/v1/history returns 501 not_implemented
   --history-seconds <n>   rolling history length (default 360)
   --start-time-ns <ns>    fix the Unix start time (makes output bit-reproducible)
+  --archive-today <date>  YYYY-MM-DD of the newest archive runs (default today in Melbourne)
+  --archive-no-prepare    serve unfinished runs' files at once instead of a first 202 preparing
+  --archive-drop          cut each run's first full file download halfway (exercises Range resume)
   -h, --help
 
 Sources: ${SOURCES.join(", ")}`;
@@ -54,6 +57,9 @@ const { values } = parseArgs({
     "no-history": { type: "boolean", default: false },
     "history-seconds": { type: "string", default: "360" },
     "start-time-ns": { type: "string" },
+    "archive-today": { type: "string" },
+    "archive-no-prepare": { type: "boolean", default: false },
+    "archive-drop": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false }
   }
 });
@@ -95,16 +101,26 @@ const opts = {
   lapCounter: values["lap-counter"]!,
   history: !values["no-history"],
   historySeconds: num("history-seconds", values["history-seconds"]!, 10, 3600),
-  startTimeNs: values["start-time-ns"] ? BigInt(values["start-time-ns"]) : null
+  startTimeNs: values["start-time-ns"] ? BigInt(values["start-time-ns"]) : null,
+  archive: {
+    today: values["archive-today"],
+    prepare: !values["archive-no-prepare"],
+    dropOnce: values["archive-drop"]!
+  }
 };
+if (opts.archive.today !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(opts.archive.today)) {
+  console.error("--archive-today must be YYYY-MM-DD");
+  process.exit(2);
+}
 
 const h = await startServer(opts);
 const flags = Object.entries(opts)
-  .filter(([k, v]) => v !== false && v !== null && !["port", "host"].includes(k))
+  .filter(([k, v]) => v !== false && v !== null && !["port", "host", "archive"].includes(k))
   .map(([k, v]) => `${k}=${v}`)
   .join(" ");
 console.log(`mock backend: http://localhost:${h.port}/api/v1/catalogue  ws://localhost:${h.port}/api/v1/live`);
 console.log(`  ${h.backend.catalogue.size} signals, epoch ${h.backend.epoch}; ${flags}`);
+console.log(`  archive: http://localhost:${h.port}/api/v1/archive/runs (${h.archive.runs.length} runs)`);
 
 const shutdown = () => {
   void h.close().then(() => process.exit(0));

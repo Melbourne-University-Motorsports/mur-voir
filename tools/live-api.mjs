@@ -14,9 +14,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { format, resolveConfig } from "prettier";
 
+// Pins a mur-msgs API contract: `--api live` (default) or `--api archive`.
+const APIS = {
+  live: {
+    label: "Live",
+    vendor: "src/shared/mur/api",
+    output: "src/shared/mur/live-types.ts",
+    directory: "api/live/v1",
+    schemaFile: "live.schema.json",
+    title: "LiveAPIExports",
+    script: "live-api"
+  },
+  archive: {
+    label: "Archive",
+    vendor: "src/shared/mur/archive-api",
+    output: "src/shared/mur/archive-types.ts",
+    directory: "api/archive/v1",
+    schemaFile: "archive.schema.json",
+    title: "ArchiveAPIExports",
+    script: "archive-api"
+  }
+};
 const root = fileURLToPath(new URL("../", import.meta.url));
-const vendor = path.join(root, "src/shared/mur/api");
-const output = path.join(root, "src/shared/mur/live-types.ts");
+const api = APIS[process.argv.includes("--api") ? process.argv[process.argv.indexOf("--api") + 1] : "live"];
+assert.ok(api, "--api must be live or archive");
+const vendor = path.join(root, api.vendor);
+const output = path.join(root, api.output);
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const option = (flag) => {
   const i = process.argv.indexOf(flag);
@@ -25,7 +48,7 @@ const option = (flag) => {
 const source = option("--source");
 const commit = option("--commit");
 const command = process.argv[2] ?? "check";
-const upstreamDir = "api/live/v1/schema";
+const upstreamDir = api.directory + "/schema";
 const git = (...args) => execFileSync("git", ["-C", source, ...args]);
 
 if (command === "vendor") {
@@ -47,7 +70,7 @@ if (command === "vendor") {
       {
         repository: "Melbourne-University-Motorsports/mur-msgs",
         commit,
-        directory: "api/live/v1",
+        directory: api.directory,
         files: hashes
       },
       null,
@@ -59,7 +82,7 @@ assert.ok(["vendor", "generate", "check"].includes(command), "Use vendor, genera
 const pin = JSON.parse(await fs.readFile(path.join(vendor, "SOURCE.json"), "utf8"));
 assert.match(pin.commit, /^[a-f0-9]{40}$/);
 assert.equal(pin.repository, "Melbourne-University-Motorsports/mur-msgs");
-assert.equal(pin.directory, "api/live/v1");
+assert.equal(pin.directory, api.directory);
 const localFiles = (await fs.readdir(path.join(vendor, "schema"), { recursive: true }))
   .filter((f) => f.endsWith(".json"))
   .map((f) => "schema/" + f)
@@ -84,21 +107,23 @@ if (source) {
     .sort();
   assert.deepEqual(localFiles, upstream, "Pinned upstream file set differs");
 }
-const schema = JSON.parse(await fs.readFile(path.join(vendor, "schema/live.schema.json"), "utf8"));
-// The generator mishandles boolean schemas behind $ref. `true` means unknown.
-assert.equal(schema.definitions.SampleValue, true);
-schema.definitions.SampleValue = { tsType: "unknown" };
+const schema = JSON.parse(await fs.readFile(path.join(vendor, "schema", api.schemaFile), "utf8"));
+if (api === APIS.live) {
+  // The generator mishandles boolean schemas behind $ref. `true` means unknown.
+  assert.equal(schema.definitions.SampleValue, true);
+  schema.definitions.SampleValue = { tsType: "unknown" };
+}
 // Reference every definition to emit named types even when the root union cannot reach them.
 const wrapper = {
   ...schema,
-  title: "LiveAPIExports",
+  title: api.title,
   type: "object",
   properties: Object.fromEntries(
     Object.keys(schema.definitions).map((name) => [name, { $ref: "#/definitions/" + name }])
   )
 };
 delete wrapper.anyOf;
-const generatedRaw = await compile(wrapper, "LiveAPIExports", {
+const generatedRaw = await compile(wrapper, api.title, {
   unknownAny: true,
   bannerComment: `// Copyright (c) 2026 Melbourne University Motorsports. Based on AdvantageScope (BSD-3-Clause, © Littleton Robotics).
 // https://github.com/Melbourne-University-Motorsports/mur-voir
@@ -107,7 +132,7 @@ const generatedRaw = await compile(wrapper, "LiveAPIExports", {
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Generated from mur-msgs ${pin.commit}. Do not edit.\n// Run npm run live-api:generate.`,
+// Generated from mur-msgs ${pin.commit}. Do not edit.\n// Run npm run ${api.script}:generate.`,
   style: { printWidth: 120, tabWidth: 2, semi: true, singleQuote: false, trailingComma: "none" }
 });
 const generated = await format(generatedRaw, { ...(await resolveConfig(output)), filepath: output });
@@ -115,9 +140,9 @@ if (command === "check") {
   assert.equal(
     await fs.readFile(output, "utf8"),
     generated,
-    "Generated live types drifted; run npm run live-api:generate"
+    `Generated ${api.script} types drifted; run npm run ${api.script}:generate`
   );
 } else await fs.writeFile(output, generated);
 console.log(
-  `Live API ${command} passed: ${pin.commit}${source ? " (upstream verified)" : " (offline hashes verified)"}`
+  `${api.label} API ${command} passed: ${pin.commit}${source ? " (upstream verified)" : " (offline hashes verified)"}`
 );

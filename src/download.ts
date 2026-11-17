@@ -5,343 +5,515 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { IS_LITE } from "./shared/buildConstants";
+// File > Download runs…: lists the MUR run archive, downloads runs and opens one. The main process
+// (Lite's page or Electron) talks to the archive; this page only shows state and sends requests.
+
 import NamedMessage from "./shared/NamedMessage";
-import Preferences from "./shared/Preferences";
-import { zfill } from "./shared/util";
+import type { ArchiveRun } from "./shared/mur/archive";
+import type { JobState } from "./shared/mur/archiveJob";
+import {
+  dayHeading,
+  faultColumn,
+  FaultGroup,
+  faultLineText,
+  faultListText,
+  faultTimesText,
+  groupByDay,
+  groupFaults,
+  matchesFilter,
+  mergeRuns,
+  OpenChoice,
+  openChoices,
+  pruneSelection,
+  runActivityText,
+  runClock,
+  RunFilter,
+  runLabel,
+  runLengthText,
+  runNumbersText,
+  runStatus,
+  selectionActions,
+  sizeText,
+  todayIn,
+  toggleRun
+} from "./shared/mur/archiveView";
 
-const FILE_LIST: HTMLElement = document.getElementsByClassName("file-list")[0] as HTMLElement;
-const FILE_LIST_ITEMS: HTMLElement = FILE_LIST.children[0] as HTMLElement;
-const LOADING_ANIMATION: HTMLElement = document.getElementsByClassName("loading")[0] as HTMLElement;
-const ALERT_TEXT: HTMLElement = document.getElementsByClassName("alert-text")[0] as HTMLElement;
-const PROGRESS_BAR: HTMLProgressElement = document.getElementsByTagName("progress")[0] as HTMLProgressElement;
-const PROGRESS_DETAILS: HTMLElement = document.getElementsByClassName("progress-details")[0] as HTMLElement;
-const EXIT_BUTTON: HTMLElement = document.getElementById("exit") as HTMLElement;
-const DOWNLOAD_BUTTON: HTMLElement = document.getElementById("download") as HTMLElement;
+const REFRESH_MS = 10_000;
+const DONE_DISMISS_MS = 2500;
 
-const FILE_ITEM_HEIGHT_PX = 25;
-const BOTTOM_FILLER_MARGIN_PX = 5;
+const RUNS = document.querySelector(".runs") as HTMLElement;
+const WHAT = document.querySelector(".footer .what") as HTMLElement;
+const FAULT_LIST = document.querySelector(".fault-list") as HTMLElement;
+const COPY_BUTTON = document.querySelector(".copy-link") as HTMLButtonElement;
+const DOWNLOAD_BUTTON = document.querySelector(".download") as HTMLButtonElement;
+const OPEN_BUTTON = document.querySelector(".open") as HTMLButtonElement;
+const CLOSE_BUTTON = document.querySelector(".header .close") as HTMLButtonElement;
+const FILTER_BUTTONS = Array.from(document.querySelectorAll(".filters button")) as HTMLButtonElement[];
+const SCRIM = document.querySelector(".scrim") as HTMLElement;
+const DIALOG_TEXT = document.querySelector(".dialog-text") as HTMLElement;
+const DIALOG_BUTTONS = document.querySelector(".dialog-buttons") as HTMLElement;
+const TOAST = document.querySelector(".toast") as HTMLElement;
+
+type ListState = { status: "loading" } | { status: "error"; message: string } | { status: "ready" };
 
 let messagePort: MessagePort | null = null;
-let platform: string = "";
-let preferences: Preferences | null = null;
+let platform = "";
+let list: ListState = { status: "loading" };
+let runs: ArchiveRun[] = [];
+let next: string | null = null;
+let loadingOlder = false;
+let olderLoaded = false;
+let filter: RunFilter = "all";
+let selected: string[] = [];
+let liveConnected = false;
+let openRun: string | null = null;
+let job: JobState | null = null;
+let today = todayIn();
+let toastTimer: number | null = null;
+let doneTimer: number | null = null;
 
-let address: string = IS_LITE ? window.location.hostname : "";
-let loading = true;
-let startTime: number | null = null;
-let alertIsError = false;
-let filenames: string[] = [];
-let selectedFiles: string[] = [];
-let lastClickedIndex: number | null = null;
-let lastClickedSelect = true;
+const isLite = () => platform === "lite";
+const busy = () => job !== null && job.phase !== "done";
+const runNamed = (name: string) => runs.find((run) => run.name === name);
+const labelOf = (name: string) => {
+  const run = runNamed(name);
+  return run ? runLabel(run, today) : name;
+};
 
-function sendMainMessage(name: string, data?: any) {
-  if (messagePort !== null) {
-    let message: NamedMessage = { name: name, data: data };
-    messagePort.postMessage(message);
-  }
+function sendMainMessage(name: string, data?: unknown) {
+  messagePort?.postMessage({ name, data } as NamedMessage);
 }
 
 window.addEventListener("message", (event) => {
-  if (event.data === "port") {
-    messagePort = event.ports[0];
-    messagePort.onmessage = (event) => {
-      let message: NamedMessage = event.data;
-      handleMainMessage(message);
-    };
-  }
+  if (event.data !== "port") return;
+  messagePort = event.ports[0];
+  messagePort.onmessage = (event) => handleMainMessage(event.data as NamedMessage);
 });
 
 function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
     case "set-platform":
       platform = message.data;
+      document.body.classList.toggle("lite", isLite());
+      sendMainMessage("load", { before: null });
       break;
 
-    case "set-preferences":
-      preferences = message.data;
-      let path = "";
-      if (preferences) {
-        path = preferences.remotePath;
+    case "set-context":
+      liveConnected = message.data.live;
+      openRun = message.data.run;
+      render();
+      break;
+
+    case "set-runs": {
+      const page: { runs: ArchiveRun[]; next: string | null; append: boolean } = message.data;
+      today = todayIn();
+      if (page.append) {
+        runs = [...runs, ...page.runs.filter((run) => !runNamed(run.name))];
+        next = page.next;
+        loadingOlder = false;
+        olderLoaded = true;
+      } else {
+        // A refresh brings the newest page; older pages already shown stay, and so does their cursor.
+        runs = mergeRuns(runs, page.runs);
+        if (!olderLoaded) next = page.next;
       }
-      sendMainMessage("start", {
-        address: address,
-        path: path
-      });
+      if (!busy()) selected = pruneSelection(selected, runs);
+      list = { status: "ready" };
+      render();
+      break;
+    }
+
+    case "list-error":
+      loadingOlder = false;
+      // Keep showing runs already listed; a failed refresh only matters before the first answer.
+      if (list.status !== "ready") list = { status: "error", message: message.data };
+      render();
+      break;
+
+    case "set-job":
+      job = message.data;
+      if (doneTimer !== null) window.clearTimeout(doneTimer);
+      if (job?.phase === "done") {
+        if (job.kind === "download") selected = [];
+        doneTimer = window.setTimeout(() => {
+          job = null;
+          render();
+        }, DONE_DISMISS_MS);
+      }
+      render();
+      break;
+
+    case "start-open":
+      // Opened from a ?run= link: open that run straight away, without waiting for the list.
+      selected = [message.data];
+      requestOpen(message.data);
+      break;
+
+    case "link-copied":
+      showToast(message.data.ok ? "Link copied: " + message.data.link : "Couldn't copy the link");
       break;
 
     case "set-focused":
-      Array.from(document.getElementsByTagName("button")).forEach((button) => {
-        if (message.data) {
-          button.classList.remove("blurred");
-        } else {
-          button.classList.add("blurred");
-        }
-      });
-      break;
-
-    case "show-error":
-      // Show loading animation and alert text
-      LOADING_ANIMATION.hidden = false;
-      loading = true;
-      startTime = null;
-      ALERT_TEXT.hidden = false;
-      PROGRESS_BAR.hidden = true;
-      PROGRESS_DETAILS.hidden = true;
-
-      // Remove list items
-      while (FILE_LIST_ITEMS.firstChild) {
-        FILE_LIST_ITEMS.removeChild(FILE_LIST_ITEMS.firstChild as HTMLElement);
-      }
-
-      // Set error text
-      console.warn(message.data);
-      let friendlyText = "";
-      if (message.data === "No such file") {
-        friendlyText = "Failed to open log folder at <u>" + preferences?.remotePath + "</u>";
-      } else if (message.data === "Timed out while waiting for handshake" || message.data === "Fetch failed") {
-        friendlyText = "Robot not found at <u>" + address + "</u> (check connection)";
-      } else if (message.data.includes("ENOTFOUND")) {
-        friendlyText = "Unknown address <u>" + address + "</u>";
-      } else if (message.data === "All configured authentication methods failed") {
-        friendlyText = "Failed to authenticate to robot at <u>" + address + "</u>";
-      } else if (message.data === "Not connected") {
-        friendlyText = "Lost connection to robot";
-      } else {
-        friendlyText = "Unknown error: " + message.data;
-      }
-      alertIsError = true;
-      ALERT_TEXT.innerHTML = friendlyText;
-      break;
-
-    case "show-alert":
-      // Show alert text (don't change file list/loading animation)
-      ALERT_TEXT.hidden = false;
-      PROGRESS_BAR.hidden = true;
-      PROGRESS_DETAILS.hidden = true;
-      startTime = null;
-      alertIsError = false;
-      ALERT_TEXT.innerHTML = message.data;
-      break;
-
-    case "set-progress":
-      // Show progress bar
-      ALERT_TEXT.hidden = true;
-      PROGRESS_BAR.hidden = false;
-      PROGRESS_DETAILS.hidden = false;
-
-      alertIsError = false;
-      if (message.data === 0) {
-        PROGRESS_BAR.value = 0;
-        PROGRESS_DETAILS.innerText = "Preparing";
-      } else if (message.data === 1) {
-        PROGRESS_BAR.value = 1;
-        PROGRESS_DETAILS.innerText = "Finished";
-      } else {
-        let currentSize: number = message.data.current;
-        let totalSize: number = message.data.total;
-        if (startTime === null) startTime = new Date().getTime() / 1000;
-
-        let detailsText =
-          Math.floor(currentSize / 1e6).toString() + "MB / " + Math.floor(totalSize / 1e6).toString() + "MB";
-        if (new Date().getTime() / 1000 - startTime > 0.5 && currentSize > 1e6) {
-          // Wait to establish speed
-          let speed = Math.round((currentSize / (new Date().getTime() / 1000 - startTime) / 1e6) * 8);
-          let remainingSeconds = Math.floor(
-            ((new Date().getTime() / 1000 - startTime) / currentSize) * (totalSize - currentSize)
-          );
-          let remainingMinutes = Math.floor(remainingSeconds / 60);
-          remainingSeconds -= remainingMinutes * 60;
-          detailsText +=
-            " (" +
-            speed.toString() +
-            "Mb/s, " +
-            remainingMinutes.toString() +
-            "m" +
-            zfill(remainingSeconds.toString(), 2) +
-            "s)";
-        }
-
-        PROGRESS_BAR.value = totalSize === 0 ? 0 : currentSize / totalSize;
-        PROGRESS_DETAILS.innerText = detailsText;
-      }
-      break;
-
-    case "set-list":
-      // Hide loading animation and alert text
-      LOADING_ANIMATION.hidden = true;
-      loading = false;
-      if (alertIsError) {
-        ALERT_TEXT.hidden = true;
-        PROGRESS_BAR.hidden = true;
-        PROGRESS_DETAILS.hidden = true;
-      }
-
-      // Remove old list items
-      while (FILE_LIST_ITEMS.firstChild) {
-        FILE_LIST_ITEMS.removeChild(FILE_LIST_ITEMS.firstChild);
-      }
-
-      // Get and sort filenames
-      let fileData: { name: string; size: number; isFolder: boolean }[] = message.data;
-      let isRandomized = (name: string): boolean =>
-        name.includes("TBD") || // WPILib DataLogManager
-        ((name.startsWith("Log_") || name.startsWith("akit_")) && !name.includes("-")); // AdvantageKit
-      fileData.sort((a, b) => {
-        let aRandomized = isRandomized(a.name);
-        let bRandomized = isRandomized(b.name);
-        if (aRandomized && !bRandomized) {
-          return 1;
-        } else if (!aRandomized && bRandomized) {
-          return -1;
-        } else {
-          return -a.name.localeCompare(b.name);
-        }
-      });
-
-      // Add new list items
-      filenames = fileData.map((file) => file.name);
-      fileData.forEach((file, index) => {
-        let item = document.createElement("div");
-        FILE_LIST_ITEMS.appendChild(item);
-        item.classList.add("file-item");
-
-        if (selectedFiles.includes(file.name)) {
-          item.classList.add("selected");
-        }
-        item.addEventListener("click", (event) => {
-          if (event.shiftKey && lastClickedIndex !== null) {
-            // Update a range of items
-            let range = [Math.min(index, lastClickedIndex), Math.max(index, lastClickedIndex)];
-            for (let i = range[0]; i < range[1] + 1; i++) {
-              if (lastClickedSelect && !selectedFiles.includes(filenames[i])) {
-                selectedFiles.push(filenames[i]);
-                FILE_LIST_ITEMS.children[i].classList.add("selected");
-              }
-              if (!lastClickedSelect && selectedFiles.includes(filenames[i])) {
-                selectedFiles.splice(selectedFiles.indexOf(filenames[i]), 1);
-                FILE_LIST_ITEMS.children[i].classList.remove("selected");
-              }
-            }
-          } else if (selectedFiles.includes(file.name)) {
-            // Deselect item
-            selectedFiles.splice(selectedFiles.indexOf(file.name), 1);
-            item.classList.remove("selected");
-            lastClickedIndex = index;
-            lastClickedSelect = false;
-          } else {
-            // Select item
-            selectedFiles.push(file.name);
-            item.classList.add("selected");
-            lastClickedIndex = index;
-            lastClickedSelect = true;
-          }
-        });
-
-        let img = document.createElement("img");
-        item.appendChild(img);
-        if (file.isFolder) {
-          img.src = "../icons/download/folder-icon.png";
-          img.classList.add("folder");
-        } else {
-          let filenameComponents = file.name.split(".");
-          let extension = filenameComponents[filenameComponents.length - 1];
-          if (extension === "wpilogxz") extension = "wpilog";
-          switch (platform) {
-            case "darwin":
-              img.src = "../icons/download/" + extension + "-icon-mac.png";
-              img.classList.add("mac");
-              break;
-            case "linux":
-            case "win32":
-              img.src = "../icons/download/" + extension + "-icon-linuxwin.png";
-              break;
-            case "lite":
-              img.src = "../icons/" + extension + "-icon.png";
-              break;
-          }
-        }
-        let filenameSpan = document.createElement("span");
-        item.appendChild(filenameSpan);
-        filenameSpan.innerText = file.name;
-        let sizeSpan = document.createElement("span");
-        item.appendChild(sizeSpan);
-        sizeSpan.innerText = " (" + (file.size < 1e5 ? "<0.1" : Math.round(file.size / 1e5) / 10) + " MB)";
-      });
-
-      updateFiller();
-      break;
-
-    default:
-      console.warn("Unknown message from main process", message);
+      document.body.classList.toggle("blurred", !message.data);
       break;
   }
 }
 
-/** Add/remove filler rows (zebra striping). */
-function updateFiller() {
-  if (loading) return;
-  let itemCount = Array.from(FILE_LIST_ITEMS.children).filter((x) => x.childElementCount !== 0).length;
-  let targetFillerCount = Math.ceil(
-    (FILE_LIST.getBoundingClientRect().height - BOTTOM_FILLER_MARGIN_PX - itemCount * FILE_ITEM_HEIGHT_PX) /
-      FILE_ITEM_HEIGHT_PX
-  );
-  if (targetFillerCount < 0) targetFillerCount = 0;
+// Rendering
 
-  // Update rows
-  let getCurrentFillerCount = () => {
-    return Array.from(FILE_LIST_ITEMS.children).filter((x) => x.childElementCount === 0).length;
-  };
-  while (getCurrentFillerCount() > targetFillerCount) {
-    FILE_LIST_ITEMS.removeChild(FILE_LIST_ITEMS.lastElementChild as HTMLElement);
-  }
-  while (getCurrentFillerCount() < targetFillerCount) {
-    let item = document.createElement("div");
-    FILE_LIST_ITEMS.appendChild(item);
-    item.classList.add("file-item");
-  }
-
-  // Disable scroll when using filler
-  FILE_LIST.style.overflow = targetFillerCount > 0 ? "hidden" : "auto";
+function element<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  text?: string
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
 }
 
-/** Starts the download process for the selected files. */
-function save() {
-  if (selectedFiles.length === 0) {
-    alert("Please select a log to download.");
+function faultLine(group: FaultGroup, more = 0): HTMLElement {
+  const line = element("span", "fault-line " + group.severity);
+  const { at, label } = faultLineText(group);
+  line.append(element("span", "severity-dot"), element("span", "at", at), document.createTextNode(label));
+  if (more > 0) line.append(element("span", "more", `+${more} more`));
+  return line;
+}
+
+function renderRow(run: ArchiveRun): HTMLElement {
+  const isSelected = selected.includes(run.name);
+  const row = element("div", "run");
+  row.dataset.name = run.name;
+  row.tabIndex = 0;
+  row.setAttribute("role", "option");
+  row.setAttribute("aria-selected", String(isSelected));
+  row.classList.toggle("selected", isSelected);
+  row.classList.toggle("dim", busy() && !isSelected);
+  row.classList.toggle("parked", run.summary?.activity === "parked");
+
+  row.append(element("span", "tick"));
+  const unsynced = run.start !== null && !run.dated;
+  const time = element("span", "time", (unsynced ? "~" : "") + runClock(run));
+  if (unsynced) time.title = "Start time from an unsynced clock";
+  row.append(time);
+
+  const what = element("span", "what");
+  const activity = runActivityText(run);
+  if (activity === null) what.append(element("span", "no-summary", "Summary not built yet"));
+  else what.append(document.createTextNode(activity));
+  const status = runStatus(run);
+  if (status !== null) {
+    const tag = element("span", "status " + status.kind);
+    if (status.kind === "live") tag.append(element("span", "pulse"));
+    tag.append(document.createTextNode(status.text));
+    what.append(tag);
+  }
+  if (run.name === openRun) what.append(element("span", "open-tag", "open"));
+  row.append(what);
+
+  row.append(element("span", "numbers", runNumbersText(run)));
+
+  const groups = run.summary ? groupFaults(run.summary.faults) : [];
+  const column = faultColumn(groups);
+  const f1 = element("span", "fault f1");
+  const f2 = element("span", "fault f2");
+  if (column.lines[0]) f1.append(faultLine(column.lines[0]));
+  if (column.lines[1]) f2.append(faultLine(column.lines[1], column.more));
+  if (groups.length > 0) f1.title = f2.title = faultListText(groups);
+  row.append(f1, f2);
+
+  row.append(element("span", "length", runLengthText(run)), element("span", "size", sizeText(run.size_bytes)));
+  return row;
+}
+
+function renderList() {
+  const scroll = RUNS.scrollTop;
+  RUNS.replaceChildren();
+  if (list.status === "loading") {
+    for (let i = 0; i < 6; i++) RUNS.append(element("div", "skeleton"));
+    return;
+  }
+  if (list.status === "error") {
+    const box = element("div", "error-box");
+    box.append(
+      element(
+        "div",
+        undefined,
+        `Can't reach the run archive. ${list.message}. Runs are safe on the server and the car.`
+      )
+    );
+    const retry = element("button", "action small", "Try again");
+    retry.addEventListener("click", () => {
+      list = { status: "loading" };
+      render();
+      sendMainMessage("load", { before: null });
+    });
+    box.append(retry);
+    RUNS.append(box);
+    return;
+  }
+  const shown = runs.filter((run) => matchesFilter(run, filter));
+  if (shown.length === 0) {
+    RUNS.append(element("div", "empty", runs.length === 0 ? "No runs in the archive yet." : `No ${filter} runs.`));
+  }
+  for (const day of groupByDay(shown)) {
+    RUNS.append(element("div", "day", dayHeading(day.day, today)));
+    for (const run of day.runs) RUNS.append(renderRow(run));
+  }
+  if (next !== null) {
+    const older = element("button", "action small older", loadingOlder ? "Loading…" : "Show older runs");
+    older.disabled = loadingOlder;
+    older.addEventListener("click", () => {
+      loadingOlder = true;
+      render();
+      sendMainMessage("load", { before: runs[runs.length - 1]?.name ?? null });
+    });
+    RUNS.append(older);
+  }
+  RUNS.scrollTop = scroll;
+}
+
+function megabytes(bytes: number) {
+  return bytes >= 1e7 ? Math.round(bytes / 1e6).toString() : (bytes / 1e6).toFixed(1);
+}
+
+function linkButton(text: string, onClick: () => void): HTMLButtonElement {
+  const button = element("button", "link", text);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderJob(state: JobState): HTMLElement[] {
+  const count = state.names.length;
+  const verb =
+    state.kind === "open"
+      ? "Opening " + labelOf(state.names[0])
+      : count > 1
+      ? `Downloading ${count} runs`
+      : "Downloading " + labelOf(state.names[0]);
+  const step = count > 1 && state.phase !== "done" ? ` (${state.index + 1} of ${count})` : "";
+  const cancel = linkButton("Cancel", () => sendMainMessage("cancel-job"));
+  const line = element("div", "job");
+  const bar = element("progress", "job-bar");
+  bar.max = 1;
+  switch (state.phase) {
+    case "preparing":
+      line.append(`${verb}${step}, the server is preparing the run file `, cancel);
+      bar.removeAttribute("value");
+      return [line, bar];
+    case "fetching": {
+      const total = state.total ?? runNamed(state.names[state.index])?.size_bytes ?? null;
+      line.append(
+        `${verb}${step}, ${megabytes(state.received)}` + (total ? ` of ${megabytes(total)} MB ` : " MB "),
+        cancel
+      );
+      if (total) bar.value = Math.min(1, state.received / total);
+      else bar.removeAttribute("value");
+      return [line, bar];
+    }
+    case "finishing":
+      line.append(state.kind === "open" ? `${verb}, reading the log…` : `${verb}${step}, saving…`);
+      bar.removeAttribute("value");
+      return [line, bar];
+    case "failed": {
+      line.classList.add("failed");
+      const total = state.total;
+      const percent = total ? ` at ${Math.round((state.received / total) * 100)}%` : "";
+      const retry = element("button", "action small", "Try again");
+      retry.addEventListener("click", () => sendMainMessage("retry"));
+      line.append(`${state.error ?? "Failed"}${percent}${step} `, retry, " ", cancel);
+      return [line];
+    }
+    case "done":
+      line.classList.add("done");
+      line.append(
+        state.kind === "open"
+          ? "Opened"
+          : `Downloaded ${count > 1 ? count + " runs" : labelOf(state.names[0])}` +
+              (state.destination ? ` to ${state.destination}` : "")
+      );
+      return [line];
+  }
+}
+
+function renderFooter() {
+  const actions = selectionActions({ selected, busy: busy(), openRun });
+  WHAT.replaceChildren();
+  if (job !== null) {
+    WHAT.append(...renderJob(job));
+  } else if (selected.length === 0) {
+    WHAT.append(element("span", "muted", "Tick runs to download. Double-click a run to open it."));
   } else {
-    sendMainMessage("save", selectedFiles);
-  }
-}
-
-// Bind events
-window.addEventListener("resize", updateFiller);
-EXIT_BUTTON.addEventListener("click", () => {
-  sendMainMessage("close");
-});
-DOWNLOAD_BUTTON.addEventListener("click", save);
-window.addEventListener("keydown", (event) => {
-  if (event.code === "Enter") {
-    save();
-  } else if (!IS_LITE && event.key === "a" && (platform === "darwin" ? event.metaKey : event.ctrlKey)) {
-    if (filenames.length === selectedFiles.length) {
-      // Deselect all
-      selectedFiles = [];
-      Array.from(FILE_LIST_ITEMS.children).forEach((row) => {
-        row.classList.remove("selected");
-      });
-    } else {
-      // Select all
-      selectedFiles = [...filenames];
-      Array.from(FILE_LIST_ITEMS.children).forEach((row, index) => {
-        if (index < filenames.length) {
-          row.classList.add("selected");
-        }
-      });
+    const bytes = selected.reduce((total, name) => total + (runNamed(name)?.size_bytes ?? 0), 0);
+    WHAT.append(element("b", undefined, selected.length === 1 ? labelOf(selected[0]) : `${selected.length} runs`));
+    WHAT.append(" ", element("span", "muted", sizeText(bytes)));
+    if (selected.length > 1) {
+      WHAT.append(
+        " ",
+        linkButton("Clear", () => {
+          selected = [];
+          render();
+        }),
+        element("div", "hint", "Open shows one run at a time")
+      );
     }
   }
+
+  COPY_BUTTON.disabled = !actions.copyLink;
+  DOWNLOAD_BUTTON.disabled = !actions.download;
+  DOWNLOAD_BUTTON.textContent = selected.length > 1 ? `Download ${selected.length}` : "Download";
+  OPEN_BUTTON.disabled = !actions.open;
+  OPEN_BUTTON.textContent = actions.showing ? "Showing" : "Open";
+
+  // The full fault list for exactly one ticked run.
+  const single = actions.single !== null && job === null ? runNamed(actions.single) : undefined;
+  const groups = single?.summary ? groupFaults(single.summary.faults) : [];
+  FAULT_LIST.hidden = groups.length === 0;
+  FAULT_LIST.replaceChildren(
+    ...groups.map((group) => {
+      const item = element("span", "fault-line " + group.severity);
+      item.append(element("span", "at", faultTimesText(group)), document.createTextNode(group.fullName));
+      return item;
+    })
+  );
+  FAULT_LIST.title = faultListText(groups);
+}
+
+function renderFilters() {
+  const counts: Record<RunFilter, number> = {
+    all: runs.length,
+    driving: runs.filter((run) => matchesFilter(run, "driving")).length,
+    parked: runs.filter((run) => matchesFilter(run, "parked")).length
+  };
+  for (const button of FILTER_BUTTONS) {
+    const key = button.dataset.filter as RunFilter;
+    const label = key.charAt(0).toUpperCase() + key.slice(1);
+    button.textContent = list.status === "ready" ? `${label} ${counts[key]}` : label;
+    button.classList.toggle("on", key === filter);
+    button.setAttribute("aria-checked", String(key === filter));
+  }
+}
+
+/** Ticks and dimming without rebuilding the rows. */
+function syncRows() {
+  for (const row of Array.from(RUNS.querySelectorAll(".run")) as HTMLElement[]) {
+    const isSelected = selected.includes(row.dataset.name!);
+    row.classList.toggle("selected", isSelected);
+    row.classList.toggle("dim", busy() && !isSelected);
+    row.setAttribute("aria-selected", String(isSelected));
+  }
+}
+
+function render() {
+  renderFilters();
+  renderList();
+  renderFooter();
+}
+
+// Actions
+
+function showToast(text: string) {
+  TOAST.textContent = text;
+  TOAST.hidden = false;
+  if (toastTimer !== null) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (TOAST.hidden = true), 2200);
+}
+
+function closeDialog() {
+  SCRIM.hidden = true;
+  DIALOG_BUTTONS.replaceChildren();
+}
+
+/** Opens one run, asking first when live telemetry would be replaced. */
+function requestOpen(name: string) {
+  if (busy()) return;
+  selected = [name];
+  syncRows();
+  renderFooter();
+  const choices = openChoices(liveConnected, isLite());
+  if (choices === null) {
+    sendMainMessage("open", { name, how: "replace" });
+    return;
+  }
+  DIALOG_TEXT.textContent = `Opening ${labelOf(name)} here stops the live view in this ${isLite() ? "tab" : "window"}.`;
+  const labels: Record<OpenChoice, string> = {
+    cancel: "Cancel",
+    replace: "Stop live and open",
+    newTab: "Open in new tab"
+  };
+  DIALOG_BUTTONS.replaceChildren(
+    ...choices.map((choice, index) => {
+      const button = element("button", "action" + (index === choices.length - 1 ? " primary" : ""), labels[choice]);
+      button.dataset.choice = choice;
+      button.addEventListener("click", () => {
+        closeDialog();
+        if (choice !== "cancel") sendMainMessage("open", { name, how: choice });
+      });
+      return button;
+    })
+  );
+  SCRIM.hidden = false;
+  (DIALOG_BUTTONS.lastElementChild as HTMLElement | null)?.focus();
+}
+
+RUNS.addEventListener("click", (event) => {
+  const row = (event.target as HTMLElement).closest(".run") as HTMLElement | null;
+  if (row === null || busy()) return;
+  selected = toggleRun({ selected, busy: busy(), openRun }, row.dataset.name!);
+  // Update rows in place: replacing them between the two clicks of a double-click would lose it.
+  syncRows();
+  renderFooter();
 });
-window.addEventListener("load", () => {
-  (DOWNLOAD_BUTTON.children[0] as HTMLElement).hidden = IS_LITE;
-  (DOWNLOAD_BUTTON.children[1] as HTMLElement).hidden = !IS_LITE;
+RUNS.addEventListener("dblclick", (event) => {
+  const row = (event.target as HTMLElement).closest(".run") as HTMLElement | null;
+  if (row === null || busy() || row.dataset.name === openRun) return;
+  requestOpen(row.dataset.name!);
 });
+RUNS.addEventListener("keydown", (event) => {
+  const row = (event.target as HTMLElement).closest(".run") as HTMLElement | null;
+  if (row === null) return;
+  if (event.key === " ") {
+    event.preventDefault();
+    row.click();
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const rows = Array.from(RUNS.querySelectorAll(".run")) as HTMLElement[];
+    rows[rows.indexOf(row) + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
+  }
+});
+FILTER_BUTTONS.forEach((button) =>
+  button.addEventListener("click", () => {
+    filter = button.dataset.filter as RunFilter;
+    render();
+  })
+);
+COPY_BUTTON.addEventListener("click", () => {
+  if (selected.length === 1) sendMainMessage("copy-link", selected[0]);
+});
+DOWNLOAD_BUTTON.addEventListener("click", () => {
+  if (selected.length > 0 && !busy()) sendMainMessage("download", [...selected]);
+});
+OPEN_BUTTON.addEventListener("click", () => {
+  if (selected.length === 1) requestOpen(selected[0]);
+});
+CLOSE_BUTTON.addEventListener("click", () => sendMainMessage("close"));
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !SCRIM.hidden) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeDialog();
+  } else if (event.key === "Enter" && SCRIM.hidden && (event.target as HTMLElement).tagName !== "BUTTON") {
+    if (selected.length === 1 && !busy() && selected[0] !== openRun) requestOpen(selected[0]);
+  } else if (event.key === "a" && (event.metaKey || event.ctrlKey) && !busy()) {
+    event.preventDefault();
+    const shown = runs.filter((run) => matchesFilter(run, filter)).map((run) => run.name);
+    selected = shown.every((name) => selected.includes(name)) ? [] : shown;
+    render();
+  }
+});
+
+window.setInterval(() => {
+  if (list.status === "ready") sendMainMessage("load", { before: null });
+}, REFRESH_MS);
+
+render();

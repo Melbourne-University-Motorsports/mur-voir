@@ -109,7 +109,7 @@ export default () => {
         "licenses.ts",
         ...(!isLite ? ["export.ts"] : []),
         "preferences.ts",
-        ...(isLite ? ["download.ts"] : []),
+        "download.ts",
         ...(isLite ? ["uploadAsset.ts"] : []),
 
         "hub/dataSources/wpilog/wpilogWorker.ts",

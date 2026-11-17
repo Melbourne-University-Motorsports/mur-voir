@@ -1,0 +1,374 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://mur.org.au/schema/archive/v1/archive.schema.json",
+  "title": "ArchiveAPI",
+  "description": "MUR run archive API v1 shapes. See README for semantic requirements.",
+  "definitions": {
+    "RunName": {
+      "type": "string",
+      "description": "Dated (Melbourne local time), legacy, or undated pending name. Stable: a listed run is never renamed.",
+      "pattern": "^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}_(?:mon|tue|wed|thu|fri|sat|sun)_[0-9]{2}-[0-9]{2}-[0-9]{2}|run_[0-9]+_[0-9A-Fa-f]+|pending_[0-9]+)$"
+    },
+    "StartTime": {
+      "type": "string",
+      "description": "RFC 3339, whole seconds, Australia/Melbourne offset (+10:00 or +11:00).",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\+1[01]:00$"
+    },
+    "EventTime": {
+      "type": "string",
+      "description": "RFC 3339, up to millisecond precision, Australia/Melbourne offset (+10:00 or +11:00).",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?\\+1[01]:00$"
+    },
+    "Seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "NullableNonNegative": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Percent": {
+      "anyOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "RunState": {
+      "type": "string",
+      "enum": [
+        "recording",
+        "uploading",
+        "complete"
+      ]
+    },
+    "RunEnd": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "power_off",
+            "clean_stop"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "Severity": {
+      "type": "string",
+      "enum": [
+        "shutdown",
+        "warning"
+      ]
+    },
+    "Fault": {
+      "type": "object",
+      "required": [
+        "signal",
+        "code",
+        "name",
+        "full_name",
+        "severity",
+        "times",
+        "at_s",
+        "count"
+      ],
+      "properties": {
+        "signal": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "DBC signal name, e.g. HB_TTCS_FaultBits."
+        },
+        "code": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Bit index (LSB = 0) or raw enum value within the signal."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "full_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "$ref": "#/definitions/Severity"
+        },
+        "times": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/definitions/EventTime"
+          },
+          "description": "Wall-clock time of each activation, oldest first. Empty when the run's start is null."
+        },
+        "at_s": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/definitions/Seconds"
+          },
+          "description": "Seconds from the start of the run to each activation, oldest first."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total activations in covers_s; at_s and times hold the first 100."
+        }
+      }
+    },
+    "Summary": {
+      "type": "object",
+      "required": [
+        "covers_s",
+        "activity",
+        "place",
+        "distance_m",
+        "top_speed_kmh",
+        "soc_start_pct",
+        "soc_end_pct",
+        "ts_on_s",
+        "faults"
+      ],
+      "properties": {
+        "covers_s": {
+          "$ref": "#/definitions/Seconds"
+        },
+        "activity": {
+          "type": "string",
+          "enum": [
+            "driving",
+            "parked"
+          ]
+        },
+        "place": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "distance_m": {
+          "$ref": "#/definitions/NullableNonNegative"
+        },
+        "top_speed_kmh": {
+          "$ref": "#/definitions/NullableNonNegative"
+        },
+        "soc_start_pct": {
+          "$ref": "#/definitions/Percent"
+        },
+        "soc_end_pct": {
+          "$ref": "#/definitions/Percent"
+        },
+        "ts_on_s": {
+          "$ref": "#/definitions/NullableNonNegative"
+        },
+        "faults": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Fault"
+          }
+        }
+      }
+    },
+    "Run": {
+      "type": "object",
+      "required": [
+        "name",
+        "start",
+        "dated",
+        "duration_s",
+        "state",
+        "end",
+        "on_car_s",
+        "size_bytes",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/RunName"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/StartTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dated": {
+          "type": "boolean"
+        },
+        "duration_s": {
+          "$ref": "#/definitions/Seconds"
+        },
+        "state": {
+          "$ref": "#/definitions/RunState"
+        },
+        "end": {
+          "$ref": "#/definitions/RunEnd"
+        },
+        "on_car_s": {
+          "$ref": "#/definitions/NullableNonNegative"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Summary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "start": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "dated": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "recording"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "end": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "end": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "complete"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "on_car_s": {
+                "const": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "RunList": {
+      "type": "object",
+      "required": [
+        "version",
+        "runs",
+        "next"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Run"
+          }
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RunName"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Preparing": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "const": "preparing"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "required": [
+        "error",
+        "message"
+      ],
+      "properties": {
+        "error": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Machine-readable code. Clients must tolerate codes they do not know."
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

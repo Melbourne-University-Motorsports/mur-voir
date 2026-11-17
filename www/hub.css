@@ -874,6 +874,60 @@ button.add-tab {
   right: 12px;
 }
 
+/* Copy link for an open archive run, left of the tab controls */
+
+button.copy-run-link {
+  position: absolute;
+  z-index: 6;
+  top: 13px;
+  right: calc(154px + var(--show-lock-buttons) * 28px);
+  height: 24px;
+  width: 80px;
+  padding: 0px 6px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 12px;
+  color: inherit;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+button.copy-run-link[hidden] {
+  display: none;
+}
+
+body.fancy-title-bar-mac button.copy-run-link,
+body.fancy-title-bar-lite button.copy-run-link {
+  top: 10px;
+}
+
+body.fancy-title-bar-lite button.copy-run-link {
+  right: calc(154px - 33px + var(--show-lock-buttons) * 28px);
+}
+
+body.fancy-title-bar-win button.copy-run-link {
+  top: 51px;
+}
+
+body.has-run-link.fancy-title-bar-mac div.title-bar-text {
+  right: calc(154px + 88px + var(--show-lock-buttons) * 28px);
+}
+
+body.has-run-link.fancy-title-bar-lite div.title-bar-text {
+  right: calc(154px - 33px + 88px + var(--show-lock-buttons) * 28px);
+}
+
+body.has-run-link:not(.fancy-title-bar-mac):not(.fancy-title-bar-lite) div.tab-bar,
+body.has-run-link:not(.fancy-title-bar-mac):not(.fancy-title-bar-lite) div.tab-bar-shadow-right {
+  right: calc(154px + 88px + var(--show-lock-buttons) * 28px);
+}
+
+@media (prefers-color-scheme: dark) {
+  button.copy-run-link {
+    border-color: #555;
+  }
+}
+
 /* Timeline */
 
 div.timeline {

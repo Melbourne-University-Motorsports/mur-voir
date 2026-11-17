@@ -17,6 +17,7 @@ import { IS_LITE } from "../shared/buildConstants";
 import Log from "../shared/log/Log";
 import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
+import { isRunName } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
@@ -109,6 +110,8 @@ let liveConnected = false;
 let liveAutoStartComplete = false;
 let liveAddress = "";
 let liveStatus: LiveDataSourceStatus = LiveDataSourceStatus.Stopped;
+/** The archive run open in this window (File > Download runs…), or null for anything else. */
+let openRun: string | null = null;
 
 const connectDialog = new ConnectDialog((sourceId, address) => connectLive(sourceId, address));
 
@@ -451,6 +454,7 @@ function connectLive(sourceId: string, address: string) {
   sessionAddresses.set(sourceId, address);
   window.sendMainMessage("update-preferences", { liveMode: sourceId });
   startLive("robot", { sourceId: sourceId, address: address });
+  reportViewSource();
 }
 
 /** Disconnects the live source, keeping the received data visible. */
@@ -469,6 +473,7 @@ function stopLive() {
 
 /** Connects to a live data source. */
 function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; address: string }) {
+  openRun = null;
   historicalSources.forEach((entry) => entry.source.stop());
   historicalSources = [];
   liveConnection?.stop();
@@ -587,6 +592,27 @@ window.addEventListener("message", (event) => {
     // Share the registered live sources for the main process menus
     window.sendMainMessage("set-live-sources", getLiveSourceInfo(IS_LITE));
   }
+});
+
+// Tell the main process what this window shows: Download runs asks before replacing live telemetry,
+// Lite keeps ?run= in the address bar, and the title bar offers Copy link while a run is open.
+const COPY_RUN_LINK = document.querySelector(".copy-run-link") as HTMLButtonElement;
+let reportedViewSource = "";
+let copyRunLinkTimer: number | null = null;
+function reportViewSource() {
+  const murAddress = sessionAddresses.get("mur") ?? getLiveSource("mur", IS_LITE).defaultAddress;
+  const viewSource = { live: liveConnection !== null, run: openRun, archiveAddress: murAddress };
+  const key = JSON.stringify(viewSource);
+  if (key === reportedViewSource || window.messagePort === null) return;
+  reportedViewSource = key;
+  window.sendMainMessage("set-view-source", viewSource);
+  COPY_RUN_LINK.hidden = openRun === null;
+  document.body.classList.toggle("has-run-link", openRun !== null);
+}
+// Most changes report straight away; the interval catches the rest (e.g. a live connection dropping).
+guardedInterval(reportViewSource, 250);
+COPY_RUN_LINK.addEventListener("click", () => {
+  if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
 });
 
 // Update touch bar slider position
@@ -810,7 +836,16 @@ async function handleMainMessage(message: NamedMessage) {
             startHistorical(file, index === 0, files.length > 1);
           }
         });
+        openRun = !merge && files.length === 1 && isRunName(message.data.run) ? message.data.run : null;
+        reportViewSource();
       }
+      break;
+
+    case "run-link-copied":
+      COPY_RUN_LINK.textContent = message.data.ok ? "Link copied" : "Couldn't copy";
+      COPY_RUN_LINK.title = message.data.link;
+      if (copyRunLinkTimer !== null) window.clearTimeout(copyRunLinkTimer);
+      copyRunLinkTimer = window.setTimeout(() => (COPY_RUN_LINK.textContent = "Copy link"), 1800);
       break;
 
     case "show-connect-dialog":

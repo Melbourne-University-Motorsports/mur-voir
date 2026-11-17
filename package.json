@@ -22,7 +22,7 @@
     "wasm:compile": "node wasmCompile.mjs",
     "mock-backend": "node tools/mock-backend/src/main.ts",
     "postinstall": "node installElectron.mjs && node getLicenses.mjs && node bundleLiteAssets.mjs",
-    "test": "npm run live-api:check && node tools/run-tests.mjs",
+    "test": "npm run live-api:check && npm run archive-api:check && node tools/run-tests.mjs",
     "mqtt-mock": "node tools/mqtt-mock/main.mjs",
     "radio-bridge": "node tools/radio-bridge/run.mjs",
     "lite-build": "node bundleLiteAssets.mjs && ASCOPE_DISTRIBUTION=LITE npm run compile",
@@ -31,7 +31,9 @@
     "screenshot": "node tools/screenshot.mjs",
     "cellular-smoke": "node tools/cellular-smoke.mjs",
     "live-api:generate": "node tools/live-api.mjs generate",
-    "live-api:check": "node tools/live-api.mjs check"
+    "live-api:check": "node tools/live-api.mjs check",
+    "archive-api:generate": "node tools/live-api.mjs generate --api archive",
+    "archive-api:check": "node tools/live-api.mjs check --api archive"
   },
   "devDependencies": {
     "@babel/preset-env": "^7.26.0",
