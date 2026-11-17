@@ -61,7 +61,18 @@ try {
   ]);
   await ready(`http://127.0.0.1:${port}`);
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  // LITE_SCREENSHOTS=<dir> saves screenshots there; LITE_COLOR_SCHEME=dark takes them in dark mode.
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1000 },
+    colorScheme: process.env.LITE_COLOR_SCHEME === "dark" ? "dark" : "light"
+  });
+  /** Saves a screenshot of the page, or of the open popup when `popup` is set. */
+  const shot = async (name, popup = false) => {
+    if (!process.env.LITE_SCREENSHOTS) return;
+    await page.waitForTimeout(500); // let popups and fades settle
+    const path = process.env.LITE_SCREENSHOTS + "/" + name + ".png";
+    await (popup ? page.locator(".popup-frame").screenshot({ path }) : page.screenshot({ path }));
+  };
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -123,7 +134,7 @@ try {
   await frame.evaluate(() => window.tabs.addTab(15));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
-  if (process.env.LITE_SCREENSHOTS) await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_mur.png" });
+  await shot("lite_mur");
 
   await hub.getByText("File", { exact: true }).click();
   const downloading = page.waitForEvent("download");
@@ -206,20 +217,24 @@ try {
   ]) {
     assert.ok(listText.includes(text), `Download runs shows "${text}"`);
   }
-  await runsPopup.locator('.filters button[data-filter="parked"]').click();
+  // Stock file list: an MF4 icon on every row, icon buttons in the control bar.
+  assert.equal(await runsPopup.locator('.run img[src="../icons/mf4-icon.png"]').count(), 13);
+  for (const id of ["copy-link", "open", "exit", "download"]) {
+    assert.equal(await runsPopup.locator(`button#${id} > img`).count(), 1, `#${id} is an icon button`);
+  }
+  await runsPopup.locator("select.filter").selectOption("parked");
   assert.equal(await rows.count(), 3);
-  await runsPopup.locator('.filters button[data-filter="all"]').click();
-  if (process.env.LITE_SCREENSHOTS) await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_runs.png" });
+  await runsPopup.locator("select.filter").selectOption("all");
+  await shot("lite_runs", true);
 
   // One ticked run shows its faults in the footer; Open and Copy link need exactly one run.
   const faultRow = rows.filter({ has: runsPopup.locator(".more") });
   await faultRow.click();
   assert.match(await runsPopup.locator(".fault-list").innerText(), /IMD fault, shutdown circuit opened.*16:05, 16:09/s);
-  assert.equal(await runsPopup.locator("button.open").isEnabled(), true);
-  if (process.env.LITE_SCREENSHOTS)
-    await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_runs_faults.png" });
-  await runsPopup.locator("button.copy-link").click();
-  await runsPopup.locator(".toast", { hasText: "Link copied" }).waitFor();
+  assert.equal(await runsPopup.locator("button#open").isEnabled(), true);
+  await shot("lite_runs_faults", true);
+  await runsPopup.locator("button#copy-link").click();
+  await runsPopup.locator(".alert-text", { hasText: "Link copied" }).waitFor();
   const faultRunName = await faultRow.getAttribute("data-name");
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
@@ -229,11 +244,11 @@ try {
   // Download takes any number of runs, one MF4 each; the uploading run answers 202 first.
   const uploadingRow = rows.filter({ hasText: "Uploading, 11 of 18 min in" });
   await uploadingRow.click();
-  assert.equal(await runsPopup.locator("button.open").isEnabled(), false);
-  assert.equal(await runsPopup.locator("button.copy-link").isEnabled(), false);
+  assert.equal(await runsPopup.locator("button#open").isEnabled(), false);
+  assert.equal(await runsPopup.locator("button#copy-link").isEnabled(), false);
   const downloads = [];
   page.on("download", (download) => downloads.push(download));
-  await runsPopup.locator("button.download", { hasText: "Download 2" }).click();
+  await runsPopup.locator('button#download[title="Download 2 runs"]').click();
   await runsPopup.locator(".job.done", { hasText: "Downloaded 2 runs to Downloads" }).waitFor();
   const expectedFiles = [faultRunName, await uploadingRow.getAttribute("data-name")].map((name) => name + ".mf4");
   assert.deepEqual(downloads.map((download) => download.suggestedFilename()).sort(), expectedFiles.sort());
@@ -256,17 +271,15 @@ try {
     "Stop live and open",
     "Open in new tab"
   ]);
-  if (process.env.LITE_SCREENSHOTS)
-    await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_runs_live.png" });
+  await shot("lite_runs_live", true);
   await runsPopup.locator('[data-choice="replace"]').click();
   await page.locator(".popup-frame").waitFor({ state: "hidden" });
   await frame.waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
   await page.waitForFunction((name) => new URL(location.href).searchParams.get("run") === name, runName);
+  await shot("lite_run_open");
   await hub.locator(".copy-run-link").click();
-  await hub.locator(".copy-run-link", { hasText: "Link copied" }).waitFor();
+  await hub.locator('.copy-run-link img[src="symbols/check.svg"]').waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `http://127.0.0.1:${port}/?run=${runName}`);
-  if (process.env.LITE_SCREENSHOTS)
-    await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_run_open.png" });
 
   // A ?run= link opens that run in a fresh browser and keeps the parameter.
   const runContext = await browser.newContext();
