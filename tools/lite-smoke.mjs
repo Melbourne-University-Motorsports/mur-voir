@@ -227,7 +227,7 @@ try {
   await runsPopup.locator("select.filter").selectOption("all");
   await shot("lite_runs", true);
 
-  // One ticked run shows its faults in the footer; Open and Copy link need exactly one run.
+  // One ticked run shows its faults in the footer.
   const faultRow = rows.filter({ has: runsPopup.locator(".more") });
   await faultRow.click();
   assert.match(await runsPopup.locator(".fault-list").innerText(), /IMD fault, shutdown circuit opened.*16:05, 16:09/s);
@@ -244,7 +244,12 @@ try {
   // Download takes any number of runs, one MF4 each; the uploading run answers 202 first.
   const uploadingRow = rows.filter({ hasText: "Uploading, 11 of 18 min in" });
   await uploadingRow.click();
-  assert.equal(await runsPopup.locator("button#open").isEnabled(), false);
+  // With several ticked, Open takes the most recent; Copy link still needs exactly one.
+  assert.equal(await runsPopup.locator("button#open").isEnabled(), true);
+  assert.match(
+    await runsPopup.locator("button#open").getAttribute("title"),
+    /^Open the most recent ticked run, .*14:55$/
+  );
   assert.equal(await runsPopup.locator("button#copy-link").isEnabled(), false);
   const downloads = [];
   page.on("download", (download) => downloads.push(download));

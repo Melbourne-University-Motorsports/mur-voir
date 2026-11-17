@@ -34,6 +34,7 @@ import {
   matchesFilter,
   mergeRuns,
   openChoices,
+  openTarget,
   pruneSelection,
   runActivityText,
   runLabel,
@@ -486,13 +487,20 @@ test("a refresh updates listed runs, adds new ones and keeps older pages", () =>
 
 // Selection
 
-test("any number of runs can be ticked to download; Open and Copy link need exactly one", () => {
+test("any number of runs can be ticked to download; Open takes the most recent; Copy link needs exactly one", () => {
   const none = selectionActions({ selected: [], busy: false, openRun: null });
-  assert.deepEqual(none, { download: false, open: false, showing: false, copyLink: false, single: null });
+  assert.deepEqual(none, { download: false, open: false, showing: false, copyLink: false, single: null, target: null });
   const one = selectionActions({ selected: ["a"], busy: false, openRun: null });
-  assert.deepEqual(one, { download: true, open: true, showing: false, copyLink: true, single: "a" });
-  const many = selectionActions({ selected: ["a", "b", "c"], busy: false, openRun: null });
-  assert.deepEqual(many, { download: true, open: false, showing: false, copyLink: false, single: null });
+  assert.deepEqual(one, { download: true, open: true, showing: false, copyLink: true, single: "a", target: "a" });
+  // Ticked oldest first; the list is newest first, so Open picks c.
+  const order = ["d", "c", "b", "a"];
+  const many = selectionActions({ selected: ["a", "b", "c"], busy: false, openRun: null, order });
+  assert.deepEqual(many, { download: true, open: true, showing: false, copyLink: false, single: null, target: "c" });
+  const manyShowing = selectionActions({ selected: ["a", "c"], busy: false, openRun: "c", order });
+  assert.equal(manyShowing.open, false, "The most recent ticked run is already open");
+  assert.equal(manyShowing.showing, true);
+  assert.equal(openTarget(["b", "a"], order), "b");
+  assert.equal(openTarget([], order), null);
   const showing = selectionActions({ selected: ["a"], busy: false, openRun: "a" });
   assert.equal(showing.open, false, "The open run reads Showing");
   assert.equal(showing.showing, true);

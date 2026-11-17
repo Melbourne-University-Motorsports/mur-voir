@@ -24,6 +24,7 @@ import {
   mergeRuns,
   OpenChoice,
   openChoices,
+  openTarget,
   pruneSelection,
   runActivityText,
   runClock,
@@ -381,7 +382,7 @@ function renderStatus() {
 }
 
 function renderFooter() {
-  const actions = selectionActions({ selected, busy: busy(), openRun });
+  const actions = selectionActions({ selected, busy: busy(), openRun, order: runs.map((run) => run.name) });
   const failed = job?.phase === "failed" ? job.kind : null;
   renderStatus();
 
@@ -395,8 +396,8 @@ function renderFooter() {
       ? "Try again"
       : actions.showing
       ? "Already open"
-      : selected.length > 1
-      ? "Open shows one run at a time"
+      : selected.length > 1 && actions.target !== null
+      ? `Open the most recent ticked run, ${labelOf(actions.target)}`
       : "Open";
   EXIT_BUTTON.title = busy() ? "Cancel" : "Close";
 
@@ -478,7 +479,8 @@ function closeDialog() {
 /** Opens one run, asking first when live telemetry would be replaced. */
 function requestOpen(name: string) {
   if (busy()) return;
-  selected = [name];
+  // Opening the most recent of several ticked runs keeps the other ticks.
+  if (!selected.includes(name)) selected = [name];
   syncRows();
   renderFooter();
   const choices = openChoices(liveConnected, isLite());
@@ -550,7 +552,13 @@ DOWNLOAD_BUTTON.addEventListener("click", () => {
 });
 OPEN_BUTTON.addEventListener("click", () => {
   if (job?.phase === "failed" && job.kind === "open") sendMainMessage("retry");
-  else if (selected.length === 1) requestOpen(selected[0]);
+  else {
+    const target = openTarget(
+      selected,
+      runs.map((run) => run.name)
+    );
+    if (target !== null) requestOpen(target);
+  }
 });
 EXIT_BUTTON.addEventListener("click", () => sendMainMessage(busy() ? "cancel-job" : "close"));
 window.addEventListener("keydown", (event) => {
@@ -563,7 +571,11 @@ window.addEventListener("keydown", (event) => {
     SCRIM.hidden &&
     !["BUTTON", "SELECT"].includes((event.target as HTMLElement).tagName)
   ) {
-    if (selected.length === 1 && !busy() && selected[0] !== openRun) requestOpen(selected[0]);
+    const target = openTarget(
+      selected,
+      runs.map((run) => run.name)
+    );
+    if (target !== null && !busy() && target !== openRun) requestOpen(target);
   } else if (event.key === "a" && (event.metaKey || event.ctrlKey) && !busy()) {
     event.preventDefault();
     const shown = runs.filter((run) => matchesFilter(run, filter)).map((run) => run.name);

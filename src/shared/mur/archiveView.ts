@@ -251,6 +251,8 @@ export interface SelectionState {
   busy: boolean;
   /** The run the hub has open, if any. */
   openRun: string | null;
+  /** Listed run names, newest first, so Open can pick the most recent ticked run. */
+  order?: string[];
 }
 
 export function toggleRun(state: SelectionState, name: string): string[] {
@@ -281,18 +283,29 @@ export interface SelectionActions {
   copyLink: boolean;
   /** The one ticked run, when exactly one is ticked. */
   single: string | null;
+  /** The run Open acts on: the ticked run, or the most recent of several. */
+  target: string | null;
 }
 
-/** Download takes any number of runs; Open and Copy link need exactly one. */
+/** The ticked run Open acts on: with several ticked, the most recent (first in the newest-first list). */
+export function openTarget(selected: string[], order: string[]): string | null {
+  if (selected.length <= 1) return selected[0] ?? null;
+  const ticked = new Set(selected);
+  return order.find((name) => ticked.has(name)) ?? selected[0];
+}
+
+/** Download takes any number of runs; Open takes the most recent ticked run; Copy link needs exactly one. */
 export function selectionActions(state: SelectionState): SelectionActions {
   const single = state.selected.length === 1 ? state.selected[0] : null;
-  const showing = single !== null && single === state.openRun;
+  const target = openTarget(state.selected, state.order ?? state.selected);
+  const showing = target !== null && target === state.openRun;
   return {
     download: state.selected.length > 0 && !state.busy,
-    open: single !== null && !state.busy && !showing,
+    open: target !== null && !state.busy && !showing,
     showing,
     copyLink: single !== null,
-    single
+    single,
+    target
   };
 }
 
