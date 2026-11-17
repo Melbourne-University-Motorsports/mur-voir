@@ -447,19 +447,20 @@ button {
   height: 30px;
 }
 
-#copy-link {
-  right: 123px;
-}
-
+/* Left to right: open, download, copy link, close */
 #open {
-  right: 88px;
-}
-
-#exit {
-  right: 43px;
+  right: 113px;
 }
 
 #download {
+  right: 78px;
+}
+
+#copy-link {
+  right: 43px;
+}
+
+#exit {
   right: 8px;
 }
 

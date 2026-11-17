@@ -219,7 +219,7 @@ try {
   }
   // Stock file list: an MF4 icon on every row, icon buttons in the control bar.
   assert.equal(await runsPopup.locator('.run img[src="../icons/mf4-icon.png"]').count(), 13);
-  for (const id of ["copy-link", "open", "exit", "download"]) {
+  for (const id of ["open", "download", "copy-link", "exit"]) {
     assert.equal(await runsPopup.locator(`button#${id} > img`).count(), 1, `#${id} is an icon button`);
   }
   await runsPopup.locator("select.filter").selectOption("parked");
