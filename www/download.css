@@ -7,252 +7,295 @@
   at the root directory of this project.
 */
 
+/* Stock Download Logs layout and colours, with the run archive's rows and fault list on top. */
+
 :root {
-  --fg: #222;
-  --muted: #6b7280;
-  --bg: #fff;
-  --raised: #f2f3f5;
-  --border: #dfe2e7;
-  --accent: #446ce3;
-  --accent-fg: #fff;
-  --selected: #446ce31f;
   --shutdown: #d03b3b;
   --warning: #b7791f;
   --info: #1f7fb8;
   --ok: #198754;
+  --open: #446ce3;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --fg: #eee;
-    --muted: #9ca3af;
-    --bg: #222;
-    --raised: #2c2c2e;
-    --border: #3a3a3c;
-    --accent: #6c8cf0;
-    --accent-fg: #fff;
-    --selected: #6c8cf033;
     --shutdown: #f06a6a;
     --warning: #e0a245;
     --info: #5cb4e8;
     --ok: #4cc38a;
+    --open: #8ea8f5;
   }
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
 body {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--bg);
-  color: var(--fg);
-  font-size: 13px;
-  line-height: 1.4;
+  background-color: #fff;
   overflow: hidden;
 }
 
-button {
-  font: inherit;
-  color: inherit;
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #222;
+  }
 }
 
-.muted {
-  color: var(--muted);
+/* File list */
+
+div.file-list {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  right: 0px;
+  bottom: var(--footer-height, 46px);
+  overflow: auto;
+  background-color: #eee;
+  box-shadow: inset 0px 0px 2px #ccc;
 }
 
-/* Header */
-
-.header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 8px 7px 12px;
-  border-bottom: 1px solid var(--border);
+div.runs {
+  padding-bottom: 3px;
 }
 
-.heading {
-  flex: 1;
-  font-weight: 600;
-  font-size: 13px;
-}
-
-.filters {
-  display: inline-flex;
-  gap: 2px;
-}
-
-.filters button {
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 1px 9px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.filters button.on {
-  border-color: var(--border);
-  background-color: var(--raised);
-  color: var(--fg);
-}
-
-.header .close {
-  width: 24px;
-  height: 24px;
-}
-
-body:not(.lite) .header .close {
-  display: none;
-}
-
-/* Runs */
-
-.runs {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.day {
+div.day {
   position: sticky;
-  top: 0;
+  top: 0px;
   z-index: 2;
-  padding: 8px 12px 3px;
-  background-color: var(--bg);
-  color: var(--muted);
-  font-size: 11px;
+  padding: 6px 14px 2px;
+  background-color: #eee;
+  color: #777;
+  font-size: 12px;
   font-weight: 600;
 }
 
-.run {
+div.run {
   display: grid;
-  grid-template-columns: 16px 42px minmax(0, 1fr) 200px 56px;
-  column-gap: 8px;
-  row-gap: 1px;
-  align-items: baseline;
-  padding: 5px 12px;
-  cursor: pointer;
+  grid-template-columns: 18px 25px 42px minmax(0, 1fr) 200px 56px;
+  grid-template-rows: 21px 18px;
+  column-gap: 6px;
+  align-items: center;
+  height: 41px;
+  margin-left: 6px;
+  margin-right: 6px;
+  padding-left: 4px;
+  padding-right: 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+  padding-top: 1px;
 }
 
-.run:hover {
-  background-color: var(--raised);
+div.run.even {
+  background-color: #ddd;
 }
 
-.run.selected {
-  background-color: var(--selected);
-}
-
-.run.dim {
+div.run.dim {
   opacity: 0.55;
-  cursor: default;
 }
 
-.run:focus-visible {
+div.run:focus-visible {
   outline-offset: -2px;
 }
 
-.tick {
+div.run input {
   grid-column: 1;
   grid-row: 1 / 3;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: 1.5px solid var(--muted);
-  border-radius: 3px;
+  margin: 0px 0px 0px 4px;
+  pointer-events: none;
 }
 
-.run.selected .tick {
-  background-color: var(--accent);
-  border-color: var(--accent);
-}
-
-.run.selected .tick::after {
-  content: "";
-  width: 7px;
-  height: 4px;
-  border: 2px solid var(--accent-fg);
-  border-top: 0;
-  border-right: 0;
-  transform: rotate(-45deg) translate(1px, -1px);
-}
-
-.time {
+div.run img {
   grid-column: 2;
-  grid-row: 1;
-  font-weight: 600;
+  grid-row: 1 / 3;
+  justify-self: center;
+  height: 15px;
+  filter: drop-shadow(0px 0.5px 1px #bbb);
 }
 
-.what {
+div.run img.mac {
+  height: 18px;
+}
+
+div.run .time {
   grid-column: 3;
+  grid-row: 1;
+  white-space: nowrap;
+}
+
+div.run .what {
+  grid-column: 4;
   grid-row: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.run.parked .what {
-  color: var(--muted);
-}
-
-.numbers {
-  grid-column: 3;
+div.run .numbers {
+  grid-column: 4;
   grid-row: 2;
   font-size: 12px;
-  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.fault {
+div.run .fault {
   min-width: 0;
-  grid-column: 4;
+  grid-column: 5;
 }
 
-.f1 {
+div.run .f1 {
   grid-row: 1;
 }
 
-.f2 {
+div.run .f2 {
   grid-row: 2;
 }
 
-.length,
-.size {
-  grid-column: 5;
+div.run .length,
+div.run .size {
+  grid-column: 6;
   text-align: right;
-  font-size: 11px;
-  color: var(--muted);
+  font-size: 12px;
   white-space: nowrap;
 }
 
-.length {
+div.run .length {
   grid-row: 1;
 }
 
-.size {
+div.run .size {
   grid-row: 2;
 }
 
-.no-summary {
-  color: var(--muted);
+/* Secondary text, as stock's file size */
+div.run .numbers,
+div.run .length,
+div.run .size,
+div.run.parked .what,
+div.run .no-summary,
+div.loading-older,
+.fault-line .more {
+  font-weight: 300;
+  color: #777;
+}
+
+div.run.selected .numbers,
+div.run.selected .length,
+div.run.selected .size,
+div.run.selected.parked .what,
+div.run.selected .no-summary,
+div.run.selected .fault-line .more {
+  color: #555;
+}
+
+div.run .no-summary {
   font-style: italic;
 }
 
+/* Darker status and fault colours on the light theme's blue selection */
+@media (prefers-color-scheme: light) {
+  div.run.selected {
+    --shutdown: #9e1b1b;
+    --warning: #6e4500;
+    --info: #0b4a73;
+    --open: #1c2f80;
+  }
+}
+
+div.loading-older {
+  padding: 6px 14px;
+  font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  div.file-list {
+    background-color: #111;
+    box-shadow: inset 0px 0px 2px #000;
+  }
+
+  div.day {
+    background-color: #111;
+  }
+
+  div.run.even {
+    background-color: #1a1a1a;
+  }
+
+  div.run img {
+    filter: drop-shadow(0px 0.5px 4px #000);
+  }
+
+  div.run.selected .numbers,
+  div.run.selected .length,
+  div.run.selected .size,
+  div.run.selected.parked .what,
+  div.run.selected .no-summary,
+  div.run.selected .fault-line .more {
+    color: #999;
+  }
+}
+
+/* Filler rows keep the stripes going to the bottom of the list */
+div.filler {
+  height: 41px;
+  margin-left: 6px;
+  margin-right: 6px;
+  border-radius: 8px;
+}
+
+div.filler.even {
+  background-color: #ddd;
+}
+
+@media (prefers-color-scheme: dark) {
+  div.filler.even {
+    background-color: #1a1a1a;
+  }
+}
+
+/* File selection */
+div.run:not(.selected):not(.dim):hover {
+  background-color: #e8e8e8;
+}
+
+div.run.even:not(.selected):not(.dim):hover {
+  background-color: #d7d7d7;
+}
+
+div.run.selected {
+  background-color: #88f;
+}
+
+div.run.selected.even {
+  background-color: #77e;
+}
+
+@media (prefers-color-scheme: dark) {
+  div.run:not(.selected):not(.dim):hover {
+    background-color: #151515;
+  }
+
+  div.run.even:not(.selected):not(.dim):hover {
+    background-color: #1e1e1e;
+  }
+
+  div.run.selected {
+    background-color: #22a;
+  }
+
+  div.run.selected.even {
+    background-color: #33b;
+  }
+
+  div.run.selected img {
+    filter: drop-shadow(0px 0.5px 1px #000);
+  }
+}
+
+/* Run status and faults */
+
 .status {
   margin-left: 6px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -266,6 +309,10 @@ body:not(.lite) .header .close {
 
 .status.on-car {
   color: var(--warning);
+}
+
+.status.open {
+  color: var(--open);
 }
 
 .pulse {
@@ -283,16 +330,6 @@ body:not(.lite) .header .close {
   50% {
     opacity: 0.25;
   }
-}
-
-.open-tag {
-  margin-left: 6px;
-  padding: 0 5px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent);
-  font-size: 10px;
-  vertical-align: 1px;
 }
 
 .fault-line {
@@ -317,7 +354,6 @@ body:not(.lite) .header .close {
 
 .fault-line .more {
   margin-left: 6px;
-  color: var(--muted);
 }
 
 .severity-dot {
@@ -330,150 +366,108 @@ body:not(.lite) .header .close {
   vertical-align: 1px;
 }
 
-.skeleton {
-  height: 24px;
-  margin: 8px 12px;
-  border-radius: 5px;
-  background-color: var(--raised);
-  animation: pulse 1.2s infinite;
-}
-
-.error-box {
-  margin: 16px 12px;
-  padding: 10px;
-  border: 1px solid var(--shutdown);
-  border-radius: 7px;
-  color: var(--shutdown);
-  font-size: 12px;
-}
-
-.error-box button {
-  margin-top: 8px;
-}
-
-.empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: var(--muted);
-}
-
-.older {
-  display: block;
-  margin: 8px auto 12px;
-}
-
-/* Footer */
-
-.footer {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-height: 46px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border);
-}
-
-.footer .what {
-  flex: 1;
-  min-width: 0;
-}
-
-.hint {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-button.action {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 11px;
-  font-size: 12px;
-  white-space: nowrap;
-  background-color: var(--bg);
-}
-
-button.action.primary {
-  border-color: var(--accent);
-  background-color: var(--accent);
-  color: var(--accent-fg);
-}
-
-button.action.primary:not(:disabled):hover {
-  background-color: var(--accent);
-  filter: brightness(1.08);
-}
-
-button.action:disabled {
-  opacity: 0.45;
-}
-
-button.action.small {
-  padding: 2px 8px;
-  font-size: 12px;
-}
-
-button.link {
-  padding: 0 2px;
-  color: var(--accent);
-  font-size: 12px;
-}
-
-.job {
-  font-size: 12px;
-}
-
-.job.failed {
-  color: var(--shutdown);
-}
-
-.job.done {
-  color: var(--ok);
-}
-
-progress.job-bar {
-  display: block;
-  width: 100%;
-  height: 4px;
-  margin-top: 3px;
-  appearance: none;
-  border: none;
-  border-radius: 2px;
-  background-color: var(--raised);
-  overflow: hidden;
-}
-
-progress.job-bar::-webkit-progress-bar {
-  background-color: var(--raised);
-}
-
-progress.job-bar::-webkit-progress-value {
-  background-color: var(--accent);
-}
-
-.fault-list {
-  flex-basis: 100%;
-  order: 3;
+div.fault-list {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 46px;
+  padding-top: 6px;
   font-size: 12px;
   line-height: 1.45;
 }
 
-.fault-list .fault-line {
+div.fault-list .fault-line {
   display: inline;
   white-space: normal;
 }
 
-.fault-list .fault-line + .fault-line::before {
+div.fault-list .fault-line + .fault-line::before {
   content: " · ";
-  color: var(--muted);
+  color: #777;
+}
+
+/* Control bar */
+
+select.filter {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  width: 120px;
+}
+
+div.alert-text {
+  position: absolute;
+  bottom: 8px;
+  height: 30px;
+  left: 144px;
+  right: 168px;
+
+  font-size: 14px;
+  line-height: 30px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+div.alert-text.failed {
+  color: var(--shutdown);
+}
+
+div.alert-text.done {
+  color: var(--ok);
+}
+
+progress {
+  position: absolute;
+  bottom: 23px;
+  height: 18px;
+  left: 144px;
+  width: calc(100% - 144px - 168px);
+}
+
+div.progress-details {
+  position: absolute;
+  bottom: 5px;
+  height: 18px;
+  left: 144px;
+  width: calc(100% - 144px - 168px);
+  text-align: center;
+
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: Courier, monospace;
+}
+
+button {
+  position: absolute;
+  bottom: 8px;
+  width: 30px;
+  height: 30px;
+}
+
+#copy-link {
+  right: 123px;
+}
+
+#open {
+  right: 88px;
+}
+
+#exit {
+  right: 43px;
+}
+
+#download {
+  right: 8px;
 }
 
 /* Live telemetry dialog */
 
-.scrim {
+div.scrim {
   position: fixed;
-  inset: 0;
+  inset: 0px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -481,49 +475,58 @@ progress.job-bar::-webkit-progress-value {
   background-color: #00000047;
 }
 
-.scrim[hidden] {
+div.scrim[hidden] {
   display: none;
 }
 
-.dialog {
+div.dialog {
   width: 360px;
   max-width: calc(100% - 32px);
   padding: 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background-color: var(--bg);
-  box-shadow: 0 12px 32px #00000040;
+  border-radius: 8px;
+  background-color: #fff;
+  box-shadow: 0px 4px 20px #00000040;
+  font-size: 14px;
 }
 
-.dialog-title {
+div.dialog-title {
   font-weight: 600;
 }
 
-.dialog-text {
-  margin: 6px 0 12px;
-  color: var(--muted);
+p.dialog-text {
+  margin: 6px 0px 12px;
+  color: #777;
+  font-size: 13px;
 }
 
-.dialog-buttons {
+div.dialog-buttons {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
 }
 
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: 56px;
-  z-index: 20;
-  max-width: 92%;
-  padding: 6px 12px;
-  border-radius: 7px;
-  transform: translateX(-50%);
-  background-color: var(--fg);
-  color: var(--bg);
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+div.dialog-buttons button {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 4px 11px;
+  border: 1px solid #ccc;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+}
+
+@media (prefers-color-scheme: dark) {
+  div.dialog {
+    background-color: #2a2a2a;
+  }
+
+  p.dialog-text {
+    color: #999;
+  }
+
+  div.dialog-buttons button {
+    border-color: #555;
+  }
 }

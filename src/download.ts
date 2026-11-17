@@ -41,18 +41,24 @@ import {
 const REFRESH_MS = 10_000;
 const DONE_DISMISS_MS = 2500;
 
+const FILE_LIST = document.querySelector(".file-list") as HTMLElement;
 const RUNS = document.querySelector(".runs") as HTMLElement;
-const WHAT = document.querySelector(".footer .what") as HTMLElement;
+const LOADING_ANIMATION = document.querySelector(".loading") as HTMLElement;
 const FAULT_LIST = document.querySelector(".fault-list") as HTMLElement;
-const COPY_BUTTON = document.querySelector(".copy-link") as HTMLButtonElement;
-const DOWNLOAD_BUTTON = document.querySelector(".download") as HTMLButtonElement;
-const OPEN_BUTTON = document.querySelector(".open") as HTMLButtonElement;
-const CLOSE_BUTTON = document.querySelector(".header .close") as HTMLButtonElement;
-const FILTER_BUTTONS = Array.from(document.querySelectorAll(".filters button")) as HTMLButtonElement[];
+const FILTER = document.querySelector("select.filter") as HTMLSelectElement;
+const ALERT_TEXT = document.querySelector(".alert-text") as HTMLElement;
+const PROGRESS_BAR = document.querySelector("progress") as HTMLProgressElement;
+const PROGRESS_DETAILS = document.querySelector(".progress-details") as HTMLElement;
+const COPY_BUTTON = document.getElementById("copy-link") as HTMLButtonElement;
+const OPEN_BUTTON = document.getElementById("open") as HTMLButtonElement;
+const EXIT_BUTTON = document.getElementById("exit") as HTMLButtonElement;
+const DOWNLOAD_BUTTON = document.getElementById("download") as HTMLButtonElement;
 const SCRIM = document.querySelector(".scrim") as HTMLElement;
 const DIALOG_TEXT = document.querySelector(".dialog-text") as HTMLElement;
 const DIALOG_BUTTONS = document.querySelector(".dialog-buttons") as HTMLElement;
-const TOAST = document.querySelector(".toast") as HTMLElement;
+
+const FOOTER_HEIGHT_PX = 46;
+const ROW_HEIGHT_PX = 41;
 
 type ListState = { status: "loading" } | { status: "error"; message: string } | { status: "ready" };
 
@@ -62,6 +68,7 @@ let list: ListState = { status: "loading" };
 let runs: ArchiveRun[] = [];
 let next: string | null = null;
 let loadingOlder = false;
+let olderPaused = false;
 let olderLoaded = false;
 let filter: RunFilter = "all";
 let selected: string[] = [];
@@ -69,7 +76,8 @@ let liveConnected = false;
 let openRun: string | null = null;
 let job: JobState | null = null;
 let today = todayIn();
-let toastTimer: number | null = null;
+let notice: string | null = null;
+let noticeTimer: number | null = null;
 let doneTimer: number | null = null;
 
 const isLite = () => platform === "lite";
@@ -94,7 +102,6 @@ function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
     case "set-platform":
       platform = message.data;
-      document.body.classList.toggle("lite", isLite());
       sendMainMessage("load", { before: null });
       break;
 
@@ -119,11 +126,14 @@ function handleMainMessage(message: NamedMessage) {
       }
       if (!busy()) selected = pruneSelection(selected, runs);
       list = { status: "ready" };
+      olderPaused = false;
       render();
       break;
     }
 
     case "list-error":
+      // A failed older page waits for the next refresh before scrolling asks again.
+      if (loadingOlder) olderPaused = true;
       loadingOlder = false;
       // Keep showing runs already listed; a failed refresh only matters before the first answer.
       if (list.status !== "ready") list = { status: "error", message: message.data };
@@ -150,11 +160,14 @@ function handleMainMessage(message: NamedMessage) {
       break;
 
     case "link-copied":
-      showToast(message.data.ok ? "Link copied: " + message.data.link : "Couldn't copy the link");
+      showNotice(message.data.ok ? "Link copied: " + message.data.link : "Couldn't copy the link");
+      if (message.data.ok) flashIcon(COPY_BUTTON, "symbols/check.svg", "symbols/link.svg");
       break;
 
     case "set-focused":
-      document.body.classList.toggle("blurred", !message.data);
+      Array.from(document.getElementsByTagName("button")).forEach((button) =>
+        button.classList.toggle("blurred", !message.data)
+      );
       break;
   }
 }
@@ -191,7 +204,11 @@ function renderRow(run: ArchiveRun): HTMLElement {
   row.classList.toggle("dim", busy() && !isSelected);
   row.classList.toggle("parked", run.summary?.activity === "parked");
 
-  row.append(element("span", "tick"));
+  const tick = element("input");
+  tick.type = "checkbox";
+  tick.tabIndex = -1;
+  tick.checked = isSelected;
+  row.append(tick, fileIcon());
   const unsynced = run.start !== null && !run.dated;
   const time = element("span", "time", (unsynced ? "~" : "") + runClock(run));
   if (unsynced) time.title = "Start time from an unsynced clock";
@@ -208,7 +225,7 @@ function renderRow(run: ArchiveRun): HTMLElement {
     tag.append(document.createTextNode(status.text));
     what.append(tag);
   }
-  if (run.name === openRun) what.append(element("span", "open-tag", "open"));
+  if (run.name === openRun) what.append(element("span", "status open", "Open"));
   row.append(what);
 
   row.append(element("span", "numbers", runNumbersText(run)));
@@ -226,64 +243,72 @@ function renderRow(run: ArchiveRun): HTMLElement {
   return row;
 }
 
+/** The MF4 file icon for this platform, as stock picks its log icons. */
+function fileIcon(): HTMLImageElement {
+  const img = element("img");
+  switch (platform) {
+    case "darwin":
+      img.src = "../icons/download/mf4-icon-mac.png";
+      img.classList.add("mac");
+      break;
+    case "lite":
+      img.src = "../icons/mf4-icon.png";
+      break;
+    default:
+      img.src = "../icons/download/mf4-icon-linuxwin.png";
+      break;
+  }
+  return img;
+}
+
 function renderList() {
-  const scroll = RUNS.scrollTop;
+  const scroll = FILE_LIST.scrollTop;
   RUNS.replaceChildren();
-  if (list.status === "loading") {
-    for (let i = 0; i < 6; i++) RUNS.append(element("div", "skeleton"));
-    return;
-  }
-  if (list.status === "error") {
-    const box = element("div", "error-box");
-    box.append(
-      element(
-        "div",
-        undefined,
-        `Can't reach the run archive. ${list.message}. Runs are safe on the server and the car.`
-      )
-    );
-    const retry = element("button", "action small", "Try again");
-    retry.addEventListener("click", () => {
-      list = { status: "loading" };
-      render();
-      sendMainMessage("load", { before: null });
-    });
-    box.append(retry);
-    RUNS.append(box);
-    return;
-  }
+  LOADING_ANIMATION.hidden = list.status === "ready";
+  if (list.status !== "ready") return;
   const shown = runs.filter((run) => matchesFilter(run, filter));
-  if (shown.length === 0) {
-    RUNS.append(element("div", "empty", runs.length === 0 ? "No runs in the archive yet." : `No ${filter} runs.`));
-  }
+  let index = 0;
   for (const day of groupByDay(shown)) {
     RUNS.append(element("div", "day", dayHeading(day.day, today)));
-    for (const run of day.runs) RUNS.append(renderRow(run));
+    for (const run of day.runs) {
+      const row = renderRow(run);
+      row.classList.toggle("even", index++ % 2 === 1);
+      RUNS.append(row);
+    }
   }
-  if (next !== null) {
-    const older = element("button", "action small older", loadingOlder ? "Loading…" : "Show older runs");
-    older.disabled = loadingOlder;
-    older.addEventListener("click", () => {
-      loadingOlder = true;
-      render();
-      sendMainMessage("load", { before: runs[runs.length - 1]?.name ?? null });
-    });
-    RUNS.append(older);
+  if (loadingOlder) RUNS.append(element("div", "loading-older", "Loading older runs…"));
+  updateFiller();
+  FILE_LIST.scrollTop = scroll;
+  loadOlderIfNeeded();
+}
+
+/** Adds filler rows so the stripes reach the bottom of the list, as stock does. */
+function updateFiller() {
+  RUNS.querySelectorAll(".filler").forEach((filler) => filler.remove());
+  if (list.status !== "ready") return;
+  const rows = RUNS.querySelectorAll(".run").length;
+  const space = FILE_LIST.clientHeight - RUNS.offsetHeight;
+  for (let i = 0; i < Math.ceil(space / ROW_HEIGHT_PX); i++) {
+    RUNS.append(element("div", "filler" + ((rows + i) % 2 === 1 ? " even" : "")));
   }
-  RUNS.scrollTop = scroll;
+}
+
+/** Fetches the next older page once the list is scrolled near its end (or doesn't fill the window). */
+function loadOlderIfNeeded() {
+  if (next === null || loadingOlder || olderPaused || list.status !== "ready") return;
+  if (FILE_LIST.scrollTop + FILE_LIST.clientHeight < FILE_LIST.scrollHeight - 2 * ROW_HEIGHT_PX) return;
+  loadingOlder = true;
+  RUNS.querySelectorAll(".filler").forEach((filler) => filler.remove());
+  RUNS.append(element("div", "loading-older", "Loading older runs…"));
+  sendMainMessage("load", { before: runs[runs.length - 1]?.name ?? null });
 }
 
 function megabytes(bytes: number) {
   return bytes >= 1e7 ? Math.round(bytes / 1e6).toString() : (bytes / 1e6).toFixed(1);
 }
 
-function linkButton(text: string, onClick: () => void): HTMLButtonElement {
-  const button = element("button", "link", text);
-  button.addEventListener("click", onClick);
-  return button;
-}
-
-function renderJob(state: JobState): HTMLElement[] {
+/** The job's line under the progress bar, or its alert text once it has stopped. */
+function jobText(state: JobState): string {
   const count = state.names.length;
   const verb =
     state.kind === "open"
@@ -292,78 +317,88 @@ function renderJob(state: JobState): HTMLElement[] {
       ? `Downloading ${count} runs`
       : "Downloading " + labelOf(state.names[0]);
   const step = count > 1 && state.phase !== "done" ? ` (${state.index + 1} of ${count})` : "";
-  const cancel = linkButton("Cancel", () => sendMainMessage("cancel-job"));
-  const line = element("div", "job");
-  const bar = element("progress", "job-bar");
-  bar.max = 1;
   switch (state.phase) {
     case "preparing":
-      line.append(`${verb}${step}, the server is preparing the run file `, cancel);
-      bar.removeAttribute("value");
-      return [line, bar];
+      return `${verb}${step}: server preparing the file`;
     case "fetching": {
       const total = state.total ?? runNamed(state.names[state.index])?.size_bytes ?? null;
-      line.append(
-        `${verb}${step}, ${megabytes(state.received)}` + (total ? ` of ${megabytes(total)} MB ` : " MB "),
-        cancel
-      );
-      if (total) bar.value = Math.min(1, state.received / total);
-      else bar.removeAttribute("value");
-      return [line, bar];
+      return `${verb}${step}: ${megabytes(state.received)}` + (total ? ` / ${megabytes(total)} MB` : " MB");
     }
     case "finishing":
-      line.append(state.kind === "open" ? `${verb}, reading the log…` : `${verb}${step}, saving…`);
-      bar.removeAttribute("value");
-      return [line, bar];
+      return state.kind === "open" ? `${verb}: reading the log` : `${verb}${step}: saving`;
     case "failed": {
-      line.classList.add("failed");
       const total = state.total;
       const percent = total ? ` at ${Math.round((state.received / total) * 100)}%` : "";
-      const retry = element("button", "action small", "Try again");
-      retry.addEventListener("click", () => sendMainMessage("retry"));
-      line.append(`${state.error ?? "Failed"}${percent}${step} `, retry, " ", cancel);
-      return [line];
+      const again = state.kind === "open" ? "Open" : "Download";
+      return `${state.error ?? "Failed"}${percent}. ${again} again to resume.`;
     }
     case "done":
-      line.classList.add("done");
-      line.append(
-        state.kind === "open"
-          ? "Opened"
-          : `Downloaded ${count > 1 ? count + " runs" : labelOf(state.names[0])}` +
-              (state.destination ? ` to ${state.destination}` : "")
-      );
-      return [line];
+      return state.kind === "open"
+        ? "Opened"
+        : `Downloaded ${count > 1 ? count + " runs" : labelOf(state.names[0])}` +
+            (state.destination ? ` to ${state.destination}` : "");
   }
+}
+
+/** The stock alert text, or the progress bar while a job runs. */
+function renderStatus() {
+  const running = job !== null && (job.phase === "preparing" || job.phase === "fetching" || job.phase === "finishing");
+  ALERT_TEXT.hidden = running;
+  PROGRESS_BAR.hidden = !running;
+  PROGRESS_DETAILS.hidden = !running;
+  ALERT_TEXT.className = "alert-text";
+  ALERT_TEXT.replaceChildren();
+  ALERT_TEXT.title = "";
+
+  if (job !== null && running) {
+    PROGRESS_DETAILS.textContent = jobText(job);
+    const total = job.phase === "fetching" ? job.total ?? runNamed(job.names[job.index])?.size_bytes : null;
+    if (total) PROGRESS_BAR.value = Math.min(1, job.received / total);
+    else PROGRESS_BAR.removeAttribute("value");
+  } else if (job !== null) {
+    ALERT_TEXT.classList.add("job", job.phase);
+    ALERT_TEXT.textContent = jobText(job);
+  } else if (notice !== null) {
+    ALERT_TEXT.textContent = notice;
+  } else if (list.status === "loading") {
+    ALERT_TEXT.textContent = "Loading runs…";
+  } else if (list.status === "error") {
+    ALERT_TEXT.textContent = `Can't reach the run archive. ${list.message}. Runs are safe on the server and the car.`;
+  } else if (runs.length === 0) {
+    ALERT_TEXT.textContent = "No runs in the archive yet.";
+  } else if (!runs.some((run) => matchesFilter(run, filter))) {
+    ALERT_TEXT.textContent = `No ${filter} runs.`;
+  } else if (selected.length === 0) {
+    ALERT_TEXT.textContent = "Tick runs to download. Double-click a run to open it.";
+  } else {
+    const bytes = selected.reduce((total, name) => total + (runNamed(name)?.size_bytes ?? 0), 0);
+    ALERT_TEXT.append(
+      element("b", undefined, selected.length === 1 ? labelOf(selected[0]) : `${selected.length} runs`),
+      " (" + sizeText(bytes) + ")"
+    );
+  }
+  ALERT_TEXT.title = ALERT_TEXT.textContent ?? "";
 }
 
 function renderFooter() {
   const actions = selectionActions({ selected, busy: busy(), openRun });
-  WHAT.replaceChildren();
-  if (job !== null) {
-    WHAT.append(...renderJob(job));
-  } else if (selected.length === 0) {
-    WHAT.append(element("span", "muted", "Tick runs to download. Double-click a run to open it."));
-  } else {
-    const bytes = selected.reduce((total, name) => total + (runNamed(name)?.size_bytes ?? 0), 0);
-    WHAT.append(element("b", undefined, selected.length === 1 ? labelOf(selected[0]) : `${selected.length} runs`));
-    WHAT.append(" ", element("span", "muted", sizeText(bytes)));
-    if (selected.length > 1) {
-      WHAT.append(
-        " ",
-        linkButton("Clear", () => {
-          selected = [];
-          render();
-        }),
-        element("div", "hint", "Open shows one run at a time")
-      );
-    }
-  }
+  const failed = job?.phase === "failed" ? job.kind : null;
+  renderStatus();
 
   COPY_BUTTON.disabled = !actions.copyLink;
-  DOWNLOAD_BUTTON.disabled = !actions.download;
-  DOWNLOAD_BUTTON.textContent = selected.length > 1 ? `Download ${selected.length}` : "Download";
-  OPEN_BUTTON.disabled = !actions.open;
-  OPEN_BUTTON.textContent = actions.showing ? "Showing" : "Open";
+  DOWNLOAD_BUTTON.disabled = !(actions.download || failed === "download");
+  DOWNLOAD_BUTTON.title =
+    failed === "download" ? "Try again" : selected.length > 1 ? `Download ${selected.length} runs` : "Download";
+  OPEN_BUTTON.disabled = !(actions.open || failed === "open");
+  OPEN_BUTTON.title =
+    failed === "open"
+      ? "Try again"
+      : actions.showing
+      ? "Already open"
+      : selected.length > 1
+      ? "Open shows one run at a time"
+      : "Open";
+  EXIT_BUTTON.title = busy() ? "Cancel" : "Close";
 
   // The full fault list for exactly one ticked run.
   const single = actions.single !== null && job === null ? runNamed(actions.single) : undefined;
@@ -377,6 +412,11 @@ function renderFooter() {
     })
   );
   FAULT_LIST.title = faultListText(groups);
+  const footer = FOOTER_HEIGHT_PX + (FAULT_LIST.hidden ? 0 : FAULT_LIST.offsetHeight);
+  if (document.body.style.getPropertyValue("--footer-height") !== footer + "px") {
+    document.body.style.setProperty("--footer-height", footer + "px");
+    updateFiller();
+  }
 }
 
 function renderFilters() {
@@ -385,13 +425,12 @@ function renderFilters() {
     driving: runs.filter((run) => matchesFilter(run, "driving")).length,
     parked: runs.filter((run) => matchesFilter(run, "parked")).length
   };
-  for (const button of FILTER_BUTTONS) {
-    const key = button.dataset.filter as RunFilter;
+  for (const option of Array.from(FILTER.options)) {
+    const key = option.value as RunFilter;
     const label = key.charAt(0).toUpperCase() + key.slice(1);
-    button.textContent = list.status === "ready" ? `${label} ${counts[key]}` : label;
-    button.classList.toggle("on", key === filter);
-    button.setAttribute("aria-checked", String(key === filter));
+    option.textContent = list.status === "ready" ? `${label} (${counts[key]})` : label;
   }
+  FILTER.value = filter;
 }
 
 /** Ticks and dimming without rebuilding the rows. */
@@ -399,6 +438,7 @@ function syncRows() {
   for (const row of Array.from(RUNS.querySelectorAll(".run")) as HTMLElement[]) {
     const isSelected = selected.includes(row.dataset.name!);
     row.classList.toggle("selected", isSelected);
+    (row.querySelector("input") as HTMLInputElement).checked = isSelected;
     row.classList.toggle("dim", busy() && !isSelected);
     row.setAttribute("aria-selected", String(isSelected));
   }
@@ -412,11 +452,22 @@ function render() {
 
 // Actions
 
-function showToast(text: string) {
-  TOAST.textContent = text;
-  TOAST.hidden = false;
-  if (toastTimer !== null) window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (TOAST.hidden = true), 2200);
+/** Shows a message in the alert text for a moment. */
+function showNotice(text: string) {
+  notice = text;
+  renderStatus();
+  if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => {
+    notice = null;
+    renderStatus();
+  }, 2200);
+}
+
+/** Swaps a button's icon for a moment, e.g. a check after copying. */
+function flashIcon(button: HTMLButtonElement, src: string, restore: string) {
+  const icon = button.firstElementChild as HTMLImageElement;
+  icon.src = src;
+  window.setTimeout(() => (icon.src = restore), 1800);
 }
 
 function closeDialog() {
@@ -442,8 +493,8 @@ function requestOpen(name: string) {
     newTab: "Open in new tab"
   };
   DIALOG_BUTTONS.replaceChildren(
-    ...choices.map((choice, index) => {
-      const button = element("button", "action" + (index === choices.length - 1 ? " primary" : ""), labels[choice]);
+    ...choices.map((choice) => {
+      const button = element("button", undefined, labels[choice]);
       button.dataset.choice = choice;
       button.addEventListener("click", () => {
         closeDialog();
@@ -481,28 +532,37 @@ RUNS.addEventListener("keydown", (event) => {
     rows[rows.indexOf(row) + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
   }
 });
-FILTER_BUTTONS.forEach((button) =>
-  button.addEventListener("click", () => {
-    filter = button.dataset.filter as RunFilter;
-    render();
-  })
-);
+FILE_LIST.addEventListener("scroll", loadOlderIfNeeded);
+window.addEventListener("resize", () => {
+  updateFiller();
+  loadOlderIfNeeded();
+});
+FILTER.addEventListener("change", () => {
+  filter = FILTER.value as RunFilter;
+  render();
+});
 COPY_BUTTON.addEventListener("click", () => {
   if (selected.length === 1) sendMainMessage("copy-link", selected[0]);
 });
 DOWNLOAD_BUTTON.addEventListener("click", () => {
-  if (selected.length > 0 && !busy()) sendMainMessage("download", [...selected]);
+  if (job?.phase === "failed" && job.kind === "download") sendMainMessage("retry");
+  else if (selected.length > 0 && !busy()) sendMainMessage("download", [...selected]);
 });
 OPEN_BUTTON.addEventListener("click", () => {
-  if (selected.length === 1) requestOpen(selected[0]);
+  if (job?.phase === "failed" && job.kind === "open") sendMainMessage("retry");
+  else if (selected.length === 1) requestOpen(selected[0]);
 });
-CLOSE_BUTTON.addEventListener("click", () => sendMainMessage("close"));
+EXIT_BUTTON.addEventListener("click", () => sendMainMessage(busy() ? "cancel-job" : "close"));
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !SCRIM.hidden) {
     event.preventDefault();
     event.stopPropagation();
     closeDialog();
-  } else if (event.key === "Enter" && SCRIM.hidden && (event.target as HTMLElement).tagName !== "BUTTON") {
+  } else if (
+    event.key === "Enter" &&
+    SCRIM.hidden &&
+    !["BUTTON", "SELECT"].includes((event.target as HTMLElement).tagName)
+  ) {
     if (selected.length === 1 && !busy() && selected[0] !== openRun) requestOpen(selected[0]);
   } else if (event.key === "a" && (event.metaKey || event.ctrlKey) && !busy()) {
     event.preventDefault();
@@ -512,8 +572,9 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+// Refresh the newest page, and keep trying while the archive is unreachable (as stock retries the robot).
 window.setInterval(() => {
-  if (list.status === "ready") sendMainMessage("load", { before: null });
+  if (list.status !== "loading") sendMainMessage("load", { before: null });
 }, REFRESH_MS);
 
 render();

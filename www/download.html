@@ -16,32 +16,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="global.css" />
     <link rel="stylesheet" href="download.css" />
+    <link rel="stylesheet" href="loadingAnimation.css" />
     <script type="module" src="../bundles/download.js"></script>
     <title>Download Runs &mdash; mur-voir</title>
   </head>
 
   <body>
-    <div class="header">
-      <span class="heading">Download runs</span>
-      <span class="filters" role="radiogroup" aria-label="Show runs">
-        <button data-filter="all" role="radio">All</button>
-        <button data-filter="driving" role="radio">Driving</button>
-        <button data-filter="parked" role="radio">Parked</button>
-      </span>
-      <button class="close" title="Close">
-        <img src="symbols/close.svg" />
-      </button>
+    <div class="file-list">
+      <div class="runs" role="listbox" aria-multiselectable="true" aria-label="Runs"></div>
+      <div class="loading">
+        <div class="loading-bar"></div>
+        <div class="loading-bar"></div>
+        <div class="loading-bar"></div>
+        <div class="loading-bar"></div>
+        <div class="loading-bar"></div>
+      </div>
     </div>
 
-    <div class="runs" role="listbox" aria-multiselectable="true" aria-label="Runs"></div>
+    <div class="fault-list" hidden></div>
 
-    <div class="footer">
-      <div class="what"></div>
-      <button class="action copy-link" disabled>Copy link</button>
-      <button class="action download" disabled>Download</button>
-      <button class="action open primary" disabled>Open</button>
-      <div class="fault-list" hidden></div>
-    </div>
+    <select class="filter" title="Show runs">
+      <option value="all">All</option>
+      <option value="driving">Driving</option>
+      <option value="parked">Parked</option>
+    </select>
+    <div class="alert-text"></div>
+    <progress min="0" max="1" hidden></progress>
+    <div class="progress-details" hidden></div>
+
+    <button id="copy-link" title="Copy a link to this run" disabled>
+      <img src="symbols/link.svg" />
+    </button>
+    <button id="open" title="Open" disabled>
+      <img src="symbols/east.svg" />
+    </button>
+    <button id="exit" title="Close">
+      <img src="symbols/close.svg" />
+    </button>
+    <button id="download" title="Download" disabled>
+      <img src="symbols/download.svg" />
+    </button>
 
     <div class="scrim" hidden>
       <div class="dialog" role="alertdialog" aria-labelledby="dialog-title">
@@ -50,7 +64,5 @@
         <div class="dialog-buttons"></div>
       </div>
     </div>
-
-    <div class="toast" role="status" hidden></div>
   </body>
 </html>
