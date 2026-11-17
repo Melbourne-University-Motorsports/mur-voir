@@ -841,12 +841,18 @@ async function handleMainMessage(message: NamedMessage) {
       }
       break;
 
-    case "run-link-copied":
-      COPY_RUN_LINK.textContent = message.data.ok ? "Link copied" : "Couldn't copy";
-      COPY_RUN_LINK.title = message.data.link;
+    case "run-link-copied": {
+      // Like the other title bar icons: a check for a moment, and the outcome in the tooltip.
+      const icon = COPY_RUN_LINK.firstElementChild as HTMLImageElement;
+      if (message.data.ok) icon.src = "symbols/check.svg";
+      COPY_RUN_LINK.title = (message.data.ok ? "Link copied: " : "Couldn't copy the link: ") + message.data.link;
       if (copyRunLinkTimer !== null) window.clearTimeout(copyRunLinkTimer);
-      copyRunLinkTimer = window.setTimeout(() => (COPY_RUN_LINK.textContent = "Copy link"), 1800);
+      copyRunLinkTimer = window.setTimeout(() => {
+        icon.src = "symbols/link.svg";
+        COPY_RUN_LINK.title = "Copy a link to this run";
+      }, 1800);
       break;
+    }
 
     case "show-connect-dialog":
       if (isExporting) {
