@@ -429,7 +429,14 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     }
     if (!response.ok) return;
     this.historyAvailable = true;
-    const body: HistoryResponse = await response.json();
+    let body: HistoryResponse;
+    try {
+      body = await response.json();
+    } catch {
+      // stop() aborted the request, or the connection dropped while the body was arriving
+      this.historyRequested.delete(path);
+      return;
+    }
 
     // Drop responses that belong to an earlier segment or a retired stream
     if (this.requests.signal.aborted || !this.log || segmentIndex !== this.segments.getSegmentIndex()) return;
