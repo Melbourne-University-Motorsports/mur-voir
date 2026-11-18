@@ -594,15 +594,12 @@ async function handleHubMessage(message: NamedMessage) {
               { content: "Browse Base Station Logs…", callback: openDownload },
               { content: "Export Layout…", callback: requestLayoutExport },
               { content: "Import Layout…", callback: importLayout },
-              {
-                content: "Default Layouts",
-                items: DEFAULT_LAYOUTS.map((layout) => ({
-                  content: layout.title,
-                  callback() {
-                    sendMessage(hubPort, "add-default-layout", layout.id);
-                  }
-                }))
-              },
+              ...DEFAULT_LAYOUTS.map((layout) => ({
+                content: `Add ${layout.title} Layout`,
+                callback() {
+                  sendMessage(hubPort, "add-default-layout", layout.id);
+                }
+              })),
               {
                 content: `Connect\u2026 (${modifier} K)`,
                 callback() {

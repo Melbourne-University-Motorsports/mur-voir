@@ -10,7 +10,7 @@ import TabType from "./TabType";
 import trackDay from "./layouts/default.json";
 
 /**
- * Layouts shipped with the app, offered under File > Default Layouts and `?layout=<id>` in Lite.
+ * Layouts shipped with the app, offered under File > Add <title> Layout and `?layout=<id>` in Lite.
  * Each is an exported layout file; regenerate `layouts/default.json` with `node tools/default-layout.mjs`.
  */
 export type DefaultLayout = { id: string; title: string; state: HubState };

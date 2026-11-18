@@ -137,11 +137,10 @@ try {
   await page.waitForTimeout(500);
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
 
-  // File > Default Layouts adds the layout's tabs after the open ones.
+  // File > Add Track Day Layout adds the layout's tabs after the open ones.
   const beforeDefault = (await tabTitles()).length;
   await hub.getByText("File", { exact: true }).click();
-  await page.getByText("Default Layouts", { exact: true }).click();
-  await page.getByText("Track Day", { exact: true }).click();
+  await page.getByText("Add Track Day Layout", { exact: true }).click();
   await frame.waitForFunction((count) => window.tabs.saveState().tabs.length === count + 9, beforeDefault);
   assert.equal((await tabTitles())[beforeDefault], "Track day");
 

@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Writes the bundled default layout, src/shared/layouts/default.json (File > Default Layouts).
+// Writes the bundled default layout, src/shared/layouts/default.json (File > Add Track Day Layout).
 // Run from the repository root: node tools/default-layout.mjs
 //
 // Every field uses its live cellular path (vehicles/mur27/can<bus>/<message>/<signal>, lower case,

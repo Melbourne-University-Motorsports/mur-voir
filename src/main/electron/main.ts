@@ -1588,17 +1588,16 @@ function setupMenu() {
               });
           }
         },
-        {
-          label: "Default Layouts",
-          submenu: DEFAULT_LAYOUTS.map((layout) => ({
-            label: layout.title,
+        ...DEFAULT_LAYOUTS.map(
+          (layout): Electron.MenuItemConstructorOptions => ({
+            label: `Add ${layout.title} Layout`,
             click(_, baseWindow) {
               const window = baseWindow as BrowserWindow | undefined;
               if (window === undefined || !hubWindows.includes(window)) return;
               sendMessage(window, "add-default-layout", layout.id);
             }
-          }))
-        },
+          })
+        ),
         {
           label: "Import Layout...",
           click() {
