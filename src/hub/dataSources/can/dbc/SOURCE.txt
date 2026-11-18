@@ -1,9 +1,10 @@
 Bundled copy of the canonical MUR DBCs.
 
 Source:  git@github.com:Melbourne-University-Motorsports/mur-msgs.git, directory dbc/
-Commit:  7f3abc52b542bb9590ee723619622028b33d84a1
-Copied:  2026-11-17
+Tag:     v0.2.1
+Commit:  9e545028194f25f459ba7b42500b0b14e653c178
+Copied:  2026-11-18
 
 The candump importer uses these when no DBC folder is set in Preferences.
 To update: copy mur-msgs/dbc/*.dbc and dbc/vendor/*.dbc over these files, update the
-commit above, and list any new files in src/hub/dataSources/can/BundledDBCs.ts.
+tag and commit above, and list any new files in src/hub/dataSources/can/BundledDBCs.ts.

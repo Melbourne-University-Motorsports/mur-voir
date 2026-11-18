@@ -203,6 +203,72 @@ CM_ SG_ 170 INV_CommandMode "p25, byte 5 bit 0. 0 = CAN Mode (controller takes c
 CM_ SG_ 170 INV_RunMode "p24, byte 4 bit 0. 0 = Torque Mode, 1 = Speed Mode. MUR commands torque, so this should read 0; if it reads 1 the Torque Command becomes a feedforward to the speed regulator instead of the actual demand (p31).";
 CM_ SG_ 170 INV_BMSLimitingTorque "p26, byte 7 bit 2. 1 = the controller is limiting torque because of its own BMS input - a silent torque cap that is NOT visible in INV_CommandedTorque.";
 CM_ BO_ 171 "p26-28. Fault Codes. The 8 bytes group into four 16-bit words: bytes 0,1 = POST Fault Lo, 2,3 = POST Fault Hi, 4,5 = Run Fault Lo, 6,7 = Run Fault Hi. POST faults occur only at power-up; RUN faults during operation. Kept as 8 byte-wide signals (matching firmware's fault_bytes[8]) rather than 4 words, but at the CORRECTED non-mirrored offsets. Selected bits MUR cares about, by CAN byte and bit: RUN byte4 bit1 Over-current; byte4 bit2 Over-voltage; byte4 bit3 Inverter Over-temperature; byte4 bit6 Direction Command Fault; byte4 bit7 Inverter Response Time-out; byte5 bit2 Under-voltage; byte5 bit3 CAN Command Message Lost (this is what a too-slow or stopped 0x0C0 stream produces); byte5 bit4 Motor Over-temperature; byte7 bit6 Resolver Not Connected. POST byte2 bit6 Pre-charge Timeout; byte2 bit7 Pre-charge Voltage Failure. Full tables on p27-28.";
+CM_ SG_ 171 INV_FaultByte0 "Cascadia POST fault word bits 0 to 7 (p27); bit N here is POST fault bit 0+N. Short names from INV_POST_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: HW gate/desat; Hardware gate/desaturation fault (POST fault bit 0); warning
+bit 1: HW overcurrent; Hardware over-current fault (POST fault bit 1); warning
+bit 2: Accel shorted; Accelerator shorted (POST fault bit 2); warning
+bit 3: Accel open; Accelerator open (POST fault bit 3); warning
+bit 4: Current sensor low; Current sensor low (POST fault bit 4); warning
+bit 5: Current sensor high; Current sensor high (POST fault bit 5); warning
+bit 6: Module temp low; Module temperature low (POST fault bit 6); warning
+bit 7: Module temp high; Module temperature high (POST fault bit 7); warning";
+CM_ SG_ 171 INV_FaultByte1 "Cascadia POST fault word bits 8 to 15 (p27); bit N here is POST fault bit 8+N. Short names from INV_POST_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: Ctrl PCB temp low; Control PCB temperature low (POST fault bit 8); warning
+bit 1: Ctrl PCB temp high; Control PCB temperature high (POST fault bit 9); warning
+bit 2: Gate drv PCB temp low; Gate drive PCB temperature low (POST fault bit 10); warning
+bit 3: Gate drv PCB temp high; Gate drive PCB temperature high (POST fault bit 11); warning
+bit 4: 5V sense low; 5V sense voltage low (POST fault bit 12); warning
+bit 5: 5V sense high; 5V sense voltage high (POST fault bit 13); warning
+bit 6: 12V sense low; 12V sense voltage low (POST fault bit 14); warning
+bit 7: 12V sense high; 12V sense voltage high (POST fault bit 15); warning";
+CM_ SG_ 171 INV_FaultByte2 "Cascadia POST fault word bits 16 to 23 (p27); bit N here is POST fault bit 16+N. Short names from INV_POST_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: 2.5V sense low; 2.5V sense voltage low (POST fault bit 16); warning
+bit 1: 2.5V sense high; 2.5V sense voltage high (POST fault bit 17); warning
+bit 2: 1.5V sense low; 1.5V sense voltage low (POST fault bit 18); warning
+bit 3: 1.5V sense high; 1.5V sense voltage high (POST fault bit 19); warning
+bit 4: DC bus high; DC bus voltage high (POST fault bit 20); warning
+bit 5: DC bus low; DC bus voltage low (POST fault bit 21); warning
+bit 6: Precharge timeout; Pre-charge timeout (POST fault bit 22); warning
+bit 7: Precharge voltage fail; Pre-charge voltage failure (POST fault bit 23); warning";
+CM_ SG_ 171 INV_FaultByte3 "Cascadia POST fault word bits 24 to 31 (p27); bit N here is POST fault bit 24+N. Short names from INV_POST_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: EEPROM checksum; EEPROM checksum invalid (POST fault bit 24); warning
+bit 1: EEPROM out of range; EEPROM data out of range (POST fault bit 25); warning
+bit 2: EEPROM update required; EEPROM update required (POST fault bit 26); warning
+bit 3: HW DC bus OV at init; Hardware DC bus over-voltage during initialization (POST fault bit 27); warning
+bit 4: Gate drv init (Gen5); Gate driver initialization, Gen 5 boards only (POST fault bit 28); warning
+bit 6: Brake shorted; Brake shorted (POST fault bit 30); warning
+bit 7: Brake open; Brake open (POST fault bit 31); warning";
+CM_ SG_ 171 INV_FaultByte4 "Cascadia RUN fault word bits 0 to 7 (p28); bit N here is RUN fault bit 0+N. Short names from INV_RUN_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: Motor overspeed; Motor over-speed fault (RUN fault bit 0); warning
+bit 1: Overcurrent; Over-current fault (RUN fault bit 1); warning
+bit 2: Overvoltage; Over-voltage fault (RUN fault bit 2); warning
+bit 3: Inverter overtemp; Inverter over-temperature fault (RUN fault bit 3); warning
+bit 4: Accel shorted; Accelerator input shorted fault (RUN fault bit 4); warning
+bit 5: Accel open; Accelerator input open fault (RUN fault bit 5); warning
+bit 6: Direction command; Direction command fault (RUN fault bit 6); warning
+bit 7: Inverter response timeout; Inverter response time-out fault (RUN fault bit 7); warning";
+CM_ SG_ 171 INV_FaultByte5 "Cascadia RUN fault word bits 8 to 15 (p28); bit N here is RUN fault bit 8+N. Short names from INV_RUN_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: HW gate/desat; Hardware gate/desaturation fault (RUN fault bit 8); warning
+bit 1: HW overcurrent; Hardware over-current fault (RUN fault bit 9); warning
+bit 2: Undervoltage; Under-voltage fault (RUN fault bit 10); warning
+bit 3: CAN command lost; CAN command message lost fault (RUN fault bit 11); warning
+bit 4: Motor overtemp; Motor over-temperature fault (RUN fault bit 12); warning";
+CM_ SG_ 171 INV_FaultByte6 "Cascadia RUN fault word bits 16 to 23 (p28); bit N here is RUN fault bit 16+N. Short names from INV_RUN_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: Brake shorted; Brake input shorted fault (RUN fault bit 16); warning
+bit 1: Brake open; Brake input open fault (RUN fault bit 17); warning
+bit 2: Module A overtemp; Module A over-temperature fault (RUN fault bit 18); warning
+bit 3: Module B overtemp; Module B over-temperature fault (RUN fault bit 19); warning
+bit 4: Module C overtemp; Module C over-temperature fault (RUN fault bit 20); warning
+bit 5: PCB overtemp; PCB over-temperature fault (RUN fault bit 21); warning
+bit 6: Gate drv 1 overtemp; Gate drive board 1 over-temperature fault (RUN fault bit 22); warning
+bit 7: Gate drv 2 overtemp; Gate drive board 2 over-temperature fault (RUN fault bit 23); warning";
+CM_ SG_ 171 INV_FaultByte7 "Cascadia RUN fault word bits 24 to 31 (p28); bit N here is RUN fault bit 24+N. Short names from INV_RUN_FAULTS in mur-embedded tools/bench/mur_can.py, full names from the manual. Reserved bits are not listed.
+bit 0: Gate drv 3 overtemp; Gate drive board 3 over-temperature fault (RUN fault bit 24); warning
+bit 1: Current sensor; Current sensor fault (RUN fault bit 25); warning
+bit 2: Gate drv OV (Gen5); Gate driver over-voltage, Gen 5 boards only (RUN fault bit 26); warning
+bit 3: HW DC bus OV (Gen3); Hardware DC bus over-voltage fault, Gen 3 boards only (RUN fault bit 27); warning
+bit 4: HW DC bus OV (Gen5); Hardware DC bus over-voltage fault, Gen 5 boards only (RUN fault bit 28); warning
+bit 6: Resolver not connected; Resolver not connected (RUN fault bit 30); warning";
 CM_ BO_ 172 "p29. Torque & Timer Information. Broadcast Fast/100 Hz. CommandedTorque is the torque the controller has accepted - compare it against what the ECU put in 0x0C0 byte 0,1 to prove the command is landing. Torque format (p15): signed int, Nm x10 - CONFIRMED by the vendor doc, previously an unverified OPEN QUESTION.";
 CM_ SG_ 172 INV_PowerOnTimer "p29, bytes 4-7. Unsigned 32-bit count updated every 3 ms, so 0.003 s/count; rolls over in roughly 5 months.";
 CM_ BO_ 173 "p29. Modulation Index & Flux Weakening Output. ModulationIndex is a Per-unit Value with scale factor x100 (p29). NOT consumed by MUR firmware.";
