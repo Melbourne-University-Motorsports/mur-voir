@@ -16,6 +16,17 @@ import { Field2dCameraMode } from "../../shared/Field2dCameraMode";
 import { HubState } from "../../shared/HubState";
 import LineGraphFilter from "../../shared/LineGraphFilter";
 import { LiveSourceInfo } from "../../shared/LiveSourceInfo";
+import {
+  archiveBase,
+  ArchiveClient,
+  MemorySink,
+  readRunParam,
+  runLink,
+  RunRef,
+  sameRun,
+  withRunParam
+} from "../../shared/mur/archive";
+import { ArchiveJob, JobKind, JobSink } from "../../shared/mur/archiveJob";
 import NamedMessage from "../../shared/NamedMessage";
 import { DEFAULT_PREFS, mergePreferences } from "../../shared/Preferences";
 import { SourceListConfig, SourceListItemState, SourceListTypeMemory } from "../../shared/SourceListConfig";
@@ -42,8 +53,20 @@ let hubPort: MessagePort | null = null;
 let popupMenu = new TinyPopupMenu();
 let assetsPromise: Promise<AdvantageScopeAssets>;
 let liveSources: LiveSourceInfo[] = []; // From LiveSourceRegistry, reported by the hub
-let downloadInterval: number | null = null;
 let popupRequiresForceClose = false;
+let popupCloseCallback: (() => void) | null = null;
+
+// Download runs (see openDownloadRuns)
+/** The popup lists the default vehicle; a ?run= link for another vehicle opens through its own client. */
+const archiveClient = new ArchiveClient(archiveBase(window.location.origin));
+const clientFor = (vehicle: string) =>
+  vehicle === archiveClient.vehicle ? archiveClient : new ArchiveClient(archiveClient.base, undefined, vehicle);
+let archivePort: MessagePort | null = null;
+let archiveJob: ArchiveJob | null = null;
+/** What the hub shows: live telemetry arriving, and the run open from the archive. */
+let viewSource: { live: boolean; run: RunRef | null } = { live: false, run: null };
+/** A run named by ?run= on load that hasn't opened yet; the URL keeps it until it opens or is abandoned. */
+let pendingLinkRun: RunRef | null = null;
 
 /**
  * Open a new popup menu
@@ -88,11 +111,8 @@ function openPopupWindow(
   requireForceClose = false
 ): Promise<MessagePort> {
   return new Promise((resolve) => {
+    runPopupCloseCallback();
     popupRequiresForceClose = requireForceClose;
-
-    if (downloadInterval !== null) {
-      window.clearInterval(downloadInterval);
-    }
 
     POPUP_FRAME.style.width = size[0].toString() + (type === "pixels" ? "px" : "%");
     POPUP_FRAME.style.height = size[1].toString() + (type === "pixels" ? "px" : "%");
@@ -141,9 +161,13 @@ function closePopupWindow(forceClose = false) {
   POPUP_FRAME.src = "";
   HUB_FRAME.classList.remove("background");
   window.focus();
-  if (downloadInterval !== null) {
-    window.clearInterval(downloadInterval);
-  }
+  runPopupCloseCallback();
+}
+
+function runPopupCloseCallback() {
+  const callback = popupCloseCallback;
+  popupCloseCallback = null;
+  callback?.();
 }
 
 /**
@@ -153,9 +177,9 @@ function closePopupWindow(forceClose = false) {
  * @param data Arbitrary data to include
  * @returns Whether the operation was successful
  */
-function sendMessage(port: MessagePort | null, name: string, data?: any): boolean {
+function sendMessage(port: MessagePort | null, name: string, data?: any, transfer: Transferable[] = []): boolean {
   try {
-    port?.postMessage({ name: name, data: data });
+    port?.postMessage({ name: name, data: data }, transfer);
   } catch (e) {
     return false;
   }
@@ -172,7 +196,7 @@ function openSourceListHelp(config: SourceListConfig) {
 /** Opens a popup window for preferences. */
 function openPreferences() {
   const width = 400;
-  const optionRows = 8;
+  const optionRows = 7;
   const titleRows = 2;
   const height = optionRows * 27 + titleRows * 34 + 54;
   openPopupWindow("www/preferences.html", [width, height], "pixels", (message) => {
@@ -251,49 +275,184 @@ function importLayout() {
   });
 }
 
-/** Opens a popup window for downloading logs. */
-function openDownload() {
-  openPopupWindow("www/download.html", [35, 65], "percent", (message, port) => {
-    switch ((message as NamedMessage).name) {
-      case "start":
-        let path: string = message.data.path;
-        let updateList = async () => {
-          let response: Response;
-          try {
-            response = await fetch(`logs?folder=${encodeURIComponent(path)}`);
-          } catch (e) {
-            sendMessage(port, "show-error", "Fetch failed");
-            return;
-          }
-          if (!response.ok) {
-            if (response.status === 404) {
-              sendMessage(port, "show-error", "No such file");
-            } else {
-              sendMessage(port, "show-error", response.statusText);
-            }
-          } else {
-            sendMessage(port, "set-list", await response.json());
-          }
-        };
-        updateList();
-        downloadInterval = window.setInterval(() => updateList(), 3000);
+/** Copies text, falling back to a hidden textarea where the async clipboard is blocked. */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {}
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {}
+  area.remove();
+  return copied;
+}
+
+/** Links name this page, so a dev server's links open on that server. Hosted Lite is the default origin. */
+function liteRunLink(run: RunRef): string {
+  return runLink(run, window.location.origin + window.location.pathname);
+}
+
+/** The popup knows runs by name; they are the listed vehicle's, or the ?run= link's run. */
+function runRefFor(name: string): RunRef {
+  return pendingLinkRun?.name === name ? pendingLinkRun : { vehicle: archiveClient.vehicle, name };
+}
+
+/** The open run as the popup marks it: only a run of the listed vehicle. */
+function popupContext() {
+  const run = viewSource.run?.vehicle === archiveClient.vehicle ? viewSource.run.name : null;
+  return { live: viewSource.live, run };
+}
+
+/** The ?run= link has opened or was abandoned: the hub may start live data again. */
+function settlePendingLinkRun() {
+  pendingLinkRun = null;
+  sendMessage(hubPort, "hold-live-auto-start", false);
+}
+
+/** Keeps ?run= in the address bar in step with the open run. */
+function syncRunParam() {
+  const run = pendingLinkRun ?? viewSource.run;
+  const href = withRunParam(window.location.href, run);
+  if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * A run in memory, held once as Blob parts (see MemorySink). When complete, the browser saves that Blob
+ * or the hub opens it as a File; neither copies the bytes. Opening then makes the one copy the importer
+ * needs (historical-start), which is transferred, not copied, to the hub and its worker.
+ */
+function memorySink(run: RunRef, kind: JobKind): JobSink {
+  const sink = new MemorySink();
+  return {
+    write: (chunk) => sink.write(chunk),
+    reset: () => sink.reset(),
+    size: () => sink.size(),
+    discard: async () => sink.reset(),
+    finish: async (size) => {
+      if (sink.size() !== size) throw new Error(`The download has ${sink.size()} of ${size} bytes`);
+      const filename = run.name + ".mf4";
+      if (kind === "download") saveBlob(sink.blob(), filename);
+      else {
+        uploadedFiles = new Map([[filename, sink.file(filename)]]);
+        sendMessage(hubPort, "open-files", { files: [filename], merge: false, run });
+      }
+      sink.reset();
+    }
+  };
+}
+
+function startArchiveJob(kind: JobKind, names: string[], vehicle = archiveClient.vehicle) {
+  if (archiveJob?.running) return;
+  archiveJob?.cancel();
+  const job = new ArchiveJob(
+    clientFor(vehicle),
+    kind,
+    names,
+    (name) => memorySink({ vehicle, name }, kind),
+    (state) => {
+      if (archiveJob === job) sendMessage(archivePort, "set-job", state);
+    },
+    kind === "download" ? "Downloads" : null
+  );
+  archiveJob = job;
+  popupRequiresForceClose = true;
+  void runArchiveJob(job);
+}
+
+async function runArchiveJob(job: ArchiveJob) {
+  const done = await job.run();
+  if (archiveJob !== job) return;
+  popupRequiresForceClose = job.running;
+  if (done && job.state.kind === "open") {
+    archiveJob = null;
+    closePopupWindow(true);
+  }
+}
+
+/** File > Download runs…: the MUR run archive. `openOnStart` opens that run at once (a ?run= link). */
+function openDownloadRuns(openOnStart: RunRef | null = null) {
+  const width = Math.min(720, window.innerWidth - 40);
+  const height = Math.min(500, window.innerHeight - 40);
+  openPopupWindow("www/download.html", [width, height], "pixels", async (message: NamedMessage, port) => {
+    switch (message.name) {
+      case "load":
+        try {
+          const page = await archiveClient.listRuns({ before: message.data.before });
+          sendMessage(port, "set-runs", { ...page, append: message.data.before !== null });
+        } catch (error) {
+          sendMessage(port, "list-error", error instanceof Error ? error.message : String(error));
+        }
         break;
+
+      case "download":
+        startArchiveJob("download", message.data);
+        break;
+
+      case "open":
+        if (message.data.how === "newTab") {
+          window.open(liteRunLink(runRefFor(message.data.name)), "_blank");
+          closePopupWindow(true);
+        } else {
+          const run = runRefFor(message.data.name);
+          startArchiveJob("open", [run.name], run.vehicle);
+        }
+        break;
+
+      case "retry":
+        if (archiveJob !== null && !archiveJob.running) {
+          popupRequiresForceClose = true;
+          void runArchiveJob(archiveJob);
+        }
+        break;
+
+      case "cancel-job":
+        archiveJob?.cancel();
+        archiveJob = null;
+        popupRequiresForceClose = false;
+        sendMessage(port, "set-job", null);
+        break;
+
+      case "copy-link": {
+        const link = liteRunLink(runRefFor(message.data));
+        sendMessage(port, "link-copied", { ok: await copyText(link), link });
+        break;
+      }
 
       case "close":
-        closePopupWindow();
-        break;
-
-      case "save":
-        closePopupWindow();
-        sendMessage(hubPort, "open-files", { files: message.data, merge: false });
+        closePopupWindow(true);
         break;
     }
   }).then((port) => {
-    let prefs = DEFAULT_PREFS;
-    let prefsRaw = localStorage.getItem(LocalStorageKeys.PREFS);
-    if (prefsRaw !== null) mergePreferences(prefs, JSON.parse(prefsRaw));
+    archivePort = port;
+    popupCloseCallback = () => {
+      archiveJob?.cancel();
+      archiveJob = null;
+      archivePort = null;
+      if (pendingLinkRun !== null && !sameRun(viewSource.run, pendingLinkRun)) {
+        settlePendingLinkRun();
+        syncRunParam();
+      }
+    };
+    sendMessage(port, "set-context", popupContext());
     sendMessage(port, "set-platform", "lite");
-    sendMessage(port, "set-preferences", prefs);
+    if (openOnStart !== null) sendMessage(port, "start-open", openOnStart.name);
   });
 }
 
@@ -337,6 +496,10 @@ async function initHub() {
     platformArch: "",
     appVersion: LITE_VERSION
   });
+  // ?vehicle=<id>&run=<name> opens that run from the archive (below). Hold the live auto-start, which
+  // set-preferences triggers, until it has opened, so live data can never replace it.
+  pendingLinkRun = readRunParam(window.location.href);
+  if (pendingLinkRun !== null) sendMessage(hubPort, "hold-live-auto-start", true);
   let prefs = DEFAULT_PREFS;
   let prefsRaw = localStorage.getItem(LocalStorageKeys.PREFS);
   if (prefsRaw !== null) mergePreferences(prefs, JSON.parse(prefsRaw));
@@ -364,6 +527,9 @@ async function initHub() {
     window.history.replaceState(null, "", url.toString());
   }
   sendMessage(hubPort, "show-when-ready");
+
+  // The parameters stay in the address bar while the run is open.
+  if (pendingLinkRun !== null) openDownloadRuns(pendingLinkRun);
 
   // Add cursor event handlers
   HUB_FRAME.contentWindow?.addEventListener("contextmenu", (event) => {
@@ -399,6 +565,23 @@ async function handleHubMessage(message: NamedMessage) {
     case "set-live-sources":
       liveSources = message.data;
       break;
+
+    case "set-view-source":
+      viewSource = { live: message.data.live, run: message.data.run };
+      if (pendingLinkRun !== null && sameRun(viewSource.run, pendingLinkRun)) settlePendingLinkRun();
+      syncRunParam();
+      sendMessage(archivePort, "set-context", popupContext());
+      break;
+
+    case "open-download-runs":
+      openDownloadRuns();
+      break;
+
+    case "copy-run-link": {
+      const link = liteRunLink(message.data);
+      sendMessage(hubPort, "run-link-copied", { ok: await copyText(link), link });
+      break;
+    }
 
     case "show-open-log":
       openLocalLog();
@@ -459,53 +642,41 @@ async function handleHubMessage(message: NamedMessage) {
         const path: string = message.data.path;
 
         let extension = path.split(".").pop();
-        let prefs = DEFAULT_PREFS;
-        let prefsRaw = localStorage.getItem(LocalStorageKeys.PREFS);
-        if (prefsRaw !== null) mergePreferences(prefs, JSON.parse(prefsRaw));
 
         try {
           const uploaded = uploadedFiles.get(path);
-          let buffer: ArrayBuffer;
-          if (uploaded) {
-            buffer = await uploaded.arrayBuffer();
-          } else {
-            const response = await fetch(
-              `logs/${encodeURIComponent(path)}?folder=${encodeURIComponent(prefs.remotePath)}`
-            );
-            if (!response.ok) throw new Error(response.statusText);
-            buffer = await response.arrayBuffer();
-          }
-          let array = new Uint8Array(buffer);
+          if (!uploaded) throw new Error(`${path} is no longer open; open it again`);
+          // The one copy the importer needs; it is transferred below, not copied again
+          let array = new Uint8Array(await uploaded.arrayBuffer());
           let error: string | null = null;
           if (extension === "wpilogxz") {
             array = await WorkerManager.request("bundles/xzWorker.js", array);
             if (array.length === 0) error = "Failed to decompress WPILOG file.";
           }
 
-          sendMessage(hubPort, "historical-data", {
-            files: await (async () => {
-              const read = async (name: string) => {
-                const file = uploadedFiles.get(name);
-                return file ? new Uint8Array(await file.arrayBuffer()) : null;
-              };
-              const stem = path.replace(/\.[^.]+$/, "");
-              if (extension === "csv") return [array, await read(path + ".enums.json")];
-              if (extension === "log") {
-                const dbcs = Array.from(uploadedFiles.values()).filter((file) => file.name.endsWith(".dbc"));
-                const pack = dbcs.length
-                  ? new TextEncoder().encode(
-                      JSON.stringify(
-                        Object.fromEntries(await Promise.all(dbcs.map(async (file) => [file.name, await file.text()])))
-                      )
+          const files: (Uint8Array | null)[] = await (async () => {
+            const read = async (name: string) => {
+              const file = uploadedFiles.get(name);
+              return file ? new Uint8Array(await file.arrayBuffer()) : null;
+            };
+            const stem = path.replace(/\.[^.]+$/, "");
+            if (extension === "csv") return [array, await read(path + ".enums.json")];
+            if (extension === "log") {
+              const dbcs = Array.from(uploadedFiles.values()).filter((file) => file.name.endsWith(".dbc"));
+              const pack = dbcs.length
+                ? new TextEncoder().encode(
+                    JSON.stringify(
+                      Object.fromEntries(await Promise.all(dbcs.map(async (file) => [file.name, await file.text()])))
                     )
-                  : null;
-                return [array, await read(stem + ".json"), await read(stem + ".markers.csv"), pack];
-              }
-              return [array];
-            })(),
-            error: error,
-            uuid: uuid
-          });
+                  )
+                : null;
+              return [array, await read(stem + ".json"), await read(stem + ".markers.csv"), pack];
+            }
+            return [array];
+          })();
+          // Transfer the buffers: a structured clone would copy a whole run again
+          const buffers = new Set(files.flatMap((file) => (file === null ? [] : [file.buffer as ArrayBuffer])));
+          sendMessage(hubPort, "historical-data", { files, error, uuid }, Array.from(buffers));
         } catch (error) {
           sendMessage(hubPort, "historical-data", { files: [null], error: String(error), uuid });
         }
@@ -591,7 +762,7 @@ async function handleHubMessage(message: NamedMessage) {
                   openLocalLog();
                 }
               },
-              { content: "Browse Base Station Logs…", callback: openDownload },
+              { content: "Download Runs…", callback: () => openDownloadRuns() },
               { content: "Export Layout…", callback: requestLayoutExport },
               { content: "Import Layout…", callback: importLayout },
               ...DEFAULT_LAYOUTS.map((layout) => ({

@@ -38,6 +38,9 @@ Connect the dashboard's MUR source to `http://localhost:8090`.
 | `--unsync-source <source>` | Source for the clock offset, default `ennoid-bms`.                                                                                           |
 | `--no-history`             | Return HTTP 501 for history requests.                                                                                                        |
 | `--history-seconds <n>`    | History retention in model seconds, default 360.                                                                                             |
+| `--archive-today <date>`   | `YYYY-MM-DD` of the newest archive runs, default today in Melbourne.                                                                         |
+| `--archive-no-prepare`     | Serve unfinished runs' files at once instead of answering the first request with 202 preparing.                                              |
+| `--archive-drop`           | Cut each run's first full file download halfway, so clients must resume with a Range request.                                                |
 
 Use `--speed 1` to keep model time aligned with wall time during live connection checks. With a fixed
 start time and seed, the same ticks produce the same output. Without a fixed start time, each process
@@ -65,6 +68,22 @@ gaps are expected. Catalogue removal drops queued samples for that path. Revisio
 Deduplicate measurements by `(path, stream_id, seq)`. Each source has its own stream ID, and each path's
 sequence starts at zero. Availability reports `online`, `stale` or `offline` with `last_seen_ns`.
 HTTP errors have `error` and `message` fields. CORS allows all origins.
+
+## Run archive
+
+- `GET /api/v1/archive/runs?vehicle=mur27&limit=100&before=<run name>` returns
+  `{version: 1, runs, next}`, newest first by `start`, or by first-seen time when `start` is null. Both
+  routes need `vehicle`; other vehicles answer 404 `unknown_vehicle`.
+- `GET /api/v1/archive/runs/{name}/file?vehicle=mur27` serves `test/fixtures/mf4/archive-run.mf4` for every run, with
+  `Content-Disposition`, `ETag` and `Accept-Ranges: bytes`. Range requests answer 206, a stale `If-Range`
+  answers 200 with the whole file, and unknown runs answer 404. The first request for a recording or
+  uploading run answers 202 `{"state": "preparing"}` with `Retry-After: 1`. The file carries the bundled
+  DBCs as `bus0_<name>.dbc` attachments, like the archive's merged runs (`tools/mf4/generate_dbc_snapshots.py`).
+
+The 13 fixture runs (`src/archive.ts`) cover recording, uploading and complete runs, `power_off`,
+`clean_stop` and `incomplete` endings, power-offs the server inferred (`end_inferred`), runs with parts still on the car, a run without a summary, a parked run without a
+place, a legacy `run_<µs>_<hex>` name, an undated `pending_<n>` run, and faults of both severities,
+including repeats and a run with three fault groups.
 
 ## Signals and history
 

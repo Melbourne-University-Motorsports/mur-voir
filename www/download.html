@@ -18,12 +18,12 @@
     <link rel="stylesheet" href="download.css" />
     <link rel="stylesheet" href="loadingAnimation.css" />
     <script type="module" src="../bundles/download.js"></script>
-    <title>Download Logs &mdash; mur-voir</title>
+    <title>Download Runs &mdash; mur-voir</title>
   </head>
 
   <body>
     <div class="file-list">
-      <span></span>
+      <div class="runs" role="listbox" aria-multiselectable="true" aria-label="Runs"></div>
       <div class="loading">
         <div class="loading-bar"></div>
         <div class="loading-bar"></div>
@@ -33,16 +33,36 @@
       </div>
     </div>
 
-    <div class="alert-text" hidden></div>
+    <div class="fault-list" hidden></div>
+
+    <select class="filter" title="Show runs">
+      <option value="all">All</option>
+      <option value="driving">Driving</option>
+      <option value="parked">Parked</option>
+    </select>
+    <div class="alert-text"></div>
     <progress min="0" max="1" hidden></progress>
     <div class="progress-details" hidden></div>
 
-    <button id="exit" title="Cancel">
+    <button id="open" title="Open" disabled>
+      <img src="symbols/input.svg" />
+    </button>
+    <button id="download" title="Download" disabled>
+      <img src="symbols/download.svg" />
+    </button>
+    <button id="copy-link" title="Copy a link to this run" disabled>
+      <img src="symbols/link.svg" />
+    </button>
+    <button id="exit" title="Close">
       <img src="symbols/close.svg" />
     </button>
-    <button id="download" title="Download">
-      <img src="symbols/download.svg" />
-      <img src="symbols/east.svg" hiden />
-    </button>
+
+    <div class="scrim" hidden>
+      <div class="dialog" role="alertdialog" aria-labelledby="dialog-title">
+        <div class="dialog-title" id="dialog-title">Live telemetry is on</div>
+        <p class="dialog-text"></p>
+        <div class="dialog-buttons"></div>
+      </div>
+    </div>
   </body>
 </html>

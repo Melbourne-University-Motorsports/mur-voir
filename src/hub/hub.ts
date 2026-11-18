@@ -17,6 +17,7 @@ import { IS_LITE } from "../shared/buildConstants";
 import Log from "../shared/log/Log";
 import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
+import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
@@ -107,8 +108,14 @@ let logFriendlyName: string | null = null;
 let liveActive = false;
 let liveConnected = false;
 let liveAutoStartComplete = false;
+/** Lite holds the live auto-start while a ?run= link opens, so live data can't replace the run. */
+let liveAutoStartHeld = false;
 let liveAddress = "";
 let liveStatus: LiveDataSourceStatus = LiveDataSourceStatus.Stopped;
+/** The archive run open in this window (File > Download runs…), or null for anything else. */
+let openRun: RunRef | null = null;
+/** The address of the last MUR live connection in this window, whichever way it was started. */
+let murConnectionAddress: string | null = null;
 
 const connectDialog = new ConnectDialog((sourceId, address) => connectLive(sourceId, address));
 
@@ -309,9 +316,11 @@ window.requestAnimationFrame(periodic);
 // DATA SOURCE HANDLING
 
 function checkLiveAutoStart() {
-  if (IS_LITE && window.preferences !== null && !liveAutoStartComplete) {
-    startLive("robot");
+  if (IS_LITE && window.preferences !== null && !liveAutoStartComplete && !liveAutoStartHeld) {
     liveAutoStartComplete = true;
+    // Anything opened before the auto-start (a ?run= link, a file) wins over live data
+    if (openRun !== null || historicalSources.length > 0) return;
+    startLive("robot");
   }
 }
 
@@ -451,6 +460,7 @@ function connectLive(sourceId: string, address: string) {
   sessionAddresses.set(sourceId, address);
   window.sendMainMessage("update-preferences", { liveMode: sourceId });
   startLive("robot", { sourceId: sourceId, address: address });
+  reportViewSource();
 }
 
 /** Disconnects the live source, keeping the received data visible. */
@@ -469,6 +479,7 @@ function stopLive() {
 
 /** Connects to a live data source. */
 function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; address: string }) {
+  openRun = null;
   historicalSources.forEach((entry) => entry.source.stop());
   historicalSources = [];
   liveConnection?.stop();
@@ -492,6 +503,7 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
     address = sessionAddresses.get(sourceDefinition.id) ?? sourceDefinition.defaultAddress;
   }
   liveAddress = address;
+  if (sourceDefinition.id === "mur") murConnectionAddress = address;
   liveStatus = LiveDataSourceStatus.Connecting;
   window.liveStatus = null;
   source.newSegmentCallback = () => {
@@ -589,6 +601,37 @@ window.addEventListener("message", (event) => {
   }
 });
 
+// Tell the main process what this window shows: Download runs asks before replacing live telemetry,
+// Lite keeps ?run= in the address bar, and the title bar offers Copy link while a run is open.
+const COPY_RUN_LINK = document.querySelector(".copy-run-link") as HTMLButtonElement;
+let reportedViewSource = "";
+let copyRunLinkTimer: number | null = null;
+/** Live telemetry is arriving: an active source and, where the source reports it, fresh data. */
+function receivingLive(): boolean {
+  if (liveConnection === null || !liveActive || liveStatus !== LiveDataSourceStatus.Active) return false;
+  const status = window.liveStatus?.getLiveStatus();
+  return status === undefined || (status.backend === "connected" && status.hasFreshData);
+}
+function reportViewSource() {
+  // Desktop lists the archive on the MUR server connected to this session, and has none before that.
+  const murAddress =
+    murConnectionAddress ??
+    sessionAddresses.get("mur") ??
+    (IS_LITE ? getLiveSource("mur", IS_LITE).defaultAddress : null);
+  const viewSource = { live: receivingLive(), run: openRun, archiveAddress: murAddress };
+  const key = JSON.stringify(viewSource);
+  if (key === reportedViewSource || window.messagePort === null) return;
+  reportedViewSource = key;
+  window.sendMainMessage("set-view-source", viewSource);
+  COPY_RUN_LINK.hidden = openRun === null;
+  document.body.classList.toggle("has-run-link", openRun !== null);
+}
+// Most changes report straight away; the interval catches the rest (e.g. a live connection dropping).
+guardedInterval(reportViewSource, 250);
+COPY_RUN_LINK.addEventListener("click", () => {
+  if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
+});
+
 // Update touch bar slider position
 guardedInterval(() => {
   if (window.platform === "darwin") {
@@ -669,6 +712,12 @@ async function handleMainMessage(message: NamedMessage) {
 
     case "set-preferences":
       window.preferences = message.data;
+      checkLiveAutoStart();
+      break;
+
+    case "hold-live-auto-start":
+      // Lite: true while a ?run= link opens; false once it has opened or was abandoned
+      liveAutoStartHeld = message.data;
       checkLiveAutoStart();
       break;
 
@@ -810,8 +859,27 @@ async function handleMainMessage(message: NamedMessage) {
             startHistorical(file, index === 0, files.length > 1);
           }
         });
+        const run = message.data.run;
+        openRun =
+          !merge && files.length === 1 && isRunName(run?.name) && isVehicleId(run?.vehicle)
+            ? { vehicle: run.vehicle, name: run.name }
+            : null;
+        reportViewSource();
       }
       break;
+
+    case "run-link-copied": {
+      // Like the other title bar icons: a check for a moment, and the outcome in the tooltip.
+      const icon = COPY_RUN_LINK.firstElementChild as HTMLImageElement;
+      if (message.data.ok) icon.src = "symbols/check.svg";
+      COPY_RUN_LINK.title = (message.data.ok ? "Link copied: " : "Couldn't copy the link: ") + message.data.link;
+      if (copyRunLinkTimer !== null) window.clearTimeout(copyRunLinkTimer);
+      copyRunLinkTimer = window.setTimeout(() => {
+        icon.src = "symbols/link.svg";
+        COPY_RUN_LINK.title = "Copy a link to this run";
+      }, 1800);
+      break;
+    }
 
     case "show-connect-dialog":
       if (isExporting) {

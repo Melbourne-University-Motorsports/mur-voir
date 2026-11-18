@@ -11,7 +11,6 @@ import { MQTTSettings, normaliseMQTTSettings } from "../hub/dataSources/mqtt/MQT
 export default interface Preferences {
   theme: "light" | "dark" | "system";
   robotAddress: string;
-  remotePath: string;
   liveMode: string; // Live source ID (see LiveSourceRegistry), empty for the default source
   liveSubscribeMode: "low-bandwidth" | "logging";
   liveDiscard: number;
@@ -27,7 +26,6 @@ export default interface Preferences {
 export const DEFAULT_PREFS: Preferences = {
   theme: "system",
   robotAddress: "",
-  remotePath: "/U/logs",
   liveMode: "",
   liveSubscribeMode: "low-bandwidth",
   liveDiscard: 1200,
@@ -61,13 +59,6 @@ export function mergePreferences(basePrefs: Preferences, newPrefs: object) {
   }
   if ("robotAddress" in newPrefs && typeof newPrefs.robotAddress === "string") {
     basePrefs.robotAddress = newPrefs.robotAddress;
-  }
-  if ("rioPath" in newPrefs && typeof newPrefs.rioPath === "string") {
-    // Migrate from v4
-    basePrefs.remotePath = newPrefs.rioPath;
-  }
-  if ("remotePath" in newPrefs && typeof newPrefs.remotePath === "string") {
-    basePrefs.remotePath = newPrefs.remotePath;
   }
   if ("liveMode" in newPrefs && typeof newPrefs.liveMode === "string") {
     // Unknown IDs fall back to the default source (see LiveSourceRegistry)

@@ -10,6 +10,7 @@
 import http from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { HttpError } from "../../../src/shared/mur/contract.ts";
+import { MockArchive, type ArchiveOptions } from "./archive.ts";
 import { MockBackend, type BackendOptions } from "./backend.ts";
 import { Session, type SessionOptions } from "./session.ts";
 
@@ -18,6 +19,7 @@ export const DEFAULT_HISTORY_POINTS = 2000;
 
 export interface ServerHandle {
   backend: MockBackend;
+  archive: MockArchive;
   server: http.Server;
   port: number;
   close(): Promise<void>;
@@ -40,17 +42,24 @@ function err(res: http.ServerResponse, status: number, error: string, message: s
   json(res, status, body);
 }
 
-export function handleHttp(backend: MockBackend, req: http.IncomingMessage, res: http.ServerResponse): void {
+export function handleHttp(
+  backend: MockBackend,
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  archive?: MockArchive
+): void {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname.replace(/\/+$/, "");
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET, POST, OPTIONS",
-      "access-control-allow-headers": "content-type"
+      "access-control-allow-methods": "GET, HEAD, POST, OPTIONS",
+      "access-control-allow-headers": "content-type, range, if-range"
     });
     return void res.end();
   }
+
+  if (archive?.handle(req, res, url)) return;
 
   if (path === "/api/v1/catalogue") {
     if (req.method !== "GET") return err(res, 405, "method_not_allowed", "Use GET");
@@ -88,18 +97,30 @@ export function handleHttp(backend: MockBackend, req: http.IncomingMessage, res:
     return json(res, 200, {
       name: "mur-voir mock telemetry backend",
       api_version: 1,
-      endpoints: ["GET /api/v1/catalogue", "GET /api/v1/history", "WS /api/v1/live"]
+      endpoints: [
+        "GET /api/v1/catalogue",
+        "GET /api/v1/history",
+        "WS /api/v1/live",
+        "GET /api/v1/archive/runs",
+        "GET /api/v1/archive/runs/{name}/file?vehicle="
+      ]
     });
   }
   return err(res, 404, "not_found", `No route for ${req.method} ${url.pathname}`);
 }
 
 export async function startServer(
-  opts: Partial<BackendOptions> & { port?: number; host?: string; quiet?: boolean },
+  opts: Partial<BackendOptions> & {
+    port?: number;
+    host?: string;
+    quiet?: boolean;
+    archive?: Partial<ArchiveOptions>;
+  },
   sessionOpts: Partial<SessionOptions> = {}
 ): Promise<ServerHandle> {
   const backend = new MockBackend(opts);
-  const server = http.createServer((req, res) => handleHttp(backend, req, res));
+  const archive = new MockArchive({ prepare: true, dropOnce: false, ...opts.archive });
+  const server = http.createServer((req, res) => handleHttp(backend, req, res, archive));
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1 << 20 });
 
   server.on("upgrade", (req, socket, head) => {
@@ -134,6 +155,7 @@ export async function startServer(
   const port = typeof addr === "object" && addr ? addr.port : opts.port ?? 8090;
   return {
     backend,
+    archive,
     server,
     port,
     close: async () => {

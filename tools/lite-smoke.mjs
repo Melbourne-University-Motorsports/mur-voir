@@ -61,7 +61,18 @@ try {
   ]);
   await ready(`http://127.0.0.1:${port}`);
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  // LITE_SCREENSHOTS=<dir> saves screenshots there; LITE_COLOR_SCHEME=dark takes them in dark mode.
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1000 },
+    colorScheme: process.env.LITE_COLOR_SCHEME === "dark" ? "dark" : "light"
+  });
+  /** Saves a screenshot of the page, or of the open popup when `popup` is set. */
+  const shot = async (name, popup = false) => {
+    if (!process.env.LITE_SCREENSHOTS) return;
+    await page.waitForTimeout(500); // let popups and fades settle
+    const path = process.env.LITE_SCREENSHOTS + "/" + name + ".png";
+    await (popup ? page.locator(".popup-frame").screenshot({ path }) : page.screenshot({ path }));
+  };
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -123,7 +134,7 @@ try {
   await frame.evaluate(() => window.tabs.addTab(15));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
-  if (process.env.LITE_SCREENSHOTS) await page.screenshot({ path: process.env.LITE_SCREENSHOTS + "/lite_mur.png" });
+  await shot("lite_mur");
 
   await hub.getByText("File", { exact: true }).click();
   const downloading = page.waitForEvent("download");
@@ -169,6 +180,163 @@ try {
   await linkPage.waitForTimeout(500);
   assert.equal(await reopenedFrame.evaluate(() => window.tabs.saveState().tabs.length), 11);
   await linkContext.close();
+
+  // The hosted server forwards the archive API, including Range requests, to the backend.
+  const archiveCheck = await frame.evaluate(async () => {
+    const list = await fetch("/api/v1/archive/runs?vehicle=mur27&limit=1");
+    const range = await fetch("/api/v1/archive/runs/pending_3/file?vehicle=mur27", {
+      headers: { Range: "bytes=10-" }
+    });
+    return {
+      list: list.status,
+      version: (await list.json()).version,
+      range: range.status,
+      from: range.headers.get("content-range")
+    };
+  });
+  assert.deepEqual([archiveCheck.list, archiveCheck.version, archiveCheck.range], [200, 1, 206]);
+  assert.match(archiveCheck.from, /^bytes 10-/);
+
+  // File > Download Runs… lists the mock archive's runs.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: `http://127.0.0.1:${port}` });
+  await hub.getByText("File", { exact: true }).click();
+  await page.getByText("Download Runs…", { exact: true }).click();
+  const runsPopup = page.frameLocator(".popup-frame");
+  const rows = runsPopup.locator(".run");
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), 13);
+  const listText = await runsPopup.locator(".runs").innerText();
+  for (const text of [
+    "Live now",
+    "Uploading, 11 of 18 min in",
+    "Last 5 min still on the car",
+    "Summary not built yet",
+    "Parked at Test track pits",
+    "tractive system on 2 min",
+    "Brake pressure sensor ×2",
+    "+1 more",
+    "Not dated"
+  ]) {
+    assert.ok(listText.includes(text), `Download runs shows "${text}"`);
+  }
+  // Stock file list: an MF4 icon on every row, icon buttons in the control bar.
+  assert.equal(await runsPopup.locator('.run img[src="../icons/mf4-icon.png"]').count(), 13);
+  for (const id of ["open", "download", "copy-link", "exit"]) {
+    assert.equal(await runsPopup.locator(`button#${id} > img`).count(), 1, `#${id} is an icon button`);
+  }
+  await runsPopup.locator("select.filter").selectOption("parked");
+  assert.equal(await rows.count(), 3);
+  await runsPopup.locator("select.filter").selectOption("all");
+  await shot("lite_runs", true);
+
+  // One ticked run shows its faults in the footer.
+  const faultRow = rows.filter({ has: runsPopup.locator(".more") });
+  await faultRow.click();
+  assert.match(await runsPopup.locator(".fault-list").innerText(), /IMD fault, shutdown circuit opened.*16:05, 16:09/s);
+  assert.equal(await runsPopup.locator("button#open").isEnabled(), true);
+  await shot("lite_runs_faults", true);
+  await runsPopup.locator("button#copy-link").click();
+  await runsPopup.locator(".alert-text", { hasText: "Link copied" }).waitFor();
+  const faultRunName = await faultRow.getAttribute("data-name");
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    `http://127.0.0.1:${port}/?vehicle=mur27&run=${faultRunName}`
+  );
+
+  // Download takes any number of runs, one MF4 each; the uploading run answers 202 first.
+  const uploadingRow = rows.filter({ hasText: "Uploading, 11 of 18 min in" });
+  await uploadingRow.click();
+  // With several ticked, Open takes the most recent; Copy link still needs exactly one.
+  assert.equal(await runsPopup.locator("button#open").isEnabled(), true);
+  assert.match(
+    await runsPopup.locator("button#open").getAttribute("title"),
+    /^Open the most recent ticked run, .*14:55$/
+  );
+  assert.equal(await runsPopup.locator("button#copy-link").isEnabled(), false);
+  const downloads = [];
+  page.on("download", (download) => downloads.push(download));
+  await runsPopup.locator('button#download[title="Download 2 runs"]').click();
+  await runsPopup.locator(".job.done", { hasText: "Downloaded 2 runs to Downloads" }).waitFor();
+  const expectedFiles = [faultRunName, await uploadingRow.getAttribute("data-name")].map((name) => name + ".mf4");
+  assert.deepEqual(downloads.map((download) => download.suggestedFilename()).sort(), expectedFiles.sort());
+  const mf4 = await readFile(await downloads[0].path());
+  assert.deepEqual(mf4, await readFile("test/fixtures/mf4/archive-run.mf4"));
+
+  // Opening over live telemetry asks first. Stop live and open replaces the log with the run.
+  const openRow = rows.filter({ hasText: "13:20" });
+  const runName = await openRow.getAttribute("data-name");
+  await openRow.dblclick();
+  await runsPopup
+    .locator(".scrim")
+    .waitFor({ state: "visible", timeout: 3000 })
+    .catch(async (error) => {
+      console.error(await runsPopup.locator("body").innerText(), await frame.evaluate(() => document.title));
+      throw error;
+    });
+  assert.deepEqual(await runsPopup.locator(".dialog-buttons button").allInnerTexts(), [
+    "Cancel",
+    "Stop live and open",
+    "Open in new tab"
+  ]);
+  await shot("lite_runs_live", true);
+  await runsPopup.locator('[data-choice="replace"]').click();
+  await page.locator(".popup-frame").waitFor({ state: "hidden" });
+  await frame.waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
+  // The run file carries bus 0's DBC snapshots; the inverter fields keep their keys and say which DBC decoded them.
+  const inverterDbc = await frame.evaluate(
+    () => JSON.parse(window.log.getMetadataString("INVERTER/INV_MotorSpeedRPM") || "{}").dbc
+  );
+  assert.equal(inverterDbc, "bus0_Cascadia_PM100DZ.dbc", "Decoded with the run's attached DBC");
+  await page.waitForFunction((name) => new URL(location.href).searchParams.get("run") === name, runName);
+  await shot("lite_run_open");
+  await hub.locator(".copy-run-link").click();
+  await hub.locator('.copy-run-link img[src="symbols/check.svg"]').waitFor();
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    `http://127.0.0.1:${port}/?vehicle=mur27&run=${runName}`
+  );
+
+  // A ?run= link opens that run in a fresh browser and keeps the parameters. Hosted Lite starts live
+  // data on load, but not while a link opens: live data must never replace the linked run.
+  const runContext = await browser.newContext();
+  const runPage = await runContext.newPage();
+  runPage.on("pageerror", (error) => errors.push(error.message));
+  const runSockets = [];
+  runPage.on("websocket", (socket) => runSockets.push(socket.url()));
+  // A legacy link without ?vehicle= means the default vehicle.
+  await runPage.goto(`http://127.0.0.1:${port}/?run=${runName}`);
+  await runPage
+    .locator(".popup-frame")
+    .waitFor({ state: "hidden", timeout: 20000 })
+    .catch(() => {});
+  const runFrame = () => runPage.frames().find((frame) => frame.url().endsWith("hub.html"));
+  await runPage.waitForFunction(() => document.querySelector(".hub-frame").contentWindow.window.log !== undefined);
+  await runFrame().waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
+  assert.equal(new URL(runPage.url()).searchParams.get("run"), runName);
+  assert.equal(new URL(runPage.url()).searchParams.get("vehicle"), "mur27");
+  await runPage.frameLocator(".hub-frame").locator(".copy-run-link").waitFor({ state: "visible" });
+  await runPage.waitForTimeout(1500); // time for a late live auto-start to show up
+  assert.deepEqual(runSockets, [], "No live connection while a ?run= link opens");
+  await runFrame().waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
+  assert.equal(new URL(runPage.url()).searchParams.get("run"), runName, "The linked run is still open");
+
+  // With no live data arriving, Open opens straight away without asking.
+  await runPage.frameLocator(".hub-frame").getByText("File", { exact: true }).click();
+  await runPage.getByText("Download Runs…", { exact: true }).click();
+  const linkPopup = runPage.frameLocator(".popup-frame");
+  const otherRow = linkPopup.locator(".run").filter({ hasText: "Uploading, 11 of 18 min in" });
+  const otherName = await otherRow.getAttribute("data-name");
+  await otherRow.dblclick();
+  await runPage.locator(".popup-frame").waitFor({ state: "hidden" });
+  assert.equal(
+    await linkPopup
+      .locator(".scrim")
+      .isVisible()
+      .catch(() => false),
+    false
+  );
+  await runPage.waitForFunction((name) => new URL(location.href).searchParams.get("run") === name, otherName);
+  await runContext.close();
 
   const picking = page.waitForEvent("filechooser");
   await hub.locator("body").press("Control+Shift+o");
@@ -266,7 +434,7 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, attached DBCs, links, ?run= without live auto-start), CSV picker."
   );
 } finally {
   await browser?.close();

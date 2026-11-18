@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { unzlibSync } from "fflate";
+import { inflateSync, unzlibSync } from "fflate";
 
 export interface Block {
   type: string;
@@ -42,6 +42,13 @@ export interface Group {
   records: number[];
   data: Uint8Array;
 }
+/** A file embedded in the MDF (AT block). External file references aren't read. */
+export interface Attachment {
+  /** As stored, which may include a path. */
+  fileName: string;
+  mimeType: string;
+  data: Uint8Array;
+}
 const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes).replace(/\0.*$/s, "");
 const view = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 function uint64(v: DataView, offset: number) {
@@ -53,6 +60,10 @@ function uint64(v: DataView, offset: number) {
 /** Bounds checked MDF4 block reader. No channel samples are decoded during discovery. */
 export class MDF {
   groups: Group[] = [];
+  /** Embedded attachments, decompressed. */
+  attachments: Attachment[] = [];
+  /** Attachments that couldn't be read. They never stop the samples from loading. */
+  attachmentErrors: string[] = [];
   constructor(readonly bytes: Uint8Array) {
     if (text(bytes.subarray(0, 8)).trim() !== "MDF") throw new Error("Not an ASAM MDF file");
     if (!text(bytes.subarray(8, 16)).trim().startsWith("4.")) {
@@ -60,6 +71,13 @@ export class MDF {
     }
     const hd = this.block(64);
     if (hd.type !== "HD") throw new Error("Missing MDF header");
+    if (hd.links[3]) {
+      try {
+        this.readAttachments(hd.links[3]);
+      } catch (error) {
+        this.attachmentErrors.push(String(error));
+      }
+    }
     for (const dg of this.chain(hd.links[0], "DG")) {
       const groups: Group[] = [];
       for (const cg of this.chain(dg.links[1], "CG")) {
@@ -138,6 +156,36 @@ export class MDF {
           offset += stride;
         }
         this.groups.push(...groups);
+      }
+    }
+  }
+  /**
+   * AT blocks: flags bit 0 = embedded, bit 1 = compressed (zlib deflate). Data after the links:
+   * flags u16, creator index u16, reserved [4], MD5 [16], original size u64, embedded size u64, bytes.
+   */
+  private readAttachments(address: number) {
+    for (const at of this.chain(address, "AT")) {
+      const fileName = this.text(at.links[1]);
+      try {
+        const v = view(at.data);
+        const flags = v.getUint16(0, true);
+        if (!(flags & 1)) continue; // A reference to an external file
+        const original = uint64(v, 24),
+          embedded = uint64(v, 32);
+        if (40 + embedded > at.data.length) throw new Error("truncated");
+        const stored = at.data.subarray(40, 40 + embedded);
+        let data = stored;
+        if (flags & 2) {
+          try {
+            data = unzlibSync(stored);
+          } catch {
+            data = inflateSync(stored); // raw deflate without the zlib wrapper
+          }
+        }
+        if (data.length !== original) throw new Error(`${data.length} of ${original} bytes`);
+        this.attachments.push({ fileName, mimeType: this.text(at.links[2]), data });
+      } catch (error) {
+        this.attachmentErrors.push(`${fileName || "attachment"}: ${error instanceof Error ? error.message : error}`);
       }
     }
   }

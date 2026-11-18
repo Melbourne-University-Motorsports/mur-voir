@@ -36,6 +36,9 @@ const HELP = `Usage: npm run screenshot -- [options]
                        A returned value prints as [eval] <json>
   --wait <ms>          settle time before each capture (default 1500)
   --satellites         also capture satellite windows
+  --window <page>      also capture each popup window showing this page, e.g. download.html
+                       (open it first, e.g. --eval "window.sendMainMessage('open-download-runs')")
+  --window-eval <js>   run JavaScript in those popup windows before capturing (may await); repeatable
   --user-data <dir>    reuse a prefs and state folder instead of a fresh one
   --no-build           skip "npm run compile" (only when bundles/ is current)
   -h, --help
@@ -57,6 +60,8 @@ const { values: opts } = parseArgs({
     eval: { type: "string", multiple: true, default: [] },
     wait: { type: "string", default: "1500" },
     satellites: { type: "boolean", default: false },
+    window: { type: "string" },
+    "window-eval": { type: "string", multiple: true, default: [] },
     "user-data": { type: "string" },
     "no-build": { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false }
@@ -202,12 +207,37 @@ try {
     if (result !== undefined) console.log("[eval] " + JSON.stringify(result));
   }
 
+  if (opts.window) {
+    let pages = [];
+    for (let attempt = 0; attempt < 100 && pages.length === 0; attempt++) {
+      pages = app.windows().filter((page) => page.url().endsWith("/" + opts.window));
+      if (pages.length === 0) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (pages.length === 0) throw new Error(`no window showing ${opts.window} (open it with --eval)`);
+    for (const page of pages) {
+      await page.waitForLoadState("load");
+      for (const script of opts["window-eval"]) {
+        const result = await page.evaluate(`(async () => { ${script} })()`);
+        if (result !== undefined) console.log("[window-eval] " + JSON.stringify(result));
+      }
+    }
+  }
+
   const written = [];
   const capture = async (suffix) => {
     await hub.waitForTimeout(wait);
     const file = path.join(outDir, `${opts.name}${suffix}.png`);
     await hub.screenshot({ path: file });
     written.push(file);
+    if (opts.window) {
+      const pages = app.windows().filter((page) => page.url().endsWith("/" + opts.window));
+      if (pages.length === 0) console.log(`[window] ${opts.window} has closed`);
+      for (const [index, page] of pages.entries()) {
+        const windowFile = path.join(outDir, `${opts.name}${suffix}-${path.parse(opts.window).name}-${index + 1}.png`);
+        await page.screenshot({ path: windowFile });
+        written.push(windowFile);
+      }
+    }
     if (opts.satellites) {
       const satellites = app.windows().filter((page) => page.url().endsWith("/satellite.html"));
       for (const [index, page] of satellites.entries()) {

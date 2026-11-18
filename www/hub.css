@@ -874,6 +874,34 @@ button.add-tab {
   right: 12px;
 }
 
+/* Copy link for an open archive run, left of the tab controls */
+
+button.copy-run-link {
+  right: calc(154px + var(--show-lock-buttons) * 28px);
+}
+
+body.fancy-title-bar-lite button.copy-run-link {
+  right: calc(154px - 33px + var(--show-lock-buttons) * 28px);
+}
+
+button.copy-run-link[hidden] {
+  display: none;
+}
+
+body.has-run-link.fancy-title-bar-mac div.title-bar-text {
+  right: calc(154px + 38px + var(--show-lock-buttons) * 28px);
+}
+
+body.has-run-link.fancy-title-bar-lite div.title-bar-text {
+  right: calc(154px - 33px + 38px + var(--show-lock-buttons) * 28px);
+}
+
+body.has-run-link:not(.fancy-title-bar-mac):not(.fancy-title-bar-lite) div.tab-bar,
+body.has-run-link:not(.fancy-title-bar-mac):not(.fancy-title-bar-lite) div.tab-bar-scroll,
+body.has-run-link:not(.fancy-title-bar-mac):not(.fancy-title-bar-lite) div.tab-bar-shadow-right {
+  right: calc(154px + 38px + var(--show-lock-buttons) * 28px);
+}
+
 /* Timeline */
 
 div.timeline {
