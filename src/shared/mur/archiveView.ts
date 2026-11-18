@@ -117,11 +117,15 @@ function minutes(seconds: number): number {
 /**
  * The status after the activity on line one. Recording runs are live. A run that ended with a power
  * off while parts were still on the car waits for the car to power on again; any other unfinished
- * upload is still arriving.
+ * upload is still arriving. A power off the server inferred (`end_inferred`) reads like any other.
+ * A complete run the logger marked incomplete says so in plain text: it isn't a fault.
  */
-export function runStatus(run: ArchiveRun): { kind: "live" | "uploading" | "on-car"; text: string } | null {
+export function runStatus(
+  run: ArchiveRun
+): { kind: "live" | "uploading" | "on-car" | "incomplete"; text: string } | null {
   if (run.state === "recording") return { kind: "live", text: "Live now" };
-  if (run.state !== "uploading") return null;
+  if (run.state === "complete")
+    return run.end === "incomplete" ? { kind: "incomplete", text: "End may be missing" } : null;
   if (run.end === "power_off" && run.on_car_s !== null && run.on_car_s > 0) {
     return { kind: "on-car", text: `Last ${Math.max(1, minutes(run.on_car_s))} min still on the car` };
   }

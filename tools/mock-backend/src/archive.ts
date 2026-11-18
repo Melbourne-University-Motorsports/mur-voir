@@ -184,9 +184,11 @@ export function fixtureRuns(today = melbourneToday()): ArchiveRun[] {
         ts_on_s: 130
       })
     }),
+    // The server ended this run itself after a quiet period.
     run(today, "11:40:17", {
       duration_s: 190,
       end: "power_off",
+      end_inferred: true,
       summary: summary({
         activity: "driving",
         covers_s: 190,
@@ -198,8 +200,10 @@ export function fixtureRuns(today = melbourneToday()): ArchiveRun[] {
         faults: [faultOf("amsTrip", today, ["11:42"])]
       })
     }),
+    // The logger's manifest marks it incomplete: the end may be missing.
     run(today, "10:05:55", {
       duration_s: 1320,
+      end: "incomplete",
       summary: summary({
         activity: "driving",
         covers_s: 1320,
@@ -228,6 +232,7 @@ export function fixtureRuns(today = melbourneToday()): ArchiveRun[] {
       duration_s: 1560,
       state: "uploading",
       end: "power_off",
+      end_inferred: true,
       on_car_s: 300,
       summary: summary({
         activity: "driving",

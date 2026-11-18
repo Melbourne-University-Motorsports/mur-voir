@@ -80,8 +80,8 @@ HTTP errors have `error` and `message` fields. CORS allows all origins.
   uploading run answers 202 `{"state": "preparing"}` with `Retry-After: 1`. The file carries the bundled
   DBCs as `bus0_<name>.dbc` attachments, like the archive's merged runs (`tools/mf4/generate_dbc_snapshots.py`).
 
-The 13 fixture runs (`src/archive.ts`) cover recording, uploading and complete runs, `power_off` and
-`clean_stop` endings, runs with parts still on the car, a run without a summary, a parked run without a
+The 13 fixture runs (`src/archive.ts`) cover recording, uploading and complete runs, `power_off`,
+`clean_stop` and `incomplete` endings, power-offs the server inferred (`end_inferred`), runs with parts still on the car, a run without a summary, a parked run without a
 place, a legacy `run_<µs>_<hex>` name, an undated `pending_<n>` run, and faults of both severities,
 including repeats and a run with three fault groups.
 

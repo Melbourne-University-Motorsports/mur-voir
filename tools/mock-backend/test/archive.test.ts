@@ -28,6 +28,9 @@ test("fixture runs cover every state the Download runs popup shows", async () =>
     assert.deepEqual([...states].sort(), ["complete", "recording", "uploading"]);
     assert.ok(runs.some((run) => run.end === "power_off"));
     assert.ok(runs.some((run) => run.end === "clean_stop"));
+    assert.ok(runs.some((run) => run.end === "incomplete"));
+    assert.ok(runs.some((run) => run.end_inferred === true && run.state === "complete"));
+    assert.ok(runs.some((run) => run.end_inferred === true && run.state === "uploading" && run.on_car_s! > 0));
     assert.ok(runs.some((run) => run.state === "uploading" && run.end === "power_off" && run.on_car_s! > 0));
     assert.ok(runs.some((run) => run.state === "uploading" && run.end === "clean_stop" && run.on_car_s! > 0));
     assert.ok(runs.some((run) => run.summary === null));

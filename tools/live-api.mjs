@@ -46,13 +46,20 @@ const option = (flag) => {
   return i === -1 ? undefined : process.argv[i + 1];
 };
 const source = option("--source");
-const commit = option("--commit");
+const tag = option("--tag");
 const command = process.argv[2] ?? "check";
 const upstreamDir = api.directory + "/schema";
 const git = (...args) => execFileSync("git", ["-C", source, ...args]);
+const TAG = /^v\d+\.\d+\.\d+$/;
+const tagCommit = (name) => git("rev-parse", "--verify", `refs/tags/${name}^{commit}`).toString().trim();
 
 if (command === "vendor") {
-  assert.ok(source && /^[a-f0-9]{40}$/.test(commit ?? ""), "vendor needs --source and full --commit");
+  // A release tag (vX.Y.Z) records the tag and the commit it resolves to; --commit pins a commit alone.
+  assert.ok(
+    source && (TAG.test(tag ?? "") || /^[a-f0-9]{40}$/.test(option("--commit") ?? "")),
+    "vendor needs --source and --tag vX.Y.Z or a full --commit"
+  );
+  const commit = tag ? tagCommit(tag) : option("--commit");
   const files = git("ls-tree", "-r", "--name-only", commit, upstreamDir).toString().trim().split("\n");
   assert.ok(files.length && files.every((f) => f.startsWith(upstreamDir + "/") && f.endsWith(".json")));
   await fs.rm(path.join(vendor, "schema"), { recursive: true, force: true });
@@ -69,6 +76,7 @@ if (command === "vendor") {
     JSON.stringify(
       {
         repository: "Melbourne-University-Motorsports/mur-msgs",
+        ...(tag ? { tag } : {}),
         commit,
         directory: api.directory,
         files: hashes
@@ -83,6 +91,10 @@ const pin = JSON.parse(await fs.readFile(path.join(vendor, "SOURCE.json"), "utf8
 assert.match(pin.commit, /^[a-f0-9]{40}$/);
 assert.equal(pin.repository, "Melbourne-University-Motorsports/mur-msgs");
 assert.equal(pin.directory, api.directory);
+if (pin.tag !== undefined) {
+  assert.match(pin.tag, TAG);
+  if (source) assert.equal(tagCommit(pin.tag), pin.commit, `${pin.tag} no longer points at the pinned commit`);
+}
 const localFiles = (await fs.readdir(path.join(vendor, "schema"), { recursive: true }))
   .filter((f) => f.endsWith(".json"))
   .map((f) => "schema/" + f)
@@ -132,7 +144,9 @@ const generatedRaw = await compile(wrapper, api.title, {
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Generated from mur-msgs ${pin.commit}. Do not edit.\n// Run npm run ${api.script}:generate.`,
+// Generated from mur-msgs ${pin.tag ? `${pin.tag} (${pin.commit})` : pin.commit}. Do not edit.\n// Run npm run ${
+    api.script
+  }:generate.`,
   style: { printWidth: 120, tabWidth: 2, semi: true, singleQuote: false, trailingComma: "none" }
 });
 const generated = await format(generatedRaw, { ...(await resolveConfig(output)), filepath: output });

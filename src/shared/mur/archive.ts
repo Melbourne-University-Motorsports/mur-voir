@@ -121,12 +121,18 @@ export function validRun(value: unknown): value is ArchiveRun {
     typeof value.dated === "boolean" &&
     typeof value.duration_s === "number" &&
     (value.state === "recording" || value.state === "uploading" || value.state === "complete") &&
-    (value.end === null || value.end === "power_off" || value.end === "clean_stop") &&
+    (value.end === null || typeof value.end === "string") &&
     isNumberOrNull(value.on_car_s) &&
     typeof value.size_bytes === "number" &&
     (value.summary === null || validSummary(value.summary))
   );
 }
+
+/**
+ * Endings this client knows. v1 grew `incomplete` without a version bump, so an ending added later
+ * reads as null (nothing shown) instead of hiding the run.
+ */
+const RUN_ENDS: ArchiveRun["end"][] = ["power_off", "clean_stop", "incomplete"];
 
 /** Checks a runs response. Runs that fail validation are dropped rather than failing the whole list. */
 export function parseRunsPage(body: unknown): ArchiveRunsPage {
@@ -139,6 +145,7 @@ export function parseRunsPage(body: unknown): ArchiveRunsPage {
   const next = isRunName(body.next) ? body.next : null;
   const runs = body.runs
     .filter(validRun)
+    .map((run) => (run.end === null || RUN_ENDS.includes(run.end) ? run : { ...run, end: null }))
     .map((run) =>
       run.summary === null
         ? run

@@ -477,6 +477,38 @@ test("line one says what the run was and its upload status", () => {
     text: "Last 5 min still on the car"
   });
   assert.deepEqual(runStatus(run({ state: "uploading", on_car_s: null })), { kind: "uploading", text: "Uploading" });
+
+  // A power off the server inferred reads like any power off, never as an error.
+  const inferred = run({ state: "uploading", end: "power_off", end_inferred: true, on_car_s: 300 });
+  assert.deepEqual(runStatus(inferred), runStatus(run({ state: "uploading", end: "power_off", on_car_s: 300 })));
+  assert.equal(runStatus(run({ end: "power_off", end_inferred: true })), null);
+  // An incomplete run says so plainly once complete; while uploading, the upload status comes first.
+  assert.deepEqual(runStatus(run({ end: "incomplete" })), { kind: "incomplete", text: "End may be missing" });
+  assert.deepEqual(runStatus(run({ state: "uploading", end: "incomplete", on_car_s: null })), {
+    kind: "uploading",
+    text: "Uploading"
+  });
+});
+
+test("runs ending incomplete or inferred are listed, and an ending added later doesn't hide a run", () => {
+  const base = { dated: true, duration_s: 1, state: "complete", on_car_s: 0, size_bytes: 1, summary: null };
+  const page = parseRunsPage({
+    version: 1,
+    next: null,
+    runs: [
+      { ...base, name: "a", start: null, end: "incomplete" },
+      { ...base, name: "b", start: null, end: "power_off", end_inferred: true },
+      { ...base, name: "c", start: null, end: "parked_forever" }
+    ]
+  });
+  assert.deepEqual(
+    page.runs.map((r) => [r.name, r.end, r.end_inferred]),
+    [
+      ["a", "incomplete", undefined],
+      ["b", "power_off", true],
+      ["c", null, undefined]
+    ]
+  );
 });
 
 test("line two gives distance, top speed and SoC; parked runs give SoC and tractive system time", () => {

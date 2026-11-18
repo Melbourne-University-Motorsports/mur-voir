@@ -172,6 +172,7 @@ div.run .length,
 div.run .size,
 div.run.parked .what,
 div.run .no-summary,
+div.run .status.incomplete,
 div.loading-older,
 .fault-line .more {
   font-weight: 300;
@@ -183,6 +184,7 @@ div.run.selected .length,
 div.run.selected .size,
 div.run.selected.parked .what,
 div.run.selected .no-summary,
+div.run.selected .status.incomplete,
 div.run.selected .fault-line .more {
   color: #555;
 }
@@ -229,6 +231,7 @@ div.loading-older {
   div.run.selected .size,
   div.run.selected.parked .what,
   div.run.selected .no-summary,
+  div.run.selected .status.incomplete,
   div.run.selected .fault-line .more {
     color: #999;
   }

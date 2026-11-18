@@ -60,7 +60,8 @@
           "type": "string",
           "enum": [
             "power_off",
-            "clean_stop"
+            "clean_stop",
+            "incomplete"
           ]
         },
         {
@@ -237,6 +238,10 @@
         "end": {
           "$ref": "#/definitions/RunEnd"
         },
+        "end_inferred": {
+          "type": "boolean",
+          "description": "true when the server ended the run itself after a quiet period; then end is power_off. Absent means false."
+        },
         "on_car_s": {
           "$ref": "#/definitions/NullableNonNegative"
         },
@@ -307,6 +312,25 @@
             "properties": {
               "on_car_s": {
                 "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "end_inferred"
+            ],
+            "properties": {
+              "end_inferred": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "end": {
+                "const": "power_off"
               }
             }
           }

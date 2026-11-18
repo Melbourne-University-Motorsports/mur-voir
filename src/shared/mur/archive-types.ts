@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Generated from mur-msgs 1e67d444e48a763759b93847de7b30ffcbd842ee. Do not edit.
+// Generated from mur-msgs v0.2.1 (9e545028194f25f459ba7b42500b0b14e653c178). Do not edit.
 // Run npm run archive-api:generate.
 
 /**
@@ -24,7 +24,7 @@ export type Seconds = number;
 export type NullableNonNegative = number | null;
 export type Percent = number | null;
 export type RunState = "recording" | "uploading" | "complete";
-export type RunEnd = ("power_off" | "clean_stop") | null;
+export type RunEnd = ("power_off" | "clean_stop" | "incomplete") | null;
 export type Severity = "shutdown" | "warning";
 export type Run = {
   [k: string]: unknown;
@@ -35,6 +35,10 @@ export type Run = {
   duration_s: Seconds;
   state: RunState;
   end: RunEnd;
+  /**
+   * true when the server ended the run itself after a quiet period; then end is power_off. Absent means false.
+   */
+  end_inferred?: boolean;
   on_car_s: NullableNonNegative;
   size_bytes: number;
   summary: Summary | null;

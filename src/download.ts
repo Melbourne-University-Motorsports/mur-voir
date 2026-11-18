@@ -243,6 +243,8 @@ function renderRow(run: ArchiveRun): HTMLElement {
   if (status !== null) {
     const tag = element("span", "status " + status.kind);
     if (status.kind === "live") tag.append(element("span", "pulse"));
+    if (status.kind === "incomplete")
+      tag.title = "The logger marked this run incomplete, so its last part may be missing";
     tag.append(document.createTextNode(status.text));
     what.append(tag);
   }
