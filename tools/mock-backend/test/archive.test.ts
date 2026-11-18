@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ArchiveClient, MemorySink, RunTransfer, validRun } from "../../../src/shared/mur/archive.ts";
-import { runFile } from "../src/archive.ts";
+import { runFile, sortRuns } from "../src/archive.ts";
 import { startServer } from "../src/server.ts";
 
 const TODAY = "2026-11-17";
@@ -81,7 +81,7 @@ test("the file route prepares unfinished runs with 202, then serves the MF4", as
   try {
     const base = `http://127.0.0.1:${h.port}`;
     const uploading = h.archive.runs.find((run) => run.state === "uploading")!;
-    const first = await fetch(`${base}/api/v1/archive/runs/${uploading.name}/file`);
+    const first = await fetch(`${base}/api/v1/archive/runs/${uploading.name}/file?vehicle=mur27`);
     assert.equal(first.status, 202);
     assert.equal(first.headers.get("retry-after"), "1");
     assert.deepEqual(await first.json(), { state: "preparing" });
@@ -91,18 +91,26 @@ test("the file route prepares unfinished runs with 202, then serves the MF4", as
     const sink = new MemorySink();
     await new RunTransfer(client, uploading.name, sink).run();
     assert.deepEqual(waits, [], "Prepared once, served after");
-    assert.deepEqual(Buffer.from(sink.bytes()), runFile());
+    assert.deepEqual(Buffer.from(await sink.blob().arrayBuffer()), runFile());
 
-    const complete = await fetch(`${base}/api/v1/archive/runs/${h.archive.runs[2].name}/file`);
+    const complete = await fetch(`${base}/api/v1/archive/runs/${h.archive.runs[2].name}/file?vehicle=mur27`);
     assert.equal(complete.status, 200);
     assert.equal(complete.headers.get("content-disposition"), `attachment; filename="${h.archive.runs[2].name}.mf4"`);
     assert.equal(complete.headers.get("accept-ranges"), "bytes");
     assert.ok(complete.headers.get("etag"));
     assert.equal((await complete.arrayBuffer()).byteLength, runFile().length);
 
-    const missing = await fetch(`${base}/api/v1/archive/runs/nope/file`);
+    const missing = await fetch(`${base}/api/v1/archive/runs/nope/file?vehicle=mur27`);
     assert.equal(missing.status, 404);
     assert.equal((await missing.json()).error, "unknown_run");
+
+    // The file route takes the vehicle like the list route.
+    const noVehicle = await fetch(`${base}/api/v1/archive/runs/pending_3/file`);
+    assert.equal(noVehicle.status, 400);
+    assert.equal((await noVehicle.json()).error, "bad_request");
+    const otherVehicle = await fetch(`${base}/api/v1/archive/runs/pending_3/file?vehicle=mur26`);
+    assert.equal(otherVehicle.status, 404);
+    assert.equal((await otherVehicle.json()).error, "unknown_vehicle");
   } finally {
     await h.close();
   }
@@ -111,7 +119,7 @@ test("the file route prepares unfinished runs with 202, then serves the MF4", as
 test("Range requests answer 206, and a mismatched If-Range sends the whole file", async () => {
   const h = await startServer({ port: 0, host: "127.0.0.1", archive: { today: TODAY } });
   try {
-    const url = `http://127.0.0.1:${h.port}/api/v1/archive/runs/pending_3/file`;
+    const url = `http://127.0.0.1:${h.port}/api/v1/archive/runs/pending_3/file?vehicle=mur27`;
     const etag = (await fetch(url)).headers.get("etag")!;
     const partial = await fetch(url, { headers: { Range: "bytes=100-", "If-Range": etag } });
     assert.equal(partial.status, 206);
@@ -150,8 +158,24 @@ test("--archive-drop cuts the first download, and the client resumes it with Ran
     await assert.rejects(transfer.run(), /dropped/);
     assert.ok(transfer.received > 0 && transfer.received < runFile().length);
     await transfer.run();
-    assert.deepEqual(Buffer.from(sink.bytes()), runFile());
+    assert.deepEqual(Buffer.from(await sink.blob().arrayBuffer()), runFile());
   } finally {
     await h.close();
   }
+});
+
+test("runs sort by start when it is set, else first-seen time, then by name descending", () => {
+  const base = { dated: false, duration_s: 1, state: "complete", end: "power_off", on_car_s: 0, size_bytes: 1 };
+  const runs = [
+    { ...base, name: "pending_3", start: null, summary: null },
+    { ...base, name: "2000-01-01_sat_00-00-37", start: "2000-01-01T00:00:37+11:00", summary: null },
+    { ...base, name: "b", start: "2026-11-17T13:00:00+11:00", dated: true, summary: null },
+    { ...base, name: "a", start: "2026-11-17T13:00:00+11:00", dated: true, summary: null },
+    { ...base, name: "c", start: "2026-11-17T02:00:00+00:00", dated: true, summary: null }
+  ] as Parameters<typeof sortRuns>[0];
+  assert.deepEqual(
+    sortRuns(runs).map((run) => run.name),
+    ["c", "b", "a", "pending_3", "2000-01-01_sat_00-00-37"],
+    "An undated run with a start sorts by that start, not last"
+  );
 });

@@ -111,6 +111,26 @@ function scripted(responses: (() => Response)[]) {
 
 const noWait = async () => {};
 
+/** What a MemorySink holds, read back from its Blob. */
+async function bytesOf(sink: MemorySink): Promise<Uint8Array> {
+  return new Uint8Array(await sink.blob().arrayBuffer());
+}
+
+/** A job sink over a MemorySink that records what each finished run held. */
+function recordingSink(name: string, finished: string[]) {
+  const sink = new MemorySink();
+  return {
+    write: (chunk: Uint8Array) => sink.write(chunk),
+    reset: () => sink.reset(),
+    size: () => sink.size(),
+    discard: async () => {},
+    finish: async (size: number) => {
+      assert.equal(size, sink.size());
+      finished.push(`${name}:${(await bytesOf(sink)).join(",")}`);
+    }
+  };
+}
+
 /** A body that sends `bytes` and then fails, like a dropped connection. */
 function droppingBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
   let sent = false;
@@ -188,11 +208,11 @@ test("a transfer waits through 202 preparing, then fetches the file", async () =
   const sink = new MemorySink();
   const progress: TransferProgress[] = [];
   await new RunTransfer(client, "2026-11-17_tue_13-20-41", sink, (p) => progress.push(p)).run();
-  assert.equal(calls[0].url, "http://car/api/v1/archive/runs/2026-11-17_tue_13-20-41/file");
+  assert.equal(calls[0].url, "http://car/api/v1/archive/runs/2026-11-17_tue_13-20-41/file?vehicle=mur27");
   assert.deepEqual(waits, [4000]);
   assert.deepEqual(progress[0], { phase: "preparing", retryInS: 4 });
   assert.deepEqual(progress[progress.length - 1], { phase: "fetching", received: 4, total: 4 });
-  assert.deepEqual(sink.bytes(), file);
+  assert.deepEqual(await bytesOf(sink), file);
 });
 
 test("a dropped transfer resumes with a Range request for the missing bytes", async () => {
@@ -210,7 +230,7 @@ test("a dropped transfer resumes with a Range request for the missing bytes", as
   assert.equal(transfer.received, 3);
   await transfer.run();
   assert.deepEqual(calls[1].headers, { Range: "bytes=3-", "If-Range": '"v1"' });
-  assert.deepEqual(sink.bytes(), new Uint8Array([1, 2, 3, 4, 5, 6]));
+  assert.deepEqual(await bytesOf(sink), new Uint8Array([1, 2, 3, 4, 5, 6]));
 });
 
 test("a resume that gets the whole file again (new parts, new ETag) starts over", async () => {
@@ -222,7 +242,7 @@ test("a resume that gets the whole file again (new parts, new ETag) starts over"
   const transfer = new RunTransfer(new ArchiveClient("http://car", fetchImpl, "mur27", noWait), "r", sink);
   await assert.rejects(transfer.run());
   await transfer.run();
-  assert.deepEqual(sink.bytes(), new Uint8Array([9, 8, 7, 6, 5]));
+  assert.deepEqual(await bytesOf(sink), new Uint8Array([9, 8, 7, 6, 5]));
   assert.equal(transfer.etag, '"v2"');
 });
 
@@ -234,6 +254,55 @@ test("a resume answered from the wrong offset fails instead of corrupting the fi
   const transfer = new RunTransfer(new ArchiveClient("http://car", fetchImpl, "mur27", noWait), "r", new MemorySink());
   await assert.rejects(transfer.run());
   await assert.rejects(transfer.run(), /wrong place/);
+});
+
+test("a 416 resume counts as complete only when the sink holds the whole file", async () => {
+  const file = new Uint8Array([1, 2, 3, 4]);
+  const { fetchImpl, calls } = scripted([
+    () => new Response(file, { headers: { "Content-Length": "4", ETag: '"v1"' } }),
+    () => Response.json({ error: "range_not_satisfiable" }, { status: 416, headers: { "Content-Range": "bytes */4" } })
+  ]);
+  const sink = new MemorySink();
+  const transfer = new RunTransfer(new ArchiveClient("http://car", fetchImpl, "mur27", noWait), "r", sink);
+  await transfer.run();
+  // Saving failed after the transfer finished; Try again asks for bytes 4- and gets 416.
+  await transfer.run();
+  assert.deepEqual(calls[1].headers, { Range: "bytes=4-", "If-Range": '"v1"' });
+  assert.deepEqual(await bytesOf(sink), file);
+});
+
+test("a 416 resume over a short or missing partial file starts the download over", async () => {
+  const file = new Uint8Array([1, 2, 3, 4]);
+  const { fetchImpl, calls } = scripted([
+    () => new Response(file, { headers: { "Content-Length": "4", ETag: '"v1"' } }),
+    () => Response.json({ error: "range_not_satisfiable" }, { status: 416, headers: { "Content-Range": "bytes */4" } }),
+    () => new Response(file, { headers: { "Content-Length": "4", ETag: '"v1"' } })
+  ]);
+  const sink = new MemorySink();
+  const transfer = new RunTransfer(new ArchiveClient("http://car", fetchImpl, "mur27", noWait), "r", sink);
+  await transfer.run();
+  sink.reset(); // e.g. the .part file was emptied or deleted
+  await transfer.run();
+  assert.deepEqual(calls[2].headers, {}, "The restart asks for the whole file");
+  assert.equal(transfer.received, 4);
+  assert.deepEqual(await bytesOf(sink), file);
+});
+
+test("MemorySink folds chunks into Blob parts as it goes, so a run isn't held twice", async () => {
+  const sink = new MemorySink();
+  const chunk = new Uint8Array(1024 * 1024).fill(7);
+  for (let i = 0; i < 10; i++) sink.write(chunk);
+  assert.equal(sink.size(), 10 * chunk.byteLength);
+  assert.ok(sink.unflushedBytes < 4 * 1024 * 1024, "At most one batch waits as chunks");
+  const file = sink.file("run.mf4");
+  assert.equal(file.name, "run.mf4");
+  assert.equal(file.size, 10 * chunk.byteLength);
+  assert.equal(sink.unflushedBytes, 0);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  assert.ok(bytes.every((byte) => byte === 7));
+  sink.reset();
+  assert.equal(sink.size(), 0);
+  assert.equal(sink.blob().size, 0);
 });
 
 test("a run with nothing on the server yet (409 no_data) fails with a readable message", async () => {
@@ -277,15 +346,7 @@ test("a job fetches each run in turn, resumes after a drop and reports progress"
     new ArchiveClient("http://car", fetchImpl, "mur27", noWait),
     "download",
     ["a", "b"],
-    (name) => {
-      const sink = new MemorySink();
-      return {
-        write: (chunk) => sink.write(chunk),
-        reset: () => sink.reset(),
-        discard: async () => {},
-        finish: async () => void finished.push(`${name}:${sink.bytes().join(",")}`)
-      };
-    },
+    (name) => recordingSink(name, finished),
     (state) => states.push(state),
     "Downloads"
   );
@@ -312,6 +373,7 @@ test("cancelling a job aborts the transfer and discards the partial file", async
     () => ({
       write() {},
       reset() {},
+      size: () => 0,
       finish: async () => {},
       discard: async () => void (discarded = true)
     }),
@@ -528,26 +590,41 @@ test("opening over live telemetry asks first; only Lite offers a new tab", () =>
 
 // ?run= links
 
-test("run links point at hosted Lite and round-trip through ?run=", () => {
-  const link = runLink("2026-11-17_tue_13-20-41");
-  assert.equal(link, "https://voir.melbourneuniracing.com/?run=2026-11-17_tue_13-20-41");
-  assert.equal(readRunParam(link), "2026-11-17_tue_13-20-41");
-  assert.equal(runLink("pending_3", "http://127.0.0.1:5808/?layout=default#x"), "http://127.0.0.1:5808/?run=pending_3");
+test("run links point at hosted Lite, carry the vehicle and round-trip through ?vehicle=&run=", () => {
+  const run = { vehicle: "mur27", name: "2026-11-17_tue_13-20-41" };
+  const link = runLink(run);
+  assert.equal(link, "https://voir.melbourneuniracing.com/?vehicle=mur27&run=2026-11-17_tue_13-20-41");
+  assert.deepEqual(readRunParam(link), run);
+  assert.equal(
+    runLink({ vehicle: "mur26", name: "pending_3" }, "http://127.0.0.1:5808/?layout=default#x"),
+    "http://127.0.0.1:5808/?vehicle=mur26&run=pending_3"
+  );
+});
+
+test("links from before the vehicle was added mean the default vehicle", () => {
+  assert.deepEqual(readRunParam("https://voir.melbourneuniracing.com/?run=pending_3"), {
+    vehicle: "mur27",
+    name: "pending_3"
+  });
+  assert.equal(readRunParam("https://voir.melbourneuniracing.com/?vehicle=MUR%2027&run=pending_3"), null);
 });
 
 test("?run= ignores names that aren't run names", () => {
   assert.equal(readRunParam("https://voir.melbourneuniracing.com/"), null);
   assert.equal(readRunParam("https://voir.melbourneuniracing.com/?run=../../etc"), null);
   assert.equal(readRunParam("https://voir.melbourneuniracing.com/?run=a%2Fb"), null);
-  assert.equal(
-    readRunParam("https://voir.melbourneuniracing.com/?run=run_1761900000000000_9f3a"),
-    "run_1761900000000000_9f3a"
-  );
+  assert.deepEqual(readRunParam("https://voir.melbourneuniracing.com/?run=run_1761900000000000_9f3a"), {
+    vehicle: "mur27",
+    name: "run_1761900000000000_9f3a"
+  });
 });
 
 test("the address bar keeps other parameters, such as ?layout=, when ?run= changes", () => {
-  const opened = withRunParam("https://voir.melbourneuniracing.com/?layout=default", "pending_3");
-  assert.equal(opened, "https://voir.melbourneuniracing.com/?layout=default&run=pending_3");
+  const opened = withRunParam("https://voir.melbourneuniracing.com/?layout=default", {
+    vehicle: "mur27",
+    name: "pending_3"
+  });
+  assert.equal(opened, "https://voir.melbourneuniracing.com/?layout=default&vehicle=mur27&run=pending_3");
   assert.equal(withRunParam(opened, null), "https://voir.melbourneuniracing.com/?layout=default");
   assert.equal(withRunParam("https://voir.melbourneuniracing.com/", null), "https://voir.melbourneuniracing.com/");
 });

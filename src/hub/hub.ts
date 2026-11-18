@@ -17,7 +17,7 @@ import { IS_LITE } from "../shared/buildConstants";
 import Log from "../shared/log/Log";
 import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
-import { isRunName } from "../shared/mur/archive";
+import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
@@ -108,10 +108,14 @@ let logFriendlyName: string | null = null;
 let liveActive = false;
 let liveConnected = false;
 let liveAutoStartComplete = false;
+/** Lite holds the live auto-start while a ?run= link opens, so live data can't replace the run. */
+let liveAutoStartHeld = false;
 let liveAddress = "";
 let liveStatus: LiveDataSourceStatus = LiveDataSourceStatus.Stopped;
 /** The archive run open in this window (File > Download runs…), or null for anything else. */
-let openRun: string | null = null;
+let openRun: RunRef | null = null;
+/** The address of the last MUR live connection in this window, whichever way it was started. */
+let murConnectionAddress: string | null = null;
 
 const connectDialog = new ConnectDialog((sourceId, address) => connectLive(sourceId, address));
 
@@ -312,9 +316,11 @@ window.requestAnimationFrame(periodic);
 // DATA SOURCE HANDLING
 
 function checkLiveAutoStart() {
-  if (IS_LITE && window.preferences !== null && !liveAutoStartComplete) {
-    startLive("robot");
+  if (IS_LITE && window.preferences !== null && !liveAutoStartComplete && !liveAutoStartHeld) {
     liveAutoStartComplete = true;
+    // Anything opened before the auto-start (a ?run= link, a file) wins over live data
+    if (openRun !== null || historicalSources.length > 0) return;
+    startLive("robot");
   }
 }
 
@@ -497,6 +503,7 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
     address = sessionAddresses.get(sourceDefinition.id) ?? sourceDefinition.defaultAddress;
   }
   liveAddress = address;
+  if (sourceDefinition.id === "mur") murConnectionAddress = address;
   liveStatus = LiveDataSourceStatus.Connecting;
   window.liveStatus = null;
   source.newSegmentCallback = () => {
@@ -599,9 +606,19 @@ window.addEventListener("message", (event) => {
 const COPY_RUN_LINK = document.querySelector(".copy-run-link") as HTMLButtonElement;
 let reportedViewSource = "";
 let copyRunLinkTimer: number | null = null;
+/** Live telemetry is arriving: an active source and, where the source reports it, fresh data. */
+function receivingLive(): boolean {
+  if (liveConnection === null || !liveActive || liveStatus !== LiveDataSourceStatus.Active) return false;
+  const status = window.liveStatus?.getLiveStatus();
+  return status === undefined || (status.backend === "connected" && status.hasFreshData);
+}
 function reportViewSource() {
-  const murAddress = sessionAddresses.get("mur") ?? getLiveSource("mur", IS_LITE).defaultAddress;
-  const viewSource = { live: liveConnection !== null, run: openRun, archiveAddress: murAddress };
+  // Desktop lists the archive on the MUR server connected to this session, and has none before that.
+  const murAddress =
+    murConnectionAddress ??
+    sessionAddresses.get("mur") ??
+    (IS_LITE ? getLiveSource("mur", IS_LITE).defaultAddress : null);
+  const viewSource = { live: receivingLive(), run: openRun, archiveAddress: murAddress };
   const key = JSON.stringify(viewSource);
   if (key === reportedViewSource || window.messagePort === null) return;
   reportedViewSource = key;
@@ -695,6 +712,12 @@ async function handleMainMessage(message: NamedMessage) {
 
     case "set-preferences":
       window.preferences = message.data;
+      checkLiveAutoStart();
+      break;
+
+    case "hold-live-auto-start":
+      // Lite: true while a ?run= link opens; false once it has opened or was abandoned
+      liveAutoStartHeld = message.data;
       checkLiveAutoStart();
       break;
 
@@ -836,7 +859,11 @@ async function handleMainMessage(message: NamedMessage) {
             startHistorical(file, index === 0, files.length > 1);
           }
         });
-        openRun = !merge && files.length === 1 && isRunName(message.data.run) ? message.data.run : null;
+        const run = message.data.run;
+        openRun =
+          !merge && files.length === 1 && isRunName(run?.name) && isVehicleId(run?.vehicle)
+            ? { vehicle: run.vehicle, name: run.name }
+            : null;
         reportViewSource();
       }
       break;

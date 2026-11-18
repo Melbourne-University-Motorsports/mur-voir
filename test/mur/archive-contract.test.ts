@@ -45,11 +45,17 @@ test("mock archive responses conform to the archive schema and the client reads 
     assert.equal(total, h.archive.runs.length);
 
     const uploading = h.archive.runs.find((run) => run.state === "uploading")!;
-    const preparing = await fetch(`${base}/runs/${uploading.name}/file`);
+    const preparing = await fetch(`${base}/runs/${uploading.name}/file?vehicle=mur27`);
     assert.equal(preparing.status, 202);
     conforms("Preparing", await preparing.json());
 
-    for (const url of [`${base}/runs/nope/file`, `${base}/runs?vehicle=mur26`, `${base}/runs?vehicle=mur27&limit=0`]) {
+    for (const url of [
+      `${base}/runs/nope/file?vehicle=mur27`,
+      `${base}/runs/pending_3/file`,
+      `${base}/runs/pending_3/file?vehicle=mur26`,
+      `${base}/runs?vehicle=mur26`,
+      `${base}/runs?vehicle=mur27&limit=0`
+    ]) {
       const response = await fetch(url);
       assert.ok(response.status >= 400);
       conforms("Error", await response.json());

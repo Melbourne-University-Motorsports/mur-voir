@@ -32,8 +32,8 @@ export interface JobState {
 }
 
 export interface JobSink extends TransferSink {
-  /** The run is complete: save or open it. */
-  finish(): Promise<void>;
+  /** The run is complete at `size` bytes: save or open it. Throws if what it holds isn't that size. */
+  finish(size: number): Promise<void>;
   /** Cancelled: drop any partial output. */
   discard(): Promise<void>;
 }
@@ -96,7 +96,7 @@ export class ArchiveJob {
         await this.transfer.run(controller.signal);
         if (this.cancelled) return false;
         this.update({ phase: "finishing" });
-        await this.sink!.finish();
+        await this.sink!.finish(this.transfer.received);
         this.state.finishedBytes += this.transfer.received;
         this.transfer = null;
         this.sink = null;

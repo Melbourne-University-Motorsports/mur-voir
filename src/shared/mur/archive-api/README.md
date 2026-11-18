@@ -15,5 +15,5 @@ as the live API in `../api/` (see its README). `../archive-types.ts` is generate
 The rules the schema can't express (order, paging, ETag, Range and 202 behaviour) are in the pinned
 upstream `api/archive/v1/README.md`.
 
-The current pin is `33ceeca5f52dc73d9741ac25dfd7e0e44e3fc798` on mur-msgs branch
+The current pin is `d0f1b5f927a72ce3615eb4e7081095c32db1c34d` on mur-msgs branch
 `feat/archive-api-v1`, which hasn't merged yet. Re-pin to the merge commit once it lands.

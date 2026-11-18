@@ -184,7 +184,9 @@ try {
   // The hosted server forwards the archive API, including Range requests, to the backend.
   const archiveCheck = await frame.evaluate(async () => {
     const list = await fetch("/api/v1/archive/runs?vehicle=mur27&limit=1");
-    const range = await fetch("/api/v1/archive/runs/pending_3/file", { headers: { Range: "bytes=10-" } });
+    const range = await fetch("/api/v1/archive/runs/pending_3/file?vehicle=mur27", {
+      headers: { Range: "bytes=10-" }
+    });
     return {
       list: list.status,
       version: (await list.json()).version,
@@ -238,7 +240,7 @@ try {
   const faultRunName = await faultRow.getAttribute("data-name");
   assert.equal(
     await page.evaluate(() => navigator.clipboard.readText()),
-    `http://127.0.0.1:${port}/?run=${faultRunName}`
+    `http://127.0.0.1:${port}/?vehicle=mur27&run=${faultRunName}`
   );
 
   // Download takes any number of runs, one MF4 each; the uploading run answers 202 first.
@@ -284,12 +286,19 @@ try {
   await shot("lite_run_open");
   await hub.locator(".copy-run-link").click();
   await hub.locator('.copy-run-link img[src="symbols/check.svg"]').waitFor();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `http://127.0.0.1:${port}/?run=${runName}`);
+  assert.equal(
+    await page.evaluate(() => navigator.clipboard.readText()),
+    `http://127.0.0.1:${port}/?vehicle=mur27&run=${runName}`
+  );
 
-  // A ?run= link opens that run in a fresh browser and keeps the parameter.
+  // A ?run= link opens that run in a fresh browser and keeps the parameters. Hosted Lite starts live
+  // data on load, but not while a link opens: live data must never replace the linked run.
   const runContext = await browser.newContext();
   const runPage = await runContext.newPage();
   runPage.on("pageerror", (error) => errors.push(error.message));
+  const runSockets = [];
+  runPage.on("websocket", (socket) => runSockets.push(socket.url()));
+  // A legacy link without ?vehicle= means the default vehicle.
   await runPage.goto(`http://127.0.0.1:${port}/?run=${runName}`);
   await runPage
     .locator(".popup-frame")
@@ -299,7 +308,29 @@ try {
   await runPage.waitForFunction(() => document.querySelector(".hub-frame").contentWindow.window.log !== undefined);
   await runFrame().waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
   assert.equal(new URL(runPage.url()).searchParams.get("run"), runName);
+  assert.equal(new URL(runPage.url()).searchParams.get("vehicle"), "mur27");
   await runPage.frameLocator(".hub-frame").locator(".copy-run-link").waitFor({ state: "visible" });
+  await runPage.waitForTimeout(1500); // time for a late live auto-start to show up
+  assert.deepEqual(runSockets, [], "No live connection while a ?run= link opens");
+  await runFrame().waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
+  assert.equal(new URL(runPage.url()).searchParams.get("run"), runName, "The linked run is still open");
+
+  // With no live data arriving, Open opens straight away without asking.
+  await runPage.frameLocator(".hub-frame").getByText("File", { exact: true }).click();
+  await runPage.getByText("Download Runs…", { exact: true }).click();
+  const linkPopup = runPage.frameLocator(".popup-frame");
+  const otherRow = linkPopup.locator(".run").filter({ hasText: "Uploading, 11 of 18 min in" });
+  const otherName = await otherRow.getAttribute("data-name");
+  await otherRow.dblclick();
+  await runPage.locator(".popup-frame").waitFor({ state: "hidden" });
+  assert.equal(
+    await linkPopup
+      .locator(".scrim")
+      .isVisible()
+      .catch(() => false),
+    false
+  );
+  await runPage.waitForFunction((name) => new URL(location.href).searchParams.get("run") === name, otherName);
   await runContext.close();
 
   const picking = page.waitForEvent("filechooser");
@@ -398,7 +429,7 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, links, ?run=), CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, links, ?run= without live auto-start), CSV picker."
   );
 } finally {
   await browser?.close();

@@ -12,46 +12,23 @@ import { app, BrowserWindow, clipboard, dialog, MessageChannelMain, MessagePortM
 import fs from "fs";
 import path from "path";
 import NamedMessage from "../../shared/NamedMessage";
-import { archiveBase, ArchiveClient, runLink } from "../../shared/mur/archive";
+import { archiveBase, ArchiveClient, DEFAULT_VEHICLE, runLink, RunRef } from "../../shared/mur/archive";
 import { ArchiveJob, JobKind, JobSink } from "../../shared/mur/archiveJob";
 import { WINDOW_ICON } from "./ElectronConstants";
+import { availableRunPath, clearRunCache, fileSink, isInRunCache, runCacheFolder } from "./runFiles";
 
 /** What a hub window shows, reported by the hub every time it changes ("set-view-source"). */
 export interface ViewSource {
+  /** Live telemetry is arriving, not just a connection object. */
   live: boolean;
-  run: string | null;
-  archiveAddress: string;
+  run: RunRef | null;
+  /** The MUR server this window connected to this session, or null before any MUR connection. */
+  archiveAddress: string | null;
 }
 
-const FALLBACK_ADDRESS = "http://localhost:8090";
-
-/** Writes a run to `<final>.part` and renames it when complete. */
-function fileSink(finalPath: string, onFinished: () => void | Promise<void>): JobSink {
-  const partPath = finalPath + ".part";
-  let handle: fs.promises.FileHandle | null = null;
-  let offset = 0;
-  const open = async () => (handle ??= await fs.promises.open(partPath, "w"));
-  return {
-    async write(chunk) {
-      await (await open()).write(chunk, 0, chunk.byteLength, offset);
-      offset += chunk.byteLength;
-    },
-    async reset() {
-      await (await open()).truncate(0);
-      offset = 0;
-    },
-    async finish() {
-      await (await open()).close();
-      handle = null;
-      await fs.promises.rename(partPath, finalPath);
-      await onFinished();
-    },
-    async discard() {
-      await handle?.close().catch(() => {});
-      handle = null;
-      await fs.promises.rm(partPath, { force: true });
-    }
-  };
+/** The popup lists one vehicle, so it only marks the open run when it is that vehicle's. */
+function listedRun(source: ViewSource | undefined): string | null {
+  return source?.run?.vehicle === DEFAULT_VEHICLE ? source.run.name : null;
 }
 
 export class DownloadRuns {
@@ -60,24 +37,44 @@ export class DownloadRuns {
   private popup: BrowserWindow | null = null;
   private port: MessagePortMain | null = null;
   private parent: BrowserWindow | null = null;
+  private parentId: number | null = null;
   private job: ArchiveJob | null = null;
 
   constructor(sendToHub: (window: BrowserWindow, name: string, data?: unknown) => void) {
     this.sendToHub = sendToHub;
   }
 
-  setViewSource(hub: BrowserWindow, source: ViewSource) {
-    this.viewSources.set(hub.id, source);
-    if (hub === this.parent) this.send("set-context", { live: source.live, run: source.run });
+  private get cacheFolder(): string {
+    return runCacheFolder(app.getPath("temp"));
   }
 
-  forgetWindow(hub: BrowserWindow) {
-    this.viewSources.delete(hub.id);
+  /** Clears runs cached by an earlier session. Call once at startup. */
+  clearCache(): Promise<void> {
+    return clearRunCache(this.cacheFolder).catch(() => {});
+  }
+
+  /** Runs opened from the archive are read once and then deleted, and aren't recent documents. */
+  isCachedRun(file: string): boolean {
+    return isInRunCache(this.cacheFolder, file);
+  }
+
+  setViewSource(hub: BrowserWindow, source: ViewSource) {
+    const before = this.viewSources.get(hub.id);
+    this.viewSources.set(hub.id, source);
+    if (hub !== this.parent) return;
+    this.send("set-context", { live: source.live, run: listedRun(source) });
+    // Connected to MUR while the popup was waiting for a connection: list the runs now.
+    if (!before?.archiveAddress && source.archiveAddress) void this.handle({ name: "load", data: { before: null } });
+  }
+
+  /** A hub window closed. The popup's parent keeps its entry until the popup closes. */
+  forgetWindow(id: number) {
+    if (id !== this.parentId || this.popup === null) this.viewSources.delete(id);
   }
 
   /** The same hosted Lite link Lite copies, so anyone can open it. */
-  copyLink(hub: BrowserWindow, name: string) {
-    const link = runLink(name);
+  copyLink(hub: BrowserWindow, run: RunRef) {
+    const link = runLink(run);
     clipboard.writeText(link);
     this.sendToHub(hub, "run-link-copied", { ok: true, link });
   }
@@ -106,6 +103,7 @@ export class DownloadRuns {
     });
     this.popup = popup;
     this.parent = parent;
+    this.parentId = parent.id;
 
     popup.setMenu(null);
     popup.setMenuBarVisibility(false);
@@ -115,6 +113,7 @@ export class DownloadRuns {
       this.job = null;
       this.port = null;
       if (this.popup === popup) this.popup = null;
+      if (this.parentId !== null && parent.isDestroyed()) this.viewSources.delete(this.parentId);
     });
     popup.on("blur", () => this.send("set-focused", false));
     popup.on("focus", () => this.send("set-focused", true));
@@ -125,7 +124,7 @@ export class DownloadRuns {
       port2.on("message", (event) => void this.handle(event.data as NamedMessage));
       port2.start();
       const source = this.viewSources.get(parent.id);
-      this.send("set-context", { live: source?.live ?? false, run: source?.run ?? null });
+      this.send("set-context", { live: source?.live ?? false, run: listedRun(source) });
       this.send("set-platform", process.platform);
     });
     popup.loadFile(path.join(__dirname, "../www/download.html"));
@@ -137,18 +136,22 @@ export class DownloadRuns {
     } catch {}
   }
 
-  /** The archive lives on the server the hub's MUR source connects to (or would connect to). */
-  private client(): ArchiveClient {
-    const address = (this.parent && this.viewSources.get(this.parent.id)?.archiveAddress) || FALLBACK_ADDRESS;
-    return new ArchiveClient(archiveBase(address));
+  /** The archive lives on the server the hub's MUR source connected to; null before any MUR connection. */
+  private client(): ArchiveClient | null {
+    const address = this.parentId === null ? null : this.viewSources.get(this.parentId)?.archiveAddress;
+    return address ? new ArchiveClient(archiveBase(address)) : null;
   }
 
   private async handle(message: NamedMessage) {
     const client = this.client();
+    if (client === null && ["load", "download", "open"].includes(message.name)) {
+      this.send("need-connection");
+      return;
+    }
     switch (message.name) {
       case "load":
         try {
-          const page = await client.listRuns({ before: message.data.before });
+          const page = await client!.listRuns({ before: message.data.before });
           this.send("set-runs", { ...page, append: message.data.before !== null });
         } catch (error) {
           this.send("list-error", error instanceof Error ? error.message : String(error));
@@ -156,11 +159,11 @@ export class DownloadRuns {
         break;
 
       case "download":
-        await this.download(client, message.data);
+        await this.download(client!, message.data);
         break;
 
       case "open":
-        await this.openRun(client, message.data.name);
+        await this.openRun(client!, message.data.name);
         break;
 
       case "retry":
@@ -174,7 +177,7 @@ export class DownloadRuns {
         break;
 
       case "copy-link": {
-        const link = runLink(message.data);
+        const link = runLink({ vehicle: client?.vehicle ?? DEFAULT_VEHICLE, name: message.data });
         clipboard.writeText(link);
         this.send("link-copied", { ok: true, link });
         break;
@@ -189,7 +192,7 @@ export class DownloadRuns {
   /** Asks where to save, like the old download window: a file for one run, a folder for several. */
   private async download(client: ArchiveClient, names: string[]) {
     if (this.popup === null || this.job?.running || names.length === 0) return;
-    let target: (name: string) => string;
+    let target: (name: string) => string | Promise<string>;
     let destination: string;
     if (names.length === 1) {
       const result = await dialog.showSaveDialog(this.popup, {
@@ -210,31 +213,36 @@ export class DownloadRuns {
       });
       if (result.canceled || result.filePaths.length === 0) return;
       const folder = result.filePaths[0];
-      target = (name) => path.join(folder, name + ".mf4");
+      // Several runs: never replace a file already there, use "<name> (1).mf4" instead.
+      target = (name) => availableRunPath(folder, name);
       destination = path.basename(folder);
     }
-    this.startJob(client, "download", names, (name) => fileSink(target(name), () => {}), destination);
+    this.startJob(client, "download", names, async (name) => fileSink(await target(name)), destination);
   }
 
-  /** Fetches the run to a cache file and opens it in the parent hub, replacing what it shows. */
+  /**
+   * Fetches the run to a cache file and opens it in the parent hub, replacing what it shows. The main
+   * process deletes the file once the hub has read it (see isCachedRun).
+   */
   private async openRun(client: ArchiveClient, name: string) {
     if (this.job?.running) return;
-    const folder = path.join(app.getPath("temp"), "mur-voir-runs");
-    await fs.promises.mkdir(folder, { recursive: true });
+    await fs.promises.mkdir(this.cacheFolder, { recursive: true });
     const parent = this.parent;
-    this.startJob(client, "open", [name], () =>
-      fileSink(path.join(folder, name + ".mf4"), () => {
-        if (parent === null || parent.isDestroyed()) return;
-        this.sendToHub(parent, "open-files", { files: [path.join(folder, name + ".mf4")], merge: false, run: name });
-      })
-    );
+    const run: RunRef = { vehicle: client.vehicle, name };
+    this.startJob(client, "open", [name], () => {
+      const file = path.join(this.cacheFolder, name + ".mf4");
+      return fileSink(file, async () => {
+        if (parent === null || parent.isDestroyed()) return void (await fs.promises.rm(file, { force: true }));
+        this.sendToHub(parent, "open-files", { files: [file], merge: false, run });
+      });
+    });
   }
 
   private startJob(
     client: ArchiveClient,
     kind: JobKind,
     names: string[],
-    makeSink: (name: string) => JobSink,
+    makeSink: (name: string) => JobSink | Promise<JobSink>,
     destination: string | null = null
   ) {
     this.job?.cancel();

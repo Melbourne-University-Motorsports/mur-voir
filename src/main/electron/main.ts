@@ -401,6 +401,8 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
         // Record opened files
         const uuid: string = message.data.uuid;
         const logPath: string = message.data.path;
+        // A run opened from the archive is a cache file: read it once, then delete it
+        if (typeof logPath === "string" && downloadRuns.isCachedRun(logPath)) message.data.deleteAfterRead = true;
         if (!message.data.deleteAfterRead) {
           app.addRecentDocument(logPath);
           // Writing this file is a supplemental task, so we don't need to block/ensure success
@@ -2142,9 +2144,11 @@ function createHubWindow(state?: WindowState, layoutOverride?: any) {
       if (choice === 0) event.preventDefault();
     }
   });
+  const windowId = window.id;
   window.once("closed", () => {
     const index = hubWindows.indexOf(window);
     if (index !== -1) hubWindows.splice(index, 1);
+    downloadRuns.forgetWindow(windowId);
   });
   window.on("enter-full-screen", () => sendMessage(window, "set-fullscreen", true));
   window.on("leave-full-screen", () => sendMessage(window, "set-fullscreen", false));
@@ -2577,7 +2581,7 @@ function openPreferences(parentWindow: Electron.BrowserWindow) {
   }
 
   const width = 400;
-  const optionRows = 13;
+  const optionRows = 12;
   const titleRows = 2;
   const height = optionRows * 27 + titleRows * 34 + 54;
   prefsWindow = new BrowserWindow({
@@ -2741,6 +2745,9 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && !app.isPackaged) {
     app.dock?.setIcon(path.join(__dirname, "../icons/window-icon.png"));
   }
+
+  // Runs cached by Download Runs in an earlier session
+  void downloadRuns.clearCache();
 
   // Load assets
   createAssetFolders();

@@ -61,7 +61,11 @@ const DIALOG_BUTTONS = document.querySelector(".dialog-buttons") as HTMLElement;
 const FOOTER_HEIGHT_PX = 46;
 const ROW_HEIGHT_PX = 41;
 
-type ListState = { status: "loading" } | { status: "error"; message: string } | { status: "ready" };
+type ListState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "needs-connection" }
+  | { status: "ready" };
 
 let messagePort: MessagePort | null = null;
 let platform = "";
@@ -138,6 +142,13 @@ function handleMainMessage(message: NamedMessage) {
       loadingOlder = false;
       // Keep showing runs already listed; a failed refresh only matters before the first answer.
       if (list.status !== "ready") list = { status: "error", message: message.data };
+      render();
+      break;
+
+    case "need-connection":
+      // Desktop before any MUR connection: there is no server to ask. A refresh asks again.
+      loadingOlder = false;
+      if (list.status !== "ready") list = { status: "needs-connection" };
       render();
       break;
 
@@ -363,6 +374,8 @@ function renderStatus() {
     ALERT_TEXT.textContent = notice;
   } else if (list.status === "loading") {
     ALERT_TEXT.textContent = "Loading runs…";
+  } else if (list.status === "needs-connection") {
+    ALERT_TEXT.textContent = "Connect to MUR first (File > Connect…).";
   } else if (list.status === "error") {
     ALERT_TEXT.textContent = `Can't reach the run archive. ${list.message}. Runs are safe on the server and the car.`;
   } else if (runs.length === 0) {

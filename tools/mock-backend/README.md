@@ -72,8 +72,9 @@ HTTP errors have `error` and `message` fields. CORS allows all origins.
 ## Run archive
 
 - `GET /api/v1/archive/runs?vehicle=mur27&limit=100&before=<run name>` returns
-  `{version: 1, runs, next}`, newest first. Other vehicles have no runs.
-- `GET /api/v1/archive/runs/{name}/file` serves `test/fixtures/mf4/bus.mf4` for every run, with
+  `{version: 1, runs, next}`, newest first by `start`, or by first-seen time when `start` is null. Both
+  routes need `vehicle`; other vehicles answer 404 `unknown_vehicle`.
+- `GET /api/v1/archive/runs/{name}/file?vehicle=mur27` serves `test/fixtures/mf4/bus.mf4` for every run, with
   `Content-Disposition`, `ETag` and `Accept-Ranges: bytes`. Range requests answer 206, a stale `If-Range`
   answers 200 with the whole file, and unknown runs answer 404. The first request for a recording or
   uploading run answers 202 `{"state": "preparing"}` with `Retry-After: 1`.

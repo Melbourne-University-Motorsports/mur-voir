@@ -9,7 +9,6 @@ import Preferences from "./shared/Preferences";
 
 const THEME = document.getElementById("theme") as HTMLInputElement;
 const ROBOT_ADDRESS = document.getElementById("robotAddress") as HTMLInputElement;
-const REMOTE_PATH = document.getElementById("remotePath") as HTMLInputElement;
 const DBC_FOLDER = document.getElementById("dbcFolder") as HTMLInputElement;
 const LIVE_SUBSCRIBE_MODE = document.getElementById("liveSubscribeMode") as HTMLInputElement;
 const LIVE_DISCARD = document.getElementById("liveDiscard") as HTMLInputElement;
@@ -51,7 +50,6 @@ window.addEventListener("message", (event) => {
       }
       THEME.value = oldPrefs.theme;
       ROBOT_ADDRESS.value = oldPrefs.robotAddress;
-      REMOTE_PATH.value = oldPrefs.remotePath;
       DBC_FOLDER.value = oldPrefs.dbcFolder;
       LIVE_SUBSCRIBE_MODE.value = oldPrefs.liveSubscribeMode;
       LIVE_DISCARD.value = oldPrefs.liveDiscard.toString();
@@ -76,7 +74,6 @@ window.addEventListener("message", (event) => {
           let newPrefs: Preferences = {
             theme: theme,
             robotAddress: ROBOT_ADDRESS.value,
-            remotePath: REMOTE_PATH.value,
             liveMode: oldPrefs.liveMode,
             liveSubscribeMode: liveSubscribeMode,
             liveDiscard: Number(LIVE_DISCARD.value),

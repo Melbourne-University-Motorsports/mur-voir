@@ -102,7 +102,7 @@ export function handleHttp(
         "GET /api/v1/history",
         "WS /api/v1/live",
         "GET /api/v1/archive/runs",
-        "GET /api/v1/archive/runs/{name}/file"
+        "GET /api/v1/archive/runs/{name}/file?vehicle="
       ]
     });
   }

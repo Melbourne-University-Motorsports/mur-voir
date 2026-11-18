@@ -304,6 +304,15 @@ function json(res: http.ServerResponse, status: number, body: unknown, headers: 
   res.end(JSON.stringify(body));
 }
 
+/** When the server first saw each run without a start. Older than every fixture, so it lists last. */
+const FIRST_SEEN: Record<string, string> = { pending_3: "2025-10-01T09:00:00+10:00" };
+
+/** The contract's order: newest first by `start` when not null, else first-seen time; ties by name, descending. */
+export function sortRuns(runs: ArchiveRun[]): ArchiveRun[] {
+  const key = (run: ArchiveRun) => Date.parse(run.start ?? FIRST_SEEN[run.name] ?? "1970-01-01T00:00:00Z");
+  return [...runs].sort((a, b) => key(b) - key(a) || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
+}
+
 export class MockArchive {
   readonly opts: ArchiveOptions;
   readonly runs: ArchiveRun[];
@@ -312,7 +321,7 @@ export class MockArchive {
 
   constructor(opts: ArchiveOptions) {
     this.opts = opts;
-    this.runs = fixtureRuns(opts.today);
+    this.runs = sortRuns(fixtureRuns(opts.today));
   }
 
   /** Handles /api/v1/archive/...; returns false for other paths. */
@@ -329,24 +338,34 @@ export class MockArchive {
     }
     const file = /^\/api\/v1\/archive\/runs\/([^/]+)\/file$/.exec(path);
     if (file) {
-      this.file(req, res, decodeURIComponent(file[1]));
+      if (this.checkVehicle(res, url)) this.file(req, res, decodeURIComponent(file[1]));
       return true;
     }
     json(res, 404, { error: "not_found", message: `No route for ${req.method} ${url.pathname}` });
     return true;
   }
 
-  private list(res: http.ServerResponse, url: URL) {
+  /** Both routes take `?vehicle=`: 400 when missing or malformed, 404 for another vehicle. */
+  private checkVehicle(res: http.ServerResponse, url: URL): boolean {
     const vehicle = url.searchParams.get("vehicle");
     if (vehicle === null || !/^[a-z0-9_-]+$/.test(vehicle)) {
-      return json(res, 400, { error: "bad_request", message: "vehicle is missing or malformed" });
+      json(res, 400, { error: "bad_request", message: "vehicle is missing or malformed" });
+      return false;
     }
+    if (vehicle !== "mur27") {
+      json(res, 404, { error: "unknown_vehicle", message: `No vehicle ${vehicle}` });
+      return false;
+    }
+    return true;
+  }
+
+  private list(res: http.ServerResponse, url: URL) {
+    if (!this.checkVehicle(res, url)) return;
     const limitText = url.searchParams.get("limit") ?? "100";
     const limit = Number(limitText);
     if (!/^\d+$/.test(limitText) || limit < 1 || limit > 500) {
       return json(res, 400, { error: "bad_request", message: "limit must be an integer from 1 to 500" });
     }
-    if (vehicle !== "mur27") return json(res, 404, { error: "unknown_vehicle", message: `No vehicle ${vehicle}` });
     const runs = this.runs;
     const before = url.searchParams.get("before");
     let start = 0;

@@ -48,6 +48,17 @@ export type ArchiveFetch = (
   init?: { headers?: Record<string, string>; signal?: AbortSignal }
 ) => Promise<Response>;
 
+/** A run is identified by its vehicle and name together; names are only unique per vehicle. */
+export interface RunRef {
+  vehicle: string;
+  name: string;
+}
+
+/** Vehicle ids, as the archive API's `vehicle` parameter accepts them. */
+export function isVehicleId(vehicle: unknown): vehicle is string {
+  return typeof vehicle === "string" && /^[a-z0-9_-]{1,64}$/.test(vehicle);
+}
+
 /** Run names use only A-Z a-z 0-9 _ -, so they are safe in a URL path and a file name. */
 export function isRunName(name: unknown): name is string {
   return typeof name === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(name);
@@ -192,7 +203,8 @@ export class ArchiveClient {
   }
 
   fileUrl(name: string): string {
-    return `${this.base}/api/v1/archive/runs/${encodeURIComponent(name)}/file`;
+    const params = new URLSearchParams({ vehicle: this.vehicle });
+    return `${this.base}/api/v1/archive/runs/${encodeURIComponent(name)}/file?${params}`;
   }
 
   async listRuns(options: { limit?: number; before?: string | null; signal?: AbortSignal } = {}) {
@@ -240,6 +252,8 @@ export interface TransferSink {
   write(chunk: Uint8Array): void | Promise<void>;
   /** Drops everything written so far (the server sent the whole file again). */
   reset(): void | Promise<void>;
+  /** Bytes actually held (on disk for a file), checked before a 416 counts as complete. */
+  size(): number | Promise<number>;
 }
 
 export type TransferProgress =
@@ -289,7 +303,16 @@ export class RunTransfer {
         await this.client.wait(retryInS * 1000, signal);
         continue;
       }
-      if (response.status === 416 && this.total !== null && this.received >= this.total) return;
+      if (response.status === 416 && this.received > 0) {
+        // Nothing past what we have. That's complete only if the bytes held are the whole file;
+        // otherwise (a short or missing partial file, or the file shrank) start over.
+        await response.body?.cancel().catch(() => {});
+        if (this.total !== null && this.received === this.total && (await this.sink.size()) === this.total) return;
+        await this.sink.reset();
+        this.received = 0;
+        this.etag = null;
+        continue;
+      }
       if (response.status !== 200 && response.status !== 206) throw await httpError(response);
 
       if (response.status === 200 && this.received > 0) {
@@ -339,46 +362,95 @@ export class RunTransfer {
   }
 }
 
-/** Collects a transfer in memory (Lite). */
+/** Chunks are folded into a Blob once this many bytes are waiting. */
+const MEMORY_SINK_BATCH_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Collects a transfer in memory (Lite) as Blob parts. Each batch of chunks is copied into the browser's
+ * blob store once and the chunks are dropped, so a run is held once, not as chunks plus a joined copy,
+ * and the browser can page large blobs to disk. `blob()` and `file()` reference the parts without copying.
+ */
 export class MemorySink implements TransferSink {
-  private chunks: Uint8Array[] = [];
+  private parts: Blob[] = [];
+  private pending: Uint8Array[] = [];
+  private pendingBytes = 0;
+  private bytes = 0;
+
   write(chunk: Uint8Array) {
-    this.chunks.push(chunk);
+    this.pending.push(chunk);
+    this.pendingBytes += chunk.byteLength;
+    this.bytes += chunk.byteLength;
+    if (this.pendingBytes >= MEMORY_SINK_BATCH_BYTES) this.flush();
   }
+
   reset() {
-    this.chunks = [];
+    this.parts = [];
+    this.pending = [];
+    this.pendingBytes = 0;
+    this.bytes = 0;
   }
-  bytes(): Uint8Array {
-    const size = this.chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-    const result = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of this.chunks) {
-      result.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return result;
+
+  size() {
+    return this.bytes;
+  }
+
+  /** Bytes still held as chunks, not yet in a Blob (at most one batch). */
+  get unflushedBytes(): number {
+    return this.pendingBytes;
+  }
+
+  blob(type = "application/octet-stream"): Blob {
+    this.flush();
+    return new Blob(this.parts, { type });
+  }
+
+  file(name: string): File {
+    this.flush();
+    return new File(this.parts, name, { type: "application/octet-stream" });
+  }
+
+  private flush() {
+    if (this.pending.length === 0) return;
+    this.parts.push(new Blob(this.pending as BlobPart[]));
+    this.pending = [];
+    this.pendingBytes = 0;
   }
 }
 
-/** The shareable link for a run. */
-export function runLink(name: string, origin = HOSTED_LITE_ORIGIN): string {
+/** The shareable link for a run: `?vehicle=<id>&run=<name>`, as the archive contract specifies. */
+export function runLink(run: RunRef, origin = HOSTED_LITE_ORIGIN): string {
   const url = new URL(origin);
   url.search = "";
   url.hash = "";
-  url.searchParams.set("run", name);
+  url.searchParams.set("vehicle", run.vehicle);
+  url.searchParams.set("run", run.name);
   return url.toString();
 }
 
-/** The run named by `?run=` in a page URL, or null when missing or not a valid name. */
-export function readRunParam(href: string): string | null {
-  const value = new URL(href).searchParams.get("run");
-  return isRunName(value) ? value : null;
+/**
+ * The run named by `?run=` (and `?vehicle=`) in a page URL, or null when missing or not valid. Links made
+ * before the vehicle was added carry only `run`; those mean the default vehicle.
+ */
+export function readRunParam(href: string): RunRef | null {
+  const params = new URL(href).searchParams;
+  const name = params.get("run");
+  const vehicle = params.get("vehicle") ?? DEFAULT_VEHICLE;
+  return isRunName(name) && isVehicleId(vehicle) ? { vehicle, name } : null;
 }
 
-/** `href` with `?run=` set to `name`, or removed when `name` is null. Other parameters are kept. */
-export function withRunParam(href: string, name: string | null): string {
+/** `href` with `?vehicle=` and `?run=` set to `run`, or both removed when `run` is null. Other parameters are kept. */
+export function withRunParam(href: string, run: RunRef | null): string {
   const url = new URL(href);
-  if (name === null) url.searchParams.delete("run");
-  else url.searchParams.set("run", name);
+  if (run === null) {
+    url.searchParams.delete("vehicle");
+    url.searchParams.delete("run");
+  } else {
+    url.searchParams.set("vehicle", run.vehicle);
+    url.searchParams.set("run", run.name);
+  }
   return url.toString();
+}
+
+export function sameRun(a: RunRef | null, b: RunRef | null): boolean {
+  return a === b || (a !== null && b !== null && a.vehicle === b.vehicle && a.name === b.name);
 }
