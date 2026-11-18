@@ -8,6 +8,7 @@
 // What the Download runs popup shows for each run, and its selection rules. No DOM, so it is testable.
 
 import type { ArchiveFault, ArchiveRun, FaultSeverity } from "./archive";
+import type { JobKind, JobState } from "./archiveJob";
 
 export type RunFilter = "all" | "driving" | "parked";
 
@@ -307,6 +308,20 @@ export function selectionActions(state: SelectionState): SelectionActions {
     single,
     target
   };
+}
+
+/**
+ * After a failure, Download or Open resumes the failed job only while it would fetch the same runs.
+ * Ticking different runs makes the button start a new job instead.
+ */
+export function resumesJob(
+  job: Pick<JobState, "kind" | "phase" | "names"> | null,
+  kind: JobKind,
+  names: string[]
+): boolean {
+  if (job === null || job.phase !== "failed" || job.kind !== kind || job.names.length !== names.length) return false;
+  const wanted = new Set(names);
+  return job.names.every((name) => wanted.has(name));
 }
 
 export type OpenChoice = "replace" | "newTab" | "cancel";

@@ -36,6 +36,7 @@ import {
   openChoices,
   openTarget,
   pruneSelection,
+  resumesJob,
   runActivityText,
   runLabel,
   runLengthText,
@@ -570,6 +571,24 @@ test("any number of runs can be ticked to download; Open takes the most recent; 
   const busy = selectionActions({ selected: ["a"], busy: true, openRun: null });
   assert.equal(busy.download, false);
   assert.equal(busy.open, false);
+});
+
+test("after a failure, the button resumes only while the same runs are ticked", () => {
+  const failed = { kind: "download" as const, phase: "failed" as const, names: ["a", "b"] };
+  assert.equal(resumesJob(failed, "download", ["b", "a"]), true, "Same runs, ticked in another order");
+  assert.equal(resumesJob(failed, "download", ["a"]), false, "A run unticked: start a new download");
+  assert.equal(resumesJob(failed, "download", ["a", "b", "c"]), false, "A run added: start a new download");
+  assert.equal(resumesJob(failed, "download", ["a", "c"]), false);
+  assert.equal(resumesJob(failed, "open", ["a"]), false, "Open never resumes a download");
+  assert.equal(
+    resumesJob({ ...failed, phase: "fetching" }, "download", ["a", "b"]),
+    false,
+    "Only a stopped job resumes"
+  );
+  assert.equal(resumesJob(null, "download", ["a"]), false);
+  const open = { kind: "open" as const, phase: "failed" as const, names: ["c"] };
+  assert.equal(resumesJob(open, "open", ["c"]), true);
+  assert.equal(resumesJob(open, "open", ["d"]), false, "Another run: open it from the start");
 });
 
 test("ticks toggle, lock while a transfer runs and drop runs no longer listed", () => {

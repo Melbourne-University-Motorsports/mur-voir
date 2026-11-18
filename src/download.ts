@@ -10,7 +10,7 @@
 
 import NamedMessage from "./shared/NamedMessage";
 import type { ArchiveRun } from "./shared/mur/archive";
-import type { JobState } from "./shared/mur/archiveJob";
+import type { JobKind, JobState } from "./shared/mur/archiveJob";
 import {
   dayHeading,
   faultColumn,
@@ -26,6 +26,7 @@ import {
   openChoices,
   openTarget,
   pruneSelection,
+  resumesJob,
   runActivityText,
   runClock,
   RunFilter,
@@ -86,8 +87,16 @@ let noticeTimer: number | null = null;
 let doneTimer: number | null = null;
 
 const isLite = () => platform === "lite";
-const busy = () => job !== null && job.phase !== "done";
+// A failed job unlocks the ticks: Download or Open resumes it only while the same runs stay ticked.
+const busy = () => job !== null && job.phase !== "done" && job.phase !== "failed";
 const runNamed = (name: string) => runs.find((run) => run.name === name);
+const resumes = (kind: JobKind) => {
+  const target = openTarget(
+    selected,
+    runs.map((run) => run.name)
+  );
+  return resumesJob(job, kind, kind === "download" ? selected : target === null ? [] : [target]);
+};
 const labelOf = (name: string) => {
   const run = runNamed(name);
   return run ? runLabel(run, today) : name;
@@ -367,7 +376,8 @@ function renderStatus() {
     const total = job.phase === "fetching" ? job.total ?? runNamed(job.names[job.index])?.size_bytes : null;
     if (total) PROGRESS_BAR.value = Math.min(1, job.received / total);
     else PROGRESS_BAR.removeAttribute("value");
-  } else if (job !== null) {
+  } else if (job !== null && (job.phase !== "failed" || resumes(job.kind))) {
+    // A failure stays up while the button would resume it; once other runs are ticked, show those.
     ALERT_TEXT.classList.add("job", job.phase);
     ALERT_TEXT.textContent = jobText(job);
   } else if (notice !== null) {
@@ -396,22 +406,25 @@ function renderStatus() {
 
 function renderFooter() {
   const actions = selectionActions({ selected, busy: busy(), openRun, order: runs.map((run) => run.name) });
-  const failed = job?.phase === "failed" ? job.kind : null;
+  const resumeDownload = resumes("download");
+  const resumeOpen = resumes("open");
   renderStatus();
 
   COPY_BUTTON.disabled = !actions.copyLink;
-  DOWNLOAD_BUTTON.disabled = !(actions.download || failed === "download");
-  DOWNLOAD_BUTTON.title =
-    failed === "download" ? "Try again" : selected.length > 1 ? `Download ${selected.length} runs` : "Download";
-  OPEN_BUTTON.disabled = !(actions.open || failed === "open");
-  OPEN_BUTTON.title =
-    failed === "open"
-      ? "Try again"
-      : actions.showing
-      ? "Already open"
-      : selected.length > 1 && actions.target !== null
-      ? `Open the most recent ticked run, ${labelOf(actions.target)}`
-      : "Open";
+  DOWNLOAD_BUTTON.disabled = !(actions.download || resumeDownload);
+  DOWNLOAD_BUTTON.title = resumeDownload
+    ? "Try again"
+    : selected.length > 1
+    ? `Download ${selected.length} runs`
+    : "Download";
+  OPEN_BUTTON.disabled = !(actions.open || resumeOpen);
+  OPEN_BUTTON.title = resumeOpen
+    ? "Try again"
+    : actions.showing
+    ? "Already open"
+    : selected.length > 1 && actions.target !== null
+    ? `Open the most recent ticked run, ${labelOf(actions.target)}`
+    : "Open";
   EXIT_BUTTON.title = busy() ? "Cancel" : "Close";
 
   // The full fault list for exactly one ticked run.
@@ -489,6 +502,19 @@ function closeDialog() {
   DIALOG_BUTTONS.replaceChildren();
 }
 
+/** Open and Enter: resume a failed open of the same run, otherwise open the most recent ticked run. */
+function openTicked() {
+  if (resumes("open")) {
+    sendMainMessage("retry");
+    return;
+  }
+  const target = openTarget(
+    selected,
+    runs.map((run) => run.name)
+  );
+  if (target !== null && target !== openRun) requestOpen(target);
+}
+
 /** Opens one run, asking first when live telemetry would be replaced. */
 function requestOpen(name: string) {
   if (busy()) return;
@@ -560,19 +586,10 @@ COPY_BUTTON.addEventListener("click", () => {
   if (selected.length === 1) sendMainMessage("copy-link", selected[0]);
 });
 DOWNLOAD_BUTTON.addEventListener("click", () => {
-  if (job?.phase === "failed" && job.kind === "download") sendMainMessage("retry");
+  if (resumes("download")) sendMainMessage("retry");
   else if (selected.length > 0 && !busy()) sendMainMessage("download", [...selected]);
 });
-OPEN_BUTTON.addEventListener("click", () => {
-  if (job?.phase === "failed" && job.kind === "open") sendMainMessage("retry");
-  else {
-    const target = openTarget(
-      selected,
-      runs.map((run) => run.name)
-    );
-    if (target !== null) requestOpen(target);
-  }
-});
+OPEN_BUTTON.addEventListener("click", openTicked);
 EXIT_BUTTON.addEventListener("click", () => sendMainMessage(busy() ? "cancel-job" : "close"));
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !SCRIM.hidden) {
@@ -584,11 +601,7 @@ window.addEventListener("keydown", (event) => {
     SCRIM.hidden &&
     !["BUTTON", "SELECT"].includes((event.target as HTMLElement).tagName)
   ) {
-    const target = openTarget(
-      selected,
-      runs.map((run) => run.name)
-    );
-    if (target !== null && !busy() && target !== openRun) requestOpen(target);
+    openTicked();
   } else if (event.key === "a" && (event.metaKey || event.ctrlKey) && !busy()) {
     event.preventDefault();
     const shown = runs.filter((run) => matchesFilter(run, filter)).map((run) => run.name);
