@@ -109,6 +109,12 @@ export default class TracksideController implements TabController {
     const keys = new Set(this.sourceList.getState().map((source) => source.logKey));
     return Object.fromEntries(Object.entries(this.limits).filter(([key]) => keys.has(key)));
   }
+  /** The DBC signal each tile was saved with, for naming fields the open log lacks. */
+  getSavedDbcSignals(): { [key: string]: string } {
+    return Object.fromEntries(
+      this.sourceList.getState().flatMap((source) => (source.dbcSignal ? [[source.logKey, source.dbcSignal]] : []))
+    );
+  }
   getActiveFields() {
     return this.sourceList.getActiveFields();
   }

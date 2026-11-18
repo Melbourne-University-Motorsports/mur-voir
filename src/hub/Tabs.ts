@@ -337,7 +337,7 @@ export default class Tabs {
       periodicGuard.run(() => {
         if (performance.now() - lastAlerts >= 200) {
           lastAlerts = performance.now();
-          updateTracksideAlerts(alertElement, this.getTracksideLimits());
+          updateTracksideAlerts(alertElement, this.getTracksideLimits(), this.getTracksideDbcSignals());
         }
         // Update tab bar
         this.SHADOW_LEFT.style.opacity = Math.floor(this.TAB_BAR.scrollLeft) <= 0 ? "0" : "1";
@@ -542,6 +542,15 @@ export default class Tabs {
       activeFields.add(utilityKey);
     }
     return activeFields;
+  }
+
+  getTracksideDbcSignals(): { [key: string]: string } {
+    return Object.assign(
+      {},
+      ...this.tabList.flatMap((tab) =>
+        tab.controller instanceof TracksideController ? [tab.controller.getSavedDbcSignals()] : []
+      )
+    );
   }
 
   getTracksideLimits() {

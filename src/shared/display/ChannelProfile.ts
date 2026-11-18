@@ -16,6 +16,8 @@ export interface ChannelMetadata {
   min?: number;
   max?: number;
   enumLabels?: Record<string, string>;
+  /** The DBC's own unit for a live field the car's publisher converted to SI (e.g. "km/h" sent as m/s). */
+  dbcUnit?: string;
 }
 export interface ChannelOverride {
   unit?: string;
@@ -33,6 +35,8 @@ export interface ChannelProfile {
 export function canonicalChannelPath(path: string): string {
   return path.replaceAll(".", "/").replace(/^\/+|\/+$/g, "");
 }
+/** DBC unit spellings the unit table doesn't know. */
+const DBC_UNIT_ALIASES: { [unit: string]: string } = { degC: "celsius" };
 export function resolveUnit(unit: string): string | null {
   if (unit in Units.ALL_UNITS) return unit;
   return Units.UNIT_SUFFIXES[unit.toLowerCase()] ?? null;
@@ -45,6 +49,9 @@ export function channelProfile(metadata: ChannelMetadata, override: ChannelOverr
   if (from === "pascals") to = "kilopascals";
   if (from === "meters" && /shock|suspension|damper/i.test(metadata.name)) to = "millimeters";
   if (from === "ratio" && /soc|state_?of_?charge|duty|throttle|pedal/i.test(metadata.name)) to = "percent";
+  // Show live values in the DBC's unit, so they match the dash and MF4 runs (13.9 m/s reads 50 km/h).
+  const dbcUnit = metadata.dbcUnit ? resolveUnit(DBC_UNIT_ALIASES[metadata.dbcUnit] ?? metadata.dbcUnit) : null;
+  if (dbcUnit && from && Units.GROUP_BY_UNIT[dbcUnit] === Units.GROUP_BY_UNIT[from]) to = dbcUnit;
   if (override.unit !== undefined) {
     const requested = resolveUnit(override.unit);
     if (requested && from && Units.GROUP_BY_UNIT[requested] === Units.GROUP_BY_UNIT[from]) to = requested;

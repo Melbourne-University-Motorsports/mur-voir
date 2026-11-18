@@ -350,15 +350,15 @@ async function initHub() {
     state = JSON.parse(stateStr);
   }
   // A browser with no saved layout starts with the bundled default layout.
-  const firstOpen = state === null;
   if (state === null) state = getDefaultLayout("default")?.state ?? null;
   if (state !== null) sendMessage(hubPort, "restore-state", state);
-  // ?layout=<id> adds a bundled layout's tabs, then leaves the URL so a reload doesn't add them again.
+  // ?layout=<id> adds a bundled layout's tabs unless they are already open, then leaves the URL so
+  // a reload doesn't re-run it. The hub applies restore-state first, so it sees the saved tabs.
   const url = new URL(window.location.href);
   const layoutId = url.searchParams.get("layout");
   if (layoutId !== null) {
-    if (getDefaultLayout(layoutId) !== undefined && !(firstOpen && layoutId === "default")) {
-      sendMessage(hubPort, "add-default-layout", layoutId);
+    if (getDefaultLayout(layoutId) !== undefined) {
+      sendMessage(hubPort, "add-default-layout", { id: layoutId, ifMissing: true });
     }
     url.searchParams.delete("layout");
     window.history.replaceState(null, "", url.toString());

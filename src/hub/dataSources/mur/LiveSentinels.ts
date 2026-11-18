@@ -51,6 +51,18 @@ function bundledSignals() {
   return signalsByName;
 }
 
+/** The bundled DBC signal a live descriptor came from, preferring its own database and message. */
+function bundledSignal(descriptor: SignalDescriptor): DBCSignal | undefined {
+  const dbc = descriptor.dbc;
+  if (!dbc?.signal) return undefined;
+  const candidates = bundledSignals().get(dbc.signal) ?? [];
+  return (
+    candidates.find((c) => c.source === dbc.database && c.message === dbc.message) ??
+    candidates.find((c) => c.message === dbc.message) ??
+    candidates[0]
+  )?.signal;
+}
+
 /**
  * The values a live numeric field takes when its DBC signal reports "no reading" (for example
  * ECU_AccuTempMax's raw 0x7FFF, 3276.7 °C, sent as 3549.85 K), in the units the descriptor uses.
@@ -60,15 +72,9 @@ export function liveSentinels(descriptor: SignalDescriptor): Sentinel[] {
   const cached = cache.get(descriptor);
   if (cached !== undefined) return cached;
   let sentinels: Sentinel[] = [];
-  const dbc = descriptor.dbc;
-  if (descriptor.type === "float64" && dbc?.signal) {
-    const candidates = bundledSignals().get(dbc.signal) ?? [];
-    const match =
-      candidates.find((c) => c.source === dbc.database && c.message === dbc.message) ??
-      candidates.find((c) => c.message === dbc.message) ??
-      candidates[0];
-    if (match !== undefined) {
-      const { signal } = match;
+  if (descriptor.type === "float64") {
+    const signal = bundledSignal(descriptor);
+    if (signal !== undefined) {
       const [multiplier, offset] = PUBLISHER_UNITS[signal.unit] ?? [1, 0];
       sentinels = [...signal.sentinels].map((raw) => {
         const signed = signal.signed && raw >= 2 ** (signal.length - 1) ? raw - 2 ** signal.length : raw;
@@ -82,6 +88,16 @@ export function liveSentinels(descriptor: SignalDescriptor): Sentinel[] {
   }
   cache.set(descriptor, sentinels);
   return sentinels;
+}
+
+/**
+ * The DBC unit of a live field whose value the publisher converted to SI, e.g. "km/h" for a field
+ * sent in m/s. Null when the field has no DBC signal or was sent unconverted.
+ */
+export function liveDbcUnit(descriptor: SignalDescriptor): string | null {
+  const signal = bundledSignal(descriptor);
+  if (signal === undefined || !(signal.unit in PUBLISHER_UNITS) || signal.unit === "raw") return null;
+  return signal.unit;
 }
 
 /** True if a live numeric sample is its signal's "no reading" value. */

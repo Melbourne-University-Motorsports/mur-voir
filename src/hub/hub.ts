@@ -6,7 +6,7 @@
 // at the root directory of this project.
 
 import { AdvantageScopeAssets } from "../shared/AdvantageScopeAssets";
-import { getDefaultLayout } from "../shared/DefaultLayouts";
+import { getDefaultLayout, isLayoutOpen } from "../shared/DefaultLayouts";
 import { HubState } from "../shared/HubState";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
@@ -624,9 +624,14 @@ async function handleMainMessage(message: NamedMessage) {
       break;
 
     case "add-default-layout": {
-      // Adds a bundled layout's tabs after the open ones (File > Default Layouts, Lite's ?layout=).
-      const layout = getDefaultLayout(message.data);
-      if (layout !== undefined) window.tabs.appendState(layout.state.tabs);
+      // Adds a bundled layout's tabs after the open ones. The menu sends the id and always adds;
+      // Lite's ?layout= link sends { id, ifMissing: true } so a bookmarked link doesn't pile up copies.
+      const request: { id: string; ifMissing?: boolean } =
+        typeof message.data === "string" ? { id: message.data } : message.data;
+      const layout = getDefaultLayout(request.id);
+      if (layout === undefined) break;
+      if (request.ifMissing && isLayoutOpen(layout, window.tabs.saveState().tabs)) break;
+      window.tabs.appendState(layout.state.tabs);
       break;
     }
 

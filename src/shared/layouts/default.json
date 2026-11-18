@@ -152,6 +152,22 @@
                 },
                 {
                   "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/dashboard_speed/dash_speedrear",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_SpeedRear",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
+                  "logKey": "/vehicles/mur27/can1/dashboard_lap/dash_currentlap",
+                  "logType": "Number",
+                  "dbcSignal": "DASH_CurrentLap",
+                  "visible": true,
+                  "options": {}
+                },
+                {
+                  "type": "tile",
                   "logKey": "/vehicles/mur27/can1/dashboard_lap/dash_lastlap",
                   "logType": "Number",
                   "dbcSignal": "DASH_LastLap",

@@ -19,8 +19,8 @@ import { parseDBC } from "../src/hub/dataSources/can/DBC";
 import { isLiveSentinel } from "../src/hub/dataSources/mur/LiveSentinels";
 import { createField, writeValue } from "../src/hub/dataSources/mur/MURLogAdapter";
 import SourceList from "../src/hub/SourceList";
-import { DEFAULT_LAYOUTS, getDefaultLayout } from "../src/shared/DefaultLayouts";
-import { channelProfile } from "../src/shared/display/ChannelProfile";
+import { DEFAULT_LAYOUTS, getDefaultLayout, isLayoutOpen } from "../src/shared/DefaultLayouts";
+import { channelProfile, convertChannelValue } from "../src/shared/display/ChannelProfile";
 import Log from "../src/shared/log/Log";
 import LoggableType from "../src/shared/log/LoggableType";
 import type { SignalDescriptor } from "../src/shared/mur/contract";
@@ -215,4 +215,42 @@ test("a DBC fallback re-point reports the old and new keys, and Trackside limits
   controller.limits = { a: { low: 1 }, b: { low: 2 } };
   controller.moveLimits("a", "b");
   assert.deepEqual(controller.limits, { a: { low: 1 }, b: { low: 2 } });
+});
+
+test("the ?layout= link skips a layout whose tabs are already open, the menu always adds", () => {
+  const layout = getDefaultLayout("default")!;
+  const saved = layout.state.tabs.tabs.map(({ type, title }) => ({ type, title }));
+  assert.equal(isLayoutOpen(layout, saved), true);
+  assert.equal(isLayoutOpen(layout, [...saved, { type: TabType.LineGraph, title: "" }]), true);
+  assert.equal(isLayoutOpen(layout, saved.slice(0, -1)), false);
+  assert.equal(isLayoutOpen(layout, [{ type: TabType.Documentation, title: "" }]), false);
+});
+
+test("live fields the publisher converted to SI display in their DBC unit, with limits in that unit", () => {
+  const speed = sentinelDescriptor("DASH_SpeedCar", "Dashboard_Speed", "m/s");
+  const rpm = { ...sentinelDescriptor("INV_MotorSpeedRPM", "INV_MotorPosition", "rad/s") };
+  rpm.dbc = { signal: "INV_MotorSpeedRPM", message: "INV_MotorPosition", database: "Cascadia_PM100DZ.dbc" };
+  const log = new Log();
+  createField(log, speed);
+  createField(log, rpm);
+  const speedKey = "/" + speed.path;
+  const speedProfile = log.getChannelProfile(speedKey);
+  assert.equal(JSON.parse(log.getMetadataString(speedKey)).dbcUnit, "km/h");
+  assert.equal(speedProfile.to, "kilometers/hour");
+  assert.ok(Math.abs(convertChannelValue(50 / 3.6, speedProfile) - 50) < 1e-9);
+  assert.equal(tileState(speedKey, 50 / 3.6, speedProfile, { high: 40 }).severity, "critical");
+  assert.equal(tileState(speedKey, 50 / 3.6, speedProfile, { high: 60 }).severity, "ok");
+  assert.equal(tileState(speedKey, 50 / 3.6, speedProfile).unit, speedProfile.unit);
+
+  const rpmProfile = log.getChannelProfile("/" + rpm.path);
+  assert.equal(rpmProfile.to, "rotations/minute");
+  assert.ok(Math.abs(convertChannelValue((3000 * 2 * Math.PI) / 60, rpmProfile) - 3000) < 1e-6);
+
+  // An MF4 field is already in the DBC unit, so the same limit means the same thing.
+  const mf4 = channelProfile({ name: "DASHBOARD/DASH_SpeedCar", unit: "km/h" });
+  assert.equal(tileState("DASH/DASH_SpeedCar", 50, mf4, { high: 40 }).severity, "critical");
+  // Unconverted units (V) keep their own unit.
+  const accu = sentinelDescriptor("ECU_AccuTempMax", "ECU_DashData", "K");
+  createField(log, accu);
+  assert.equal(log.getChannelProfile("/" + accu.path).to, "celsius");
 });

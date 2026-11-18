@@ -156,6 +156,19 @@ try {
   await linkPage.waitForTimeout(500);
   assert.equal(await linkFrame.evaluate(() => window.tabs.saveState().tabs.length), 10);
   assert.equal(new URL(linkPage.url()).searchParams.has("layout"), false);
+  // Opening the link again in that browser, with its layout saved (plus a tab of its own), adds nothing.
+  await linkFrame.evaluate(() => window.tabs.addTab(15));
+  await linkPage.waitForFunction(() =>
+    Object.keys(localStorage).some(
+      (key) => key.endsWith("/state") && JSON.parse(localStorage.getItem(key)).tabs.tabs.length === 11
+    )
+  );
+  await linkPage.goto(`http://127.0.0.1:${port}/?layout=default`);
+  await linkPage.frameLocator(".hub-frame").locator(".connect-source").waitFor({ state: "attached" });
+  const reopenedFrame = linkPage.frames().find((frame) => frame.url().endsWith("hub.html"));
+  await reopenedFrame.waitForFunction(() => window.tabs.saveState().tabs.length === 11);
+  await linkPage.waitForTimeout(500);
+  assert.equal(await reopenedFrame.evaluate(() => window.tabs.saveState().tabs.length), 11);
   await linkContext.close();
 
   const picking = page.waitForEvent("filechooser");

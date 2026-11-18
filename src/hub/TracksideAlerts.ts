@@ -7,7 +7,11 @@
 
 import { alertLine, dbcDefinition, isTracksideLive, Limits, tileLabel, tileState } from "../shared/Trackside";
 
-export function updateTracksideAlerts(element: HTMLElement, allLimits: { [key: string]: Limits }[]) {
+export function updateTracksideAlerts(
+  element: HTMLElement,
+  allLimits: { [key: string]: Limits }[],
+  savedDbcSignals: { [key: string]: string } = {}
+) {
   const liveTime = window.selection.getCurrentLiveTime();
   const time = liveTime ?? window.selection.getRenderTime() ?? window.log.getTimestampRange()[1];
   const summary = window.liveStatus?.getLiveStatus();
@@ -36,7 +40,7 @@ export function updateTracksideAlerts(element: HTMLElement, allLimits: { [key: s
         isTracksideLive(summary, liveTime)
           ? { summary, freshness: window.liveStatus!.getFieldFreshness(key), age: window.liveStatus!.getFieldAge(key) }
           : undefined,
-        tileLabel(window.log.getMetadataString(key), key)
+        tileLabel(window.log.getMetadataString(key), key, savedDbcSignals[key])
       );
       return { tile, value, profile, limits, fault };
     })

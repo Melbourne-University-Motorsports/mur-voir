@@ -5,7 +5,8 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { HubState } from "./HubState";
+import { HubState, TabState } from "./HubState";
+import TabType from "./TabType";
 import trackDay from "./layouts/default.json";
 
 /**
@@ -20,4 +21,11 @@ export const DEFAULT_LAYOUTS: DefaultLayout[] = [
 
 export function getDefaultLayout(id: string | null | undefined): DefaultLayout | undefined {
   return DEFAULT_LAYOUTS.find((layout) => layout.id === id);
+}
+
+/** True if every tab of the layout (except Documentation) is already open, matched by type and title. */
+export function isLayoutOpen(layout: DefaultLayout, openTabs: Pick<TabState, "type" | "title">[]): boolean {
+  return layout.state.tabs.tabs
+    .filter((tab) => tab.type !== TabType.Documentation)
+    .every((tab) => openTabs.some((open) => open.type === tab.type && open.title === tab.title));
 }
