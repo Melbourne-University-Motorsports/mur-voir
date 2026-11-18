@@ -179,7 +179,7 @@ export default class TracksideRenderer implements TabRenderer {
       cell.children[1].children[0].textContent = tile.text;
       cell.children[1].children[1].textContent = tile.unit ? " " + tile.unit : "";
       cell.children[2].textContent = tile.state;
-      cell.title = `${tile.label}: ${tile.text} ${tile.unit} ${tile.state}`;
+      cell.title = `${tile.label}: ${tile.text} ${tile.unit} ${tile.state}` + (tile.detail ? "\n" + tile.detail : "");
     });
   }
 }

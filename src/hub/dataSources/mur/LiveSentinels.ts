@@ -100,6 +100,11 @@ export function liveDbcUnit(descriptor: SignalDescriptor): string | null {
   return signal.unit;
 }
 
+/** The bundled DBC comment for a live field's signal (fault bit names, sentinels), or null. */
+export function liveDbcComment(descriptor: SignalDescriptor): string | null {
+  return bundledSignal(descriptor)?.comment || null;
+}
+
 /** True if a live numeric sample is its signal's "no reading" value. */
 export function isLiveSentinel(descriptor: SignalDescriptor, value: number): boolean {
   return liveSentinels(descriptor).some((sentinel) => Math.abs(value - sentinel.value) <= sentinel.tolerance);

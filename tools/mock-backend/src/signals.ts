@@ -499,6 +499,43 @@ export function buildSignals(opts: SignalOptions): SignalDef[] {
       },
       read: () => 0
     }),
+    // Fault bitfields, raw integers as the car's publisher sends them. Zero unless --fault-demo.
+    def({
+      path: "accumulator/ttcs_fault_bits",
+      type: "int64",
+      unit: null,
+      label: "TTCS Fault Bits",
+      description: "TTCS latched fault mask (HB_TTCS_FaultBits)",
+      source: "control-can",
+      rate: 1,
+      tags: ["accumulator", "safety", "faults"],
+      extra: { dbc: { signal: "HB_TTCS_FaultBits", message: "MUR_HB_TTCS", database: "mur_control_can.dbc" } },
+      read: () => 0
+    }),
+    def({
+      path: "powertrain/inverter/fault_byte0",
+      type: "int64",
+      unit: null,
+      label: "Inverter Fault Byte 0",
+      description: "Cascadia POST fault bits 0 to 7 (INV_FaultByte0)",
+      source: "control-can",
+      rate: 1,
+      tags: ["powertrain", "inverter", "faults"],
+      extra: { dbc: { signal: "INV_FaultByte0", message: "INV_FaultCodes", database: "Cascadia_PM100DZ.dbc" } },
+      read: () => 0
+    }),
+    def({
+      path: "system/dash_fault_bits",
+      type: "int64",
+      unit: null,
+      label: "Dash Fault Bits",
+      description: "Dashboard latched fault mask (HB_DASH_FaultBits)",
+      source: "telemetry-can",
+      rate: 1,
+      tags: ["system", "faults"],
+      extra: { dbc: { signal: "HB_DASH_FaultBits", message: "MUR_HB_Dash", database: "mur_telemetry_can.dbc" } },
+      read: () => 0
+    }),
     def({
       path: "accumulator/airs_closed",
       type: "bool",

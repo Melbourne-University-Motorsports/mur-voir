@@ -285,6 +285,11 @@ export class MockBackend {
         if (path.endsWith("/motor_temperature")) value = 373.15;
         if (path.endsWith("/temperature_max")) value = 338.15;
         if (path.endsWith("/imd_state")) value = 4;
+        // Battery overtemp (shutdown) + AIR implausible (warning); HW overcurrent (warning only);
+        // Analog dead plus bit 6, which the DBC doesn't name.
+        if (path.endsWith("/ttcs_fault_bits")) value = 2 ** 12 + 2 ** 6;
+        if (path.endsWith("/fault_byte0")) value = 2;
+        if (path.endsWith("/dash_fault_bits")) value = 0x41;
       }
       if (value === undefined) continue;
       this.produce(path, def.desc, src, tTrue, value);

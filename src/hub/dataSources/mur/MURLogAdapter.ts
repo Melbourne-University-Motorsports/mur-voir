@@ -29,7 +29,7 @@
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
 import type { ConeArray, Pose3, Quaternion, SignalDescriptor, Trajectory, Vector3 } from "../../../shared/mur/contract";
-import { isLiveSentinel, liveDbcUnit } from "./LiveSentinels";
+import { isLiveSentinel, liveDbcComment, liveDbcUnit } from "./LiveSentinels";
 
 /** Converts a catalogue path to a Log key. */
 export function pathToKey(path: string): string {
@@ -100,6 +100,10 @@ export function getMetadataString(descriptor: SignalDescriptor): string {
     metadata.unit = UNIT_ALIASES[descriptor.unit] ?? descriptor.unit;
   }
   if (descriptor.dbc?.signal) metadata.dbcSignal = descriptor.dbc.signal;
+  // The live catalogue sends no DBC comment (and the car may pin an older mur-msgs), so take it
+  // from the bundled DBCs, which name and grade fault bits.
+  const comment = liveDbcComment(descriptor) || descriptor.dbc?.comment;
+  if (comment) metadata.comment = comment;
   const dbcUnit = descriptor.type === "float64" ? liveDbcUnit(descriptor) : null;
   if (dbcUnit !== null) metadata.dbcUnit = dbcUnit;
   metadata.precision = descriptor.display?.precision;

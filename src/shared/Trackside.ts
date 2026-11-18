@@ -18,6 +18,8 @@ export type TracksideTile = {
   severity: Severity;
   freshness: Freshness | null;
   age: number | null;
+  /** Full names of the set fault bits, one per line, for the tooltip. */
+  detail?: string;
 };
 
 export function isTracksideLive(
@@ -131,7 +133,8 @@ export function tileState(
     state,
     severity,
     freshness: live?.freshness ?? null,
-    age
+    age,
+    ...(fault?.detail ? { detail: fault.detail } : {})
   };
 }
 
@@ -149,6 +152,10 @@ export function alertLine(
           above ? limits?.high : limits?.low
         }`;
       })
-      .join("   ·   ")
+      .join("   ·   "),
+    detail: alarms
+      .map(({ tile }) => tile.detail)
+      .filter((detail) => detail)
+      .join("\n")
   };
 }

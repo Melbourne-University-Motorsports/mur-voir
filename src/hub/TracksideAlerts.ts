@@ -47,7 +47,7 @@ export function updateTracksideAlerts(
   );
   element.hidden = !result.text;
   element.textContent = result.text;
-  element.title = result.text;
+  element.title = result.detail ? result.text + "\n" + result.detail : result.text;
   element.dataset.severity = result.severity;
   document.body.classList.toggle("has-trackside-alerts", !!result.text);
 }

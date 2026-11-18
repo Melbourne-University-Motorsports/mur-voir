@@ -20,27 +20,27 @@ node tools/mock-backend/src/main.ts --help
 
 Connect the dashboard's MUR source to `http://localhost:8090`.
 
-| Flag                       | Effect                                                                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--port <n>`               | HTTP and WebSocket port, default 8090.                                                                                                       |
-| `--host <address>`         | Bind address, default 0.0.0.0.                                                                                                               |
-| `--seed <n>`               | Seed for values, noise and drops, default 1.                                                                                                 |
-| `--speed <x>`              | Model seconds per wall second, default 1.                                                                                                    |
-| `--start-time-ns <ns>`     | Fix the Unix start time and boot nonce for reproducible timestamps, stream IDs and catalogue epoch.                                          |
-| `--lap-counter`            | Add `timing/lap_count` and `timing/last_lap_time` from a start/finish beacon.                                                                |
-| `--drop-rate <f>`          | Drop this fraction of samples after consuming their sequence numbers.                                                                        |
-| `--duplicate`              | Deliver each measurement over RF and cellular with the same dedup key and different receipt times. History stores it once.                   |
-| `--fault-demo`             | Inject motor and cell temperature faults and an Earth Fault IMD enum from model seconds 10 to 20, then recover.                              |
-| `--stale-test`             | Stop a source after 30 model seconds in each 60 second cycle. It becomes stale, then offline after four silent seconds, then returns online. |
-| `--stale-source <source>`  | Source for the stale test, default `sbg-ins`.                                                                                                |
-| `--catalogue-churn`        | Register a 10 Hz probe at second 10 of each 40 second cycle and remove it at second 30.                                                      |
-| `--unsync`                 | Give one source a 1.734 second clock offset and 80 ppm drift, marked `unsynchronised`.                                                       |
-| `--unsync-source <source>` | Source for the clock offset, default `ennoid-bms`.                                                                                           |
-| `--no-history`             | Return HTTP 501 for history requests.                                                                                                        |
-| `--history-seconds <n>`    | History retention in model seconds, default 360.                                                                                             |
-| `--archive-today <date>`   | `YYYY-MM-DD` of the newest archive runs, default today in Melbourne.                                                                         |
-| `--archive-no-prepare`     | Serve unfinished runs' files at once instead of answering the first request with 202 preparing.                                              |
-| `--archive-drop`           | Cut each run's first full file download halfway, so clients must resume with a Range request.                                                |
+| Flag                       | Effect                                                                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--port <n>`               | HTTP and WebSocket port, default 8090.                                                                                                              |
+| `--host <address>`         | Bind address, default 0.0.0.0.                                                                                                                      |
+| `--seed <n>`               | Seed for values, noise and drops, default 1.                                                                                                        |
+| `--speed <x>`              | Model seconds per wall second, default 1.                                                                                                           |
+| `--start-time-ns <ns>`     | Fix the Unix start time and boot nonce for reproducible timestamps, stream IDs and catalogue epoch.                                                 |
+| `--lap-counter`            | Add `timing/lap_count` and `timing/last_lap_time` from a start/finish beacon.                                                                       |
+| `--drop-rate <f>`          | Drop this fraction of samples after consuming their sequence numbers.                                                                               |
+| `--duplicate`              | Deliver each measurement over RF and cellular with the same dedup key and different receipt times. History stores it once.                          |
+| `--fault-demo`             | Inject motor and cell temperature faults, an Earth Fault IMD enum and TTCS, inverter and dash fault bits from model seconds 10 to 20, then recover. |
+| `--stale-test`             | Stop a source after 30 model seconds in each 60 second cycle. It becomes stale, then offline after four silent seconds, then returns online.        |
+| `--stale-source <source>`  | Source for the stale test, default `sbg-ins`.                                                                                                       |
+| `--catalogue-churn`        | Register a 10 Hz probe at second 10 of each 40 second cycle and remove it at second 30.                                                             |
+| `--unsync`                 | Give one source a 1.734 second clock offset and 80 ppm drift, marked `unsynchronised`.                                                              |
+| `--unsync-source <source>` | Source for the clock offset, default `ennoid-bms`.                                                                                                  |
+| `--no-history`             | Return HTTP 501 for history requests.                                                                                                               |
+| `--history-seconds <n>`    | History retention in model seconds, default 360.                                                                                                    |
+| `--archive-today <date>`   | `YYYY-MM-DD` of the newest archive runs, default today in Melbourne.                                                                                |
+| `--archive-no-prepare`     | Serve unfinished runs' files at once instead of answering the first request with 202 preparing.                                                     |
+| `--archive-drop`           | Cut each run's first full file download halfway, so clients must resume with a Range request.                                                       |
 
 Use `--speed 1` to keep model time aligned with wall time during live connection checks. With a fixed
 start time and seed, the same ticks produce the same output. Without a fixed start time, each process
