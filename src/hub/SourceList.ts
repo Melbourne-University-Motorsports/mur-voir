@@ -58,6 +58,8 @@ export default class SourceList {
   private independentAllowedTypes: Set<string> = new Set(); // Types that are not only children
   private parentKeys: Map<string, string> = new Map(); // Map type key to parent key
   private supplementalStateSuppliers: (() => SourceListState)[];
+  /** Called when the DBC fallback re-points a field at the same signal under another key. */
+  onFieldRemapped?: (from: string, to: string) => void;
   getCriticalLimits?: (key: string) => { uuid: string; unit: string; limits: { low?: number; high?: number } };
   private getNumberPreview: ((key: string, time: number) => string | null) | undefined;
   private mouseDownInfo: [number, number] | null = null;
@@ -432,7 +434,9 @@ export default class SourceList {
         }
       }
       if (matches.length === 1) {
+        const previousKey = item.logKey;
         item.logKey = matches[0];
+        this.onFieldRemapped?.(previousKey, item.logKey);
         let element = this.LIST.children[index] as HTMLElement;
         this.updateItem(element, item);
         this.updatePreview(element, item);

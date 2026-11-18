@@ -33,6 +33,7 @@ import { Readable } from "stream";
 import { AdvantageScopeAssets } from "../../shared/AdvantageScopeAssets";
 import ButtonRect from "../../shared/ButtonRect";
 import { ensureThemeContrast } from "../../shared/Colors";
+import { DEFAULT_LAYOUTS } from "../../shared/DefaultLayouts";
 import ExportOptions from "../../shared/ExportOptions";
 import { Field2dCameraMode } from "../../shared/Field2dCameraMode";
 import LineGraphFilter from "../../shared/LineGraphFilter";
@@ -1587,6 +1588,16 @@ function setupMenu() {
               });
           }
         },
+        ...DEFAULT_LAYOUTS.map(
+          (layout): Electron.MenuItemConstructorOptions => ({
+            label: `Add ${layout.title} Layout`,
+            click(_, baseWindow) {
+              const window = baseWindow as BrowserWindow | undefined;
+              if (window === undefined || !hubWindows.includes(window)) return;
+              sendMessage(window, "add-default-layout", layout.id);
+            }
+          })
+        ),
         {
           label: "Import Layout...",
           click() {

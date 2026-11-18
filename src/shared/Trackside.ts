@@ -44,6 +44,23 @@ export function dbcDefinition(metadataString: string, path: string): DBCFaultDef
   }
 }
 
+/**
+ * A tile's name: the field's DBC signal, then the layout's saved DBC signal (for a field the open
+ * log lacks), then the source's label, then the last path segment.
+ */
+export function tileLabel(metadataString: string, path: string, savedDbcSignal?: string): string {
+  let metadata: any = null;
+  try {
+    metadata = JSON.parse(metadataString);
+  } catch {
+    // Not every field has JSON metadata.
+  }
+  for (const name of [metadata?.dbcSignal, savedDbcSignal, metadata?.label]) {
+    if (typeof name === "string" && name.length > 0) return name;
+  }
+  return path.split("/").pop() || path;
+}
+
 /** Unit suffix for a field's limits: the same display unit `tileState` compares against, or none if unitless. */
 export function limitUnit(profile: ChannelProfile): string {
   return profile.enumLabels || profile.unit === "1" ? "" : profile.unit;
@@ -76,8 +93,11 @@ export function tileState(
   profile: ChannelProfile,
   limits: Limits = {},
   definition: DBCFaultDefinition | null = null,
-  live?: { summary: LiveStatusSummary; freshness: Freshness | null; age: number | null }
+  live?: { summary: LiveStatusSummary; freshness: Freshness | null; age: number | null },
+  label = path.split("/").pop() || path
 ): TracksideTile {
+  // NaN is a "no reading" sample (a DBC sentinel): show it as such, never as a limit violation.
+  const noReading = typeof value === "number" && Number.isNaN(value);
   const fault = definition ? classifyDBCFault(definition, value) : null;
   const numeric = typeof value === "number" ? convertChannelValue(value, profile) : NaN;
   const violation = numeric < (limits.low ?? -Infinity) || numeric > (limits.high ?? Infinity);
@@ -100,9 +120,14 @@ export function tileState(
     else if (live.freshness === "unknown" || live.freshness === null) state = "?";
   }
   return {
-    label: path.split("/").pop() || path,
-    text: value === undefined ? "—" : fault?.label ?? formatChannelValue(value, { ...profile, unit: "" }),
-    unit: value !== undefined && typeof value === "number" && !fault ? limitUnit(profile) : "",
+    label,
+    text:
+      value === undefined
+        ? "—"
+        : noReading
+        ? "no reading"
+        : fault?.label ?? formatChannelValue(value, { ...profile, unit: "" }),
+    unit: value !== undefined && typeof value === "number" && !noReading && !fault ? limitUnit(profile) : "",
     state,
     severity,
     freshness: live?.freshness ?? null,

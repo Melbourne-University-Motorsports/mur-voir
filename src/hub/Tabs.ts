@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { TabsState } from "../shared/HubState";
+import { TabState, TabsState } from "../shared/HubState";
 import LineGraphFilter from "../shared/LineGraphFilter";
 import { RenderGuard, inlineStatus } from "../shared/RenderGuard";
 import TabType, { filterRestorableTabs, getDefaultTabTitle, getTabIcon } from "../shared/TabType";
@@ -337,7 +337,7 @@ export default class Tabs {
       periodicGuard.run(() => {
         if (performance.now() - lastAlerts >= 200) {
           lastAlerts = performance.now();
-          updateTracksideAlerts(alertElement, this.getTracksideLimits());
+          updateTracksideAlerts(alertElement, this.getTracksideLimits(), this.getTracksideDbcSignals());
         }
         // Update tab bar
         this.SHADOW_LEFT.style.opacity = Math.floor(this.TAB_BAR.scrollLeft) <= 0 ? "0" : "1";
@@ -438,6 +438,44 @@ export default class Tabs {
     };
   }
 
+  /** Applies a saved tab's title, contents and controls height to the tab at `index`. */
+  private restoreTab(index: number, tabState: TabState) {
+    if (tabState.title) this.renameTab(index, tabState.title);
+    this.tabList[index].controller.restoreState(tabState.controller);
+    this.tabList[index].renderer.restoreState(tabState.renderer);
+
+    let tabConfig = this.FIXED_CONTROL_HEIGHTS.get(tabState.type);
+    // Layouts from before the lap tabs had source lists saved a height of 0.
+    let oldLapTab =
+      tabState.controlsHeight === 0 &&
+      (tabState.type === TabType.TrackMap || tabState.type === TabType.Laps) &&
+      !(tabState.controller as { sourceLists?: boolean } | null)?.sourceLists;
+    if (!oldLapTab && (tabState.controlsHeight === 0 || tabConfig === undefined)) {
+      this.tabList[index].controlsHeight = tabState.controlsHeight;
+    }
+  }
+
+  /**
+   * Adds a layout's tabs after the open ones and selects the first added tab. The layout's
+   * Documentation tab is skipped (the hub keeps exactly one) and each tab gets a fresh controller
+   * UUID, so adding the same layout twice doesn't share satellites or log subscriptions.
+   */
+  appendState(state: TabsState) {
+    const tabs = filterRestorableTabs(state.tabs, state.selected).tabs.filter(
+      (tab) => tab.type !== TabType.Documentation
+    );
+    if (tabs.length === 0) return;
+    const first = this.tabList.length;
+    tabs.forEach((tabState) => {
+      this.selectedTab = this.tabList.length - 1;
+      this.addTab(tabState.type);
+      this.restoreTab(this.tabList.length - 1, tabState);
+    });
+    this.selectedTab = first;
+    this.updateElements();
+    this.updateControlsHeight();
+  }
+
   /** Restores to the provided state. */
   restoreState(state: TabsState) {
     this.tabList.forEach((tab) => {
@@ -451,20 +489,8 @@ export default class Tabs {
     const restored = filterRestorableTabs(state.tabs, state.selected);
     restored.tabs.forEach((tabState, index) => {
       this.addTab(tabState.type);
-      if (tabState.title) this.renameTab(index, tabState.title);
       this.tabList[index].controller.UUID = tabState.controllerUUID;
-      this.tabList[index].controller.restoreState(tabState.controller);
-      this.tabList[index].renderer.restoreState(tabState.renderer);
-
-      let tabConfig = this.FIXED_CONTROL_HEIGHTS.get(tabState.type);
-      // Layouts from before the lap tabs had source lists saved a height of 0.
-      let oldLapTab =
-        tabState.controlsHeight === 0 &&
-        (tabState.type === TabType.TrackMap || tabState.type === TabType.Laps) &&
-        !(tabState.controller as { sourceLists?: boolean } | null)?.sourceLists;
-      if (!oldLapTab && (tabState.controlsHeight === 0 || tabConfig === undefined)) {
-        this.tabList[index].controlsHeight = tabState.controlsHeight;
-      }
+      this.restoreTab(index, tabState);
     });
     if (this.tabList.length === 0) this.addTab(TabType.Documentation);
     this.selectedTab = restored.selected;
@@ -516,6 +542,15 @@ export default class Tabs {
       activeFields.add(utilityKey);
     }
     return activeFields;
+  }
+
+  getTracksideDbcSignals(): { [key: string]: string } {
+    return Object.assign(
+      {},
+      ...this.tabList.flatMap((tab) =>
+        tab.controller instanceof TracksideController ? [tab.controller.getSavedDbcSignals()] : []
+      )
+    );
   }
 
   getTracksideLimits() {

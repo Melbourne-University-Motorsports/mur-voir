@@ -29,6 +29,7 @@
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
 import type { ConeArray, Pose3, Quaternion, SignalDescriptor, Trajectory, Vector3 } from "../../../shared/mur/contract";
+import { isLiveSentinel, liveDbcUnit } from "./LiveSentinels";
 
 /** Converts a catalogue path to a Log key. */
 export function pathToKey(path: string): string {
@@ -99,6 +100,8 @@ export function getMetadataString(descriptor: SignalDescriptor): string {
     metadata.unit = UNIT_ALIASES[descriptor.unit] ?? descriptor.unit;
   }
   if (descriptor.dbc?.signal) metadata.dbcSignal = descriptor.dbc.signal;
+  const dbcUnit = descriptor.type === "float64" ? liveDbcUnit(descriptor) : null;
+  if (dbcUnit !== null) metadata.dbcUnit = dbcUnit;
   metadata.precision = descriptor.display?.precision;
   metadata.scale = descriptor.display?.scale;
   metadata.min = descriptor.min;
@@ -148,7 +151,8 @@ export function writeValue(log: Log, descriptor: SignalDescriptor, timestamp: nu
   switch (descriptor.type) {
     case "float64":
       if (typeof value !== "number") return false;
-      log.putNumber(key, timestamp, value);
+      // A DBC "no reading" value is stored as NaN, a gap, as the MF4 importer does.
+      log.putNumber(key, timestamp, isLiveSentinel(descriptor, value) ? NaN : value);
       return true;
     case "int64": {
       const parsed = parseInt64Number(value);

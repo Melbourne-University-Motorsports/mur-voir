@@ -116,9 +116,11 @@ export function getTabIcon(type: TabType): string {
     case TabType.Points:
       return "📍";
     case TabType.TrackMap:
-      return "";
+      return "🏁";
     case TabType.Laps:
       return "";
+    case TabType.Trackside:
+      return "🚦";
     case TabType.DriverInputs:
       return "🎮";
     case TabType.CarDynamics:
