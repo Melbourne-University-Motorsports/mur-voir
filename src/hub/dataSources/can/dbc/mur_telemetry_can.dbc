@@ -226,6 +226,8 @@ CM_ SG_ 578 ECU_TCEnabled "1 = traction control switched on by the driver (scree
 CM_ SG_ 578 ECU_FanRequest "1 = the driver interface wants the cooling fans running: always 1 while ECU_TSActive, otherwise the dash fan button's toggle (DASH_ButtonStates bit 6; boots 0). NOT SENT TO THE PDM yet - PDU_Control still requests Fan2 in every state (switching Fan2 off would also stop the pump and HighCurrent, see docs/PDM-Docs.md). PDU_Status shows the fans' actual state.";
 CM_ SG_ 578 ECU_ABPCActive "1 = the APPS/brake pedal plausibility check is cutting torque: the ECU's TempBlock latch (brake above the ready threshold with more than 25 % throttle, held until throttle drops below 5 %) while ReadyToDrive or Driving. The dashboard flashes the screen's ABPC page (Dashboard_Display DASH_DispState = 9) while this is 1.";
 CM_ BO_ 1794 "MUR ADDITION (PROVISIONAL): 1 Hz dashboard node heartbeat, ID 0x700 + node id (Dashboard = 2). Uptime, CAN error counters, low 16 bits of latched fault mask. Signals node-prefixed for bus-wide uniqueness.";
+CM_ SG_ 1794 HB_DASH_FaultBits "Low 16 bits of the dashboard's latched fault mask. Only bit 0 is used (firmware/apps/dashboard in mur-embedded); the real fault map is still TBD.
+bit 0: Analog dead; Dashboard ADC failed to start; warning";
 
 BA_DEF_ BO_ "GenMsgCycleTime" INT 0 100000;
 BA_DEF_ BO_ "GenMsgSendType" ENUM "Cyclic","OnChange","Event";

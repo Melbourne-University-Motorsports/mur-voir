@@ -220,6 +220,26 @@ BO_ 1768 PARAM_Response: 8 Vector__XXX
  SG_ PARAM_RspIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
  SG_ PARAM_RspIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
 
+BO_ 1761 PARAM_Node1_Request: 8 Vector__XXX
+ SG_ PARAM_N1ReqIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1ReqIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
+BO_ 1769 PARAM_Node1_Response: 8 Vector__XXX
+ SG_ PARAM_N1RspIsoTpPci : 0|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData0 : 8|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData1 : 16|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData2 : 24|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData3 : 32|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData4 : 40|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData5 : 48|8@1+ (1,0) [0|255] "" Vector__XXX
+ SG_ PARAM_N1RspIsoTpData6 : 56|8@1+ (1,0) [0|255] "" Vector__XXX
+
 CM_ BU_ PEDALBOX "Pedalbox Sensor Node";
 CM_ BU_ TTCS "Tractive System / Thermal / Cooling Sensor Node (SDC, IMD, HV cell temps)";
 CM_ BU_ ECU "Engine/Electronic Control Unit - VCU role, arbitrates torque and cooling";
@@ -235,15 +255,54 @@ CM_ BO_ 1793 "MUR ADDITION (PROVISIONAL): 1 Hz node heartbeat, ID 0x700 + node i
 CM_ BO_ 1795 "MUR ADDITION (PROVISIONAL): see MUR_HB_Pedalbox.";
 CM_ BO_ 1796 "MUR ADDITION (PROVISIONAL): see MUR_HB_Pedalbox.";
 CM_ BO_ 1797 "MUR ADDITION (PROVISIONAL): see MUR_HB_Pedalbox. Charge-cart bus only.";
+CM_ SG_ 1793 HB_PEDAL_FaultBits "Low 16 bits of the Pedalbox latched fault mask, the same bits as PEDAL_BSEStatus (firmware/lib/pedal/include/pedal_faults.h in mur-embedded). Bits 2 to 6 are reserved there and not raised yet.
+bit 0: APPS implausible; Accelerator pedal sensors disagree; warning
+bit 1: Pedal cal invalid; Pedalbox calibration invalid; warning
+bit 2: BSE active; Brake system encoder active; warning
+bit 3: BSPD trip; BSPD fault, shutdown circuit opened; shutdown
+bit 4: APPS A out of range; Accelerator pedal sensor A outside its plausible range; warning
+bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible range; warning
+bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
+CM_ SG_ 1795 HB_REAR_FaultBits "Low 16 bits of the rear node's latched fault mask. There is no rear node firmware yet; bit 0 is the bench convention firmware/apps/sn_demo in mur-embedded uses.
+bit 0: Analog dead; Rear node ADC failed to start; warning";
+CM_ SG_ 1796 HB_TTCS_FaultBits "Low 16 bits of the TTCS latched fault mask (firmware/lib/ttcs/include/ttcs_faults.h in mur-embedded); higher bits only reach MUR_Fault. Bits 0 to 2 mirror the MSS fault lines live and the MSS itself opens the shutdown circuit for them. The other shutdown bits are TTCS_SDC_TRIP_MASK, still provisional pending safety-team sign-off.
+bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
+bit 1: PDOC trip; PDOC fault, shutdown circuit opened; shutdown
+bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
+bit 3: HV overcurrent; HV overcurrent measured by the TTCS; shutdown
+bit 4: ENNOID comms lost; ENNOID BMS status stream stale; shutdown
+bit 5: ECU comms lost; ECU_Status stream stale; shutdown
+bit 6: AIR implausible; AIR feedback disagrees with the expected state; warning
+bit 7: IMD no signal; No PWM edges from the IMD; warning
+bit 8: Cell overvoltage; Highest cell voltage over its limit; shutdown
+bit 9: Cell undervoltage; Lowest cell voltage under its limit; shutdown
+bit 10: Pack overvoltage; Pack voltage over its limit; shutdown
+bit 11: Pack undervoltage; Pack voltage under its limit; shutdown
+bit 12: Battery overtemp; Battery high temperature over its limit; shutdown
+bit 13: Current while blocked; Current flowing while the ENNOID BMS prohibits it; shutdown
+bit 14: Current mismatch; TTCS and ENNOID current readings disagree; shutdown
+bit 15: Battery data bad; Battery data implausible or calibration not configured; shutdown";
 CM_ BO_ 280 "MUR ADDITION (PROVISIONAL): charge-cart TTCS board state - ttcs_charger state machine, what it is commanding the OBC, and what the OBC reports. Charge-cart bus only; ID sits in the TTCS 0x110 block and clears every Valeo OBC ID in vendor/Valeo_OBC.dbc (0x171-0x191, 0x261-0x264, 0x305, 0x319-0x34C). Transmit rate 10 Hz.";
 CM_ BO_ 256 "Pedalbox primary sensor group. Transmit rate 100 Hz (FAST; was 250 Hz, capped 2026-10-12 for Tractive CAN load - ADC sampling stays 250 Hz). Bits 52-55 reserved for future expansion.";
 CM_ SG_ 256 PEDAL_StatusCounter "Rolling counter incremented every transmission. In-message so a frozen/stale pedal stream is detectable within one 10 ms cycle; the 10 Hz counter in Pedal_Diagnostics alone gives up to 100 ms detection latency.";
 CM_ BO_ 257 "Pedalbox diagnostics / BSE plausibility + heartbeat. Transmit rate 10 Hz.";
-CM_ SG_ 257 PEDAL_BSEStatus "Brake System Encoder / plausibility bitfield. Bit meanings TBD - to be defined with firmware team (placeholder byte reserved).";
+CM_ SG_ 257 PEDAL_BSEStatus "Brake System Encoder / plausibility bitfield. PROVISIONAL: the Pedalbox packs its fault mask (firmware/lib/pedal/include/pedal_faults.h in mur-embedded) into this byte, the same bits as HB_PEDAL_FaultBits; the final layout is still to be agreed with the firmware team. Bits 2 to 6 are reserved there and not raised yet.
+bit 0: APPS implausible; Accelerator pedal sensors disagree; warning
+bit 1: Pedal cal invalid; Pedalbox calibration invalid; warning
+bit 2: BSE active; Brake system encoder active; warning
+bit 3: BSPD trip; BSPD fault, shutdown circuit opened; shutdown
+bit 4: APPS A out of range; Accelerator pedal sensor A outside its plausible range; warning
+bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible range; warning
+bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
 CM_ BO_ 272 "TTCS shutdown circuit + IMD state + heartbeat. Transmit rate 10 Hz.";
 CM_ SG_ 272 TTCS_SDCStatus1 "AIR- state, from the TTCS AIR- sense input (PC1): 1 = AIR- closed, 0 = open. Confirmed on the car 2026-10-14.";
 CM_ SG_ 272 TTCS_SDCStatus2 "AIR+ state, from the TTCS AIR+ sense input (PC2): 1 = AIR+ closed, 0 = open. AIR+ only closes after precharge. Confirmed on the car 2026-10-14.";
-CM_ SG_ 272 TTCS_IMDState "IMD operating state per Bender IMD datasheet. ASSUMPTION placeholder - exact enum values TBD, see VAL_ table below for suggested starting point.";
+CM_ SG_ 272 TTCS_IMDState "IMD operating state per Bender IMD datasheet. ASSUMPTION placeholder - exact enum values TBD, see VAL_ table below for suggested starting point.
+value 3: IMD device error; IMD reports a device error (40 Hz PWM); warning
+value 4: IMD earth fault; IMD earth connection fault, E/KE wiring broken (50 Hz PWM); warning
+value 5: Ground fault warning; Ground fault warning (not sent by the TTCS firmware); warning
+value 6: SST warning; Speed start warning (not sent by the TTCS firmware); warning
+value 7: SST fault; Speed start fault (not sent by the TTCS firmware); warning";
 CM_ SG_ 272 TTCS_TempBypass "1 = the TTCS is running its battery checks WITHOUT cell temperatures (TEST-mode bypass, TTCS_TEMP_BYPASS_IN_TEST in firmware/apps/ttcs/src/main.c): the BMS reports no temperature data, the ECU is fresh and in TEST mode, and the bypass is compiled in. Over-temperature is not monitored while this is 1. Approved for testing only (2026-10-14, no sensors fitted).";
 CM_ SG_ 272 TTCS_DHABBypass "1 = the TTCS is ignoring its DHAB current sensor (TEST-mode bypass, TTCS_DHAB_BYPASS_IN_TEST in firmware/apps/ttcs/src/main.c): the ECU is fresh and in TEST mode and the bypass is compiled in. OVERCURRENT and I_IMPLAUS are not raised and the battery/limit checks see 0 A, so pack current is NOT monitored by the TTCS while this is 1. Testing only (2026-10-14, DHAB not set up). TTCS_Diagnostics still carries the raw DHAB readings.";
 CM_ SG_ 272 TTCS_IMDFrequency "Raw measured IMD PWM frequency, before decode - for cross-checking TTCS_IMDState against a scope. 0 = no signal (no edge for 500 ms). Not filtered; a glitch edge can show as a very high value (clamped at 6553.5).";
@@ -268,7 +327,9 @@ CM_ SG_ 288 ECU_ControlCounter "Rolling counter for the ECU_Control stream. Rena
 CM_ SG_ 290 ECU_StatusCounter "Rolling counter for the ECU_Status stream. Renamed from ECU_HeartbeatCounter - see ECU_ControlCounter note on bus-wide signal name uniqueness.";
 CM_ SG_ 290 ECU_TSActive "1 = the ECU sees the tractive system active: a fresh TTCS_Status (<= 500 ms) with both AIRs closed (TTCS_SDCStatus1/2), the inverter on the bus and its DC bus voltage >= 240 V. Both TEST and TRACK mode hold Standby until this has been 1 for the full startup wait (5 s of inverter disable frames with HV present); losing it drops Ready To Drive / Driving back to Standby. A build with MC_NO_TS_GATE=1 (bench power-supply spins, no AIRs) still reports this bit but does not gate on it.";
 CM_ SG_ 290 ECU_FaultFlags "32-bit bitfield per design brief FaultFlags convention. Bit assignments TBD - to be defined with firmware team.";
-CM_ SG_ 290 ECU_ECUState "ASSUMPTION placeholder state machine enum - TBD, see VAL_ table below. Standby -> ReadyToDrive requires ALL of: ECU_TSActive held for the full startup wait, average brake pressure (Pedal_Status PEDAL_BrakePressure1/2) above the ECU's RTD threshold, and a HELD press of the dash RTD button - a rising edge followed by 500 ms of continuous hold (Dashboard_Inputs DASH_ButtonStates bit 2, i.e. the dash's DIN[2], Telemetry CAN 0x201) - while that brake stays applied. Both halves are deliberate. The rising edge means a button already held - stuck, taped, or still down from a previous attempt - cannot start the car, and a drop back to Standby cannot re-arm itself without the driver releasing and pressing again. The 500 ms means a brush past the button or a knock in the cockpit is not a press; releasing early abandons the hold and does not accumulate. A stale (> 250 ms) or absent Dashboard_Inputs stream reads as not-pressed, cannot start or complete a hold, and never counts towards one. Watch ECU_RTDButton/ECU_DashInputsStale in this frame to see what the ECU makes of the button. Same in TEST and TRACK mode; on the bench ECU_RTDTest (CM_ BO_ 298) substitutes for both the brake and the button.";
+CM_ SG_ 290 ECU_ECUState "ASSUMPTION placeholder state machine enum - TBD, see VAL_ table below. Standby -> ReadyToDrive requires ALL of: ECU_TSActive held for the full startup wait, average brake pressure (Pedal_Status PEDAL_BrakePressure1/2) above the ECU's RTD threshold, and a HELD press of the dash RTD button - a rising edge followed by 500 ms of continuous hold (Dashboard_Inputs DASH_ButtonStates bit 2, i.e. the dash's DIN[2], Telemetry CAN 0x201) - while that brake stays applied. Both halves are deliberate. The rising edge means a button already held - stuck, taped, or still down from a previous attempt - cannot start the car, and a drop back to Standby cannot re-arm itself without the driver releasing and pressing again. The 500 ms means a brush past the button or a knock in the cockpit is not a press; releasing early abandons the hold and does not accumulate. A stale (> 250 ms) or absent Dashboard_Inputs stream reads as not-pressed, cannot start or complete a hold, and never counts towards one. Watch ECU_RTDButton/ECU_DashInputsStale in this frame to see what the ECU makes of the button. Same in TEST and TRACK mode; on the bench ECU_RTDTest (CM_ BO_ 298) substitutes for both the brake and the button.
+value 4: ECU fault; ECU fault state (pedal or inverter comms lost, APPS disagreement or overtemperature), TTCS opens the shutdown circuit; shutdown
+value 5: ECU shutdown; ECU requests shutdown, TTCS opens the shutdown circuit (not produced by the current ECU firmware); shutdown";
 CM_ SG_ 290 ECU_RTDButton "MUR ADDITION (PROVISIONAL): 1 = the ECU currently sees the driver's ready-to-drive button pressed, i.e. a fresh Dashboard_Inputs (<= 250 ms, Telemetry CAN 0x201) with DASH_ButtonStates bit 2 set. This is the ECU's OWN view of the button, not the dash's claim about it, which is the point: the dashboard transmits on a different bus from this frame, so without this bit there is no way to tell a button that is not being pressed from a press that never reaches the ECU. Reads 0 whenever ECU_DashInputsStale is 1. It is the raw level - holding it for CTRL_RTD_HOLD_MS (500 ms) is what actually arms the car, so expect to see this sit at 1 for several frames before ECU_ECUState changes. Watch with tools/bench/can_watch.py rtd.";
 CM_ SG_ 290 ECU_DashInputsStale "MUR ADDITION (PROVISIONAL): 1 = no Dashboard_Inputs (0x201) within the last 250 ms, so the ECU has no button state and ECU_RTDButton reads 0 regardless of what the driver is doing. Distinguishes \"not pressed\" from \"not heard\", which is the first thing worth knowing when a press does nothing. Deliberately NOT a fault: a dead dashboard only means no NEW ready-to-drive request can be made, it never drops a car that is already driving, so this bit informs and gates nothing.";
 CM_ SG_ 290 ECU_BrakeTorqueCut "MUR ADDITION (PROVISIONAL): 1 = the ECU's brake override is forcing commanded torque to 0 this cycle: front + rear Pedal_Status brake pressure above CTRL_BRAKE_OVERRIDE_PSI_X10 while the car is in ReadyToDrive/Driving. Plain braking, not the throttle+brake TempBlock latch (though TempBlock also satisfies this check). Not a fault and gates nothing on its own; the pedalbox uses it to drive the BSE lamp on PC9. 0 during shutdown, inverter lock/not-ready and bench inverter-TX inhibit, where no torque is being commanded anyway.";
@@ -372,5 +433,7 @@ CM_ SG_ 576 ECU_AccuTempMin "Corrected minimum from complete fresh sensor sweeps
 
 CM_ BO_ 1760 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage request endpoint for node 0, ID 0x6E0 + node. Classic-CAN ISO-TP: this frame is one 8-byte fragment (ISO-TP PCI byte + 7 data bytes), reassembled by the parameter service; telemetry must not treat the bytes as signals. Reserved block 0x6E0-0x6E7 requests, 0x6E8-0x6EF responses; canboot uses 0x7E0/0x7E8. ISO-TP flow control for a request arrives on 0x6E8 + node. Wire format, catalog and validation: generated/params/mur_params.h and mur_msgs.params. No parameter signal is finalized and no proto exists.";
 CM_ BO_ 1768 "MUR ADDITION (PROVISIONAL, bench/demo): parameter-storage response endpoint for node 0, ID 0x6E8 + node. ISO-TP fragment of the shared 16-byte header plus at most 4096 payload bytes; see PARAM_Request and generated/params/mur_params.h. Never decoded as a signal.";
+CM_ BO_ 1761 "MUR ADDITION (PRODUCTION TTCS): parameter-storage request endpoint for node 1 (ttcs_control) on Control CAN, ID 0x6E1. ISO-TP fragment of the shared 16-byte header plus at most 4096 payload bytes; carries the 108-element ttcs_r0_prior (ID 256). Never decoded as a signal.";
+CM_ BO_ 1769 "MUR ADDITION (PRODUCTION TTCS): parameter-storage response endpoint for node 1 (ttcs_control) on Control CAN, ID 0x6E9. Same fragment layout as PARAM_Response; see generated/params/mur_params.h. Never decoded as a signal.";
 BA_ "GenMsgSendType" BO_ 1760 2;
 BA_ "GenMsgSendType" BO_ 1768 2;

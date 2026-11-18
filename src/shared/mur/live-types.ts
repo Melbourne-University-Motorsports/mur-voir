@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Generated from mur-msgs aa98d26ba6df4e35af2e029b2509f07bb80bfabf. Do not edit.
+// Generated from mur-msgs 9e545028194f25f459ba7b42500b0b14e653c178. Do not edit.
 // Run npm run live-api:generate.
 
 /**
@@ -35,6 +35,13 @@ export type AvailabilityState = "online" | "stale" | "offline";
  */
 export type Int64Value = number | string;
 export type SampleValue = unknown;
+/**
+ * One publish tick of ProducerSamples, each unchanged; an optional framing of the car-to-base path.
+ *
+ * @minItems 1
+ * @maxItems 2000
+ */
+export type ProducerSampleBatch = [ProducerSample, ...ProducerSample[]];
 export type ClientOp = HelloOp | SubscribeOp | UnsubscribeOp;
 export type CoreServerOp =
   | CatalogueSnapshotOp
@@ -70,6 +77,7 @@ export interface LiveAPIExports {
   Int64Value?: Int64Value;
   SampleValue?: SampleValue;
   ProducerSample?: ProducerSample;
+  ProducerSampleBatch?: ProducerSampleBatch;
   TelemetrySample?: TelemetrySample;
   HistorySample?: HistorySample;
   CatalogueSnapshotBody?: CatalogueSnapshotBody;

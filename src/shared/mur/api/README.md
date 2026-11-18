@@ -14,7 +14,8 @@ Public builds need no upstream checkout.
 
 Review schema/hash/pin changes together; the offline check detects accidental drift,
 not a malicious edit of both schema and manifest. Run the upstream comparison when updating the pin. The current pin is mur-msgs
-main merge commit `aa98d26ba6df4e35af2e029b2509f07bb80bfabf` from PR #6.
+release tag `v0.2.1`, commit `9e545028194f25f459ba7b42500b0b14e653c178`. It adds the optional
+`ProducerSampleBatch` definition for the car-to-base path; the dashboard's wire types are unchanged.
 
 `../contract.ts` contains runtime helpers. Its exported wire types come entirely
 from the generated file; no application code needs to import the mock backend.
@@ -23,7 +24,7 @@ values. Stateful conformance rules are in the pinned upstream `api/live/v1/READM
 Stream-aware history and descriptor DBC provenance are optional. Descriptors retain
 `dbc?: DBCProvenance` in the generated types. Timestamps use Unix nanoseconds.
 
-No mur-msgs release tag exists yet, so the pin is the commit itself. Runtime `hello.api_version`
+`SOURCE.json` records the full commit; the tag is noted here. Runtime `hello.api_version`
 and `unsupported_api_version` remain necessary because components deploy separately.
 
 This protocol-only copy exposes no credentials or vendor DBC contents. The public

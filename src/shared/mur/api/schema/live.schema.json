@@ -360,6 +360,15 @@
       ],
       "additionalProperties": true
     },
+    "ProducerSampleBatch": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProducerSample"
+      },
+      "minItems": 1,
+      "maxItems": 2000,
+      "description": "One publish tick of ProducerSamples, each unchanged; an optional framing of the car-to-base path."
+    },
     "TelemetrySample": {
       "type": "object",
       "properties": {
