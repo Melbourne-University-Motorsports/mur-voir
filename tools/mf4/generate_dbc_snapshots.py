@@ -23,6 +23,9 @@ Writes to test/fixtures/mf4/:
                     that readers must ignore
   archive-run.mf4   bus.mf4 with every bundled DBC attached for bus 0, uncompressed, the way the
                     archive serves runs (the mock backend's run file)
+
+Rerunning picks up the current bundled DBCs, so update the bus 1 snapshot hash in
+test/importers/mf4-dbc.test.ts.
 """
 
 from pathlib import Path

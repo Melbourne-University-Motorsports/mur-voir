@@ -8,6 +8,7 @@
 // MF4 runs that carry their DBC snapshots (bus<id>_<name>.dbc attachments) decode with them.
 // Fixtures: tools/mf4/generate_dbc_snapshots.py.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { test } from "node:test";
 import { BUNDLED_DBCS } from "../../src/hub/dataSources/can/BundledDBCs";
@@ -38,7 +39,13 @@ test("the reader returns embedded attachments, compressed or not, and skips exte
     ["bus0_mur_control_can.dbc", "bus1_mur_telemetry_can.dbc"]
   );
   assert.match(new TextDecoder().decode(attached.attachments[0].data), /PEDAL_Position1 : 0\|10@1\+ \(0\.2,0\)/);
-  assert.equal(new TextDecoder().decode(attached.attachments[1].data), BUNDLED_DBCS["mur_telemetry_can.dbc"]);
+  // Bus 1's snapshot is the telemetry DBC as bundled when the fixture was made, before #20 updated it:
+  // an old run's DBC. Its hash checks the uncompressed attachment comes back byte for byte.
+  assert.equal(
+    createHash("sha256").update(attached.attachments[1].data).digest("hex"),
+    "7fa6951fa0b21623854f2864a7bc188efd4e0dd1a5362f465f07b2970ea43799"
+  );
+  assert.notEqual(new TextDecoder().decode(attached.attachments[1].data), BUNDLED_DBCS["mur_telemetry_can.dbc"]);
   const oneBus = new MDF(fixture("dbc-one-bus.mf4"));
   assert.deepEqual(
     oneBus.attachments.map((a) => a.fileName),
