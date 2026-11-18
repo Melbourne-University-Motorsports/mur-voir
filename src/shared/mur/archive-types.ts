@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Generated from mur-msgs d0f1b5f927a72ce3615eb4e7081095c32db1c34d. Do not edit.
+// Generated from mur-msgs 1e67d444e48a763759b93847de7b30ffcbd842ee. Do not edit.
 // Run npm run archive-api:generate.
 
 /**

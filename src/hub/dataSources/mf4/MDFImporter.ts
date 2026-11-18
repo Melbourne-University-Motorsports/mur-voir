@@ -9,8 +9,27 @@ import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
 import { setMetadata } from "../ImporterUtil";
 import { CandumpIndex, DATA_STRIDE, FLAG_EXTENDED } from "../can/Candump";
-import { createCandumpImporter } from "../can/CandumpImporter";
-import { Channel, Group, MDF, rawValue, sample, timestamp } from "./MDF";
+import { BusDBCs, createCandumpImporter } from "../can/CandumpImporter";
+import { Attachment, Channel, Group, MDF, rawValue, sample, timestamp } from "./MDF";
+
+/** `bus<id>_<name>.dbc`: a DBC snapshot for the bus whose CAN_DataFrame.BusChannel is <id>. */
+const BUS_DBC = /^bus(\d+)_.+\.dbc$/i;
+
+/**
+ * DBC snapshots attached to the file, by interface name ("can<BusChannel>", as frames are indexed).
+ * Wireless-telem names snapshots with the same bus id it writes to BusChannel.
+ */
+export function busDBCsFromAttachments(attachments: Attachment[]): BusDBCs {
+  const buses: BusDBCs = {};
+  for (const attachment of attachments) {
+    const name = attachment.fileName.split(/[\\/]/).pop() ?? "";
+    const match = BUS_DBC.exec(name);
+    if (!match) continue;
+    const iface = "can" + Number(match[1]);
+    (buses[iface] ??= {})[name] = new TextDecoder().decode(attachment.data);
+  }
+  return buses;
+}
 
 /** Discover records once; engineering values and DBC signals are decoded on request. */
 export function createMDFImporter() {
@@ -68,10 +87,11 @@ export function createMDFImporter() {
             i++;
           }
         }
-        log = can.start([null, null, null, files[3] ?? null], index);
+        log = can.start([null, null, null, files[3] ?? null], index, busDBCsFromAttachments(mdf.attachments));
         hasCAN = true;
       }
     }
+    if (mdf.attachmentErrors.length > 0) console.warn("MF4 attachments not read:", mdf.attachmentErrors);
     for (const group of mdf.groups) {
       if (group.records.length) {
         log.updateRangeWithTimestamp(timestamp(group, group.records[0]));

@@ -260,7 +260,7 @@ try {
   const expectedFiles = [faultRunName, await uploadingRow.getAttribute("data-name")].map((name) => name + ".mf4");
   assert.deepEqual(downloads.map((download) => download.suggestedFilename()).sort(), expectedFiles.sort());
   const mf4 = await readFile(await downloads[0].path());
-  assert.deepEqual(mf4, await readFile("test/fixtures/mf4/bus.mf4"));
+  assert.deepEqual(mf4, await readFile("test/fixtures/mf4/archive-run.mf4"));
 
   // Opening over live telemetry asks first. Stop live and open replaces the log with the run.
   const openRow = rows.filter({ hasText: "13:20" });
@@ -282,6 +282,11 @@ try {
   await runsPopup.locator('[data-choice="replace"]').click();
   await page.locator(".popup-frame").waitFor({ state: "hidden" });
   await frame.waitForFunction(() => window.log.getFieldKeys().some((key) => key.includes("INVERTER")));
+  // The run file carries bus 0's DBC snapshots; the inverter fields keep their keys and say which DBC decoded them.
+  const inverterDbc = await frame.evaluate(
+    () => JSON.parse(window.log.getMetadataString("INVERTER/INV_MotorSpeedRPM") || "{}").dbc
+  );
+  assert.equal(inverterDbc, "bus0_Cascadia_PM100DZ.dbc", "Decoded with the run's attached DBC");
   await page.waitForFunction((name) => new URL(location.href).searchParams.get("run") === name, runName);
   await shot("lite_run_open");
   await hub.locator(".copy-run-link").click();
@@ -429,7 +434,7 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, links, ?run= without live auto-start), CSV picker."
+    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, attached DBCs, links, ?run= without live auto-start), CSV picker."
   );
 } finally {
   await browser?.close();

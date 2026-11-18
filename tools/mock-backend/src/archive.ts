@@ -6,7 +6,8 @@
 // at the root directory of this project.
 
 // Run archive API v1 (GET /api/v1/archive/...) with fixture runs covering every state the Download
-// runs popup shows. Every run's file is the same small real MF4 (test/fixtures/mf4/bus.mf4).
+// runs popup shows. Every run's file is the same small real MF4 (test/fixtures/mf4/archive-run.mf4),
+// carrying bus 0's DBC snapshots as attachments the way the archive's merged files do.
 
 import { readFileSync } from "node:fs";
 import type http from "node:http";
@@ -28,9 +29,9 @@ let runFileBytes: Buffer | null = null;
 export function runFile(): Buffer {
   if (runFileBytes === null) {
     try {
-      runFileBytes = readFileSync(new URL("../../../test/fixtures/mf4/bus.mf4", import.meta.url));
+      runFileBytes = readFileSync(new URL("../../../test/fixtures/mf4/archive-run.mf4", import.meta.url));
     } catch {
-      runFileBytes = readFileSync(path.resolve("test/fixtures/mf4/bus.mf4"));
+      runFileBytes = readFileSync(path.resolve("test/fixtures/mf4/archive-run.mf4"));
     }
   }
   return runFileBytes;

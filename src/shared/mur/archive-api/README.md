@@ -12,8 +12,10 @@ as the live API in `../api/` (see its README). `../archive-types.ts` is generate
 - `npm run archive-api:generate`: regenerates `../archive-types.ts`.
 
 `test/mur/archive-contract.test.ts` checks the mock backend's archive answers against this schema.
-The rules the schema can't express (order, paging, ETag, Range and 202 behaviour) are in the pinned
-upstream `api/archive/v1/README.md`.
+The rules the schema can't express (order, paging, ETag, Range and 202 behaviour, and the
+`bus<id>_<name>.dbc` snapshots attached to each run file) are in the pinned upstream
+`api/archive/v1/README.md`. The MF4 importer decodes each bus with its attached snapshots
+(`src/hub/dataSources/mf4/MDFImporter.ts`).
 
-The current pin is `d0f1b5f927a72ce3615eb4e7081095c32db1c34d` on mur-msgs branch
+The current pin is `1e67d444e48a763759b93847de7b30ffcbd842ee` on mur-msgs branch
 `feat/archive-api-v1`, which hasn't merged yet. Re-pin to the merge commit once it lands.

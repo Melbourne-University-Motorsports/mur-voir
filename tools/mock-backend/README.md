@@ -74,10 +74,11 @@ HTTP errors have `error` and `message` fields. CORS allows all origins.
 - `GET /api/v1/archive/runs?vehicle=mur27&limit=100&before=<run name>` returns
   `{version: 1, runs, next}`, newest first by `start`, or by first-seen time when `start` is null. Both
   routes need `vehicle`; other vehicles answer 404 `unknown_vehicle`.
-- `GET /api/v1/archive/runs/{name}/file?vehicle=mur27` serves `test/fixtures/mf4/bus.mf4` for every run, with
+- `GET /api/v1/archive/runs/{name}/file?vehicle=mur27` serves `test/fixtures/mf4/archive-run.mf4` for every run, with
   `Content-Disposition`, `ETag` and `Accept-Ranges: bytes`. Range requests answer 206, a stale `If-Range`
   answers 200 with the whole file, and unknown runs answer 404. The first request for a recording or
-  uploading run answers 202 `{"state": "preparing"}` with `Retry-After: 1`.
+  uploading run answers 202 `{"state": "preparing"}` with `Retry-After: 1`. The file carries the bundled
+  DBCs as `bus0_<name>.dbc` attachments, like the archive's merged runs (`tools/mf4/generate_dbc_snapshots.py`).
 
 The 13 fixture runs (`src/archive.ts`) cover recording, uploading and complete runs, `power_off` and
 `clean_stop` endings, runs with parts still on the car, a run without a summary, a parked run without a
