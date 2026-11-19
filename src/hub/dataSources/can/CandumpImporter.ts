@@ -27,6 +27,11 @@ import { DBCMessage, DBCSet, DBCSignal, decodeSignal, extractRaw, parseDBC, sort
  * An MF4 can carry DBC snapshots for some buses (`busDBCs`, by interface name such as "can0"). Frames
  * on such a bus decode with its snapshots only; every other bus uses the DBC folder or bundled set.
  * Field keys don't depend on the bus, so a signal that both sets define the same way keeps its key.
+ *
+ * One exception: when the default set multiplexes a frame that a bus's snapshot defines without a
+ * multiplexor, at the same length, that bus decodes the frame with the default definition. Old runs
+ * carry snapshots from before a message was multiplexed (ENNOID_VCell, whose frames all decoded into
+ * the same three cell signals), so their plots would mix groups. Metadata/Import lists these frames.
  */
 
 /** DBC files attached to a log, per interface ("can0"): file name → DBC text. */
@@ -90,6 +95,17 @@ export function createCandumpImporter() {
     return known?.signals.some((other) => other.name === signal.name) ? known : message;
   }
 
+  /**
+   * The default set's definition of a frame to decode instead of a snapshot's: the default set
+   * multiplexes it, the snapshot doesn't, and both give it the same length.
+   */
+  function multiplexedDefault(attached: DBCMessage): DBCMessage | undefined {
+    if (attached.signals.some((signal) => signal.isMultiplexor)) return undefined;
+    const known = defaultSet.get(attached.id, attached.extended);
+    if (known === undefined || known.dlc !== attached.dlc) return undefined;
+    return known.signals.some((signal) => signal.isMultiplexor) ? known : undefined;
+  }
+
   function start(files: (Uint8Array | null)[], frameIndex?: CandumpIndex, busDBCs: BusDBCs = {}): Log {
     loadDBCs(files[3] ?? null);
     Object.entries(busDBCs).forEach(([iface, dbcs]) => {
@@ -142,12 +158,18 @@ export function createCandumpImporter() {
     // Each signal of each message in the log gets a field. The same message decoded by two sets
     // (one bus with snapshots, another without) shares the field when the signal keeps its key.
     const messageCount = new Set<string>();
+    const overridesByBus = new Map<string, string[]>(); // iface → messages decoded with the default set
     groups.forEach((group) => {
       const firstFrame = group.frames[0];
       const extended = (index.flags[firstFrame] & FLAG_EXTENDED) !== 0;
       const id = index.ids[firstFrame];
       messageCount.add(messageKey(id, extended));
-      const message = (group.setIface === null ? defaultSet : busSets.get(group.setIface)!).get(id, extended);
+      let message = (group.setIface === null ? defaultSet : busSets.get(group.setIface)!).get(id, extended);
+      const override = group.setIface !== null && message !== undefined ? multiplexedDefault(message) : undefined;
+      if (override !== undefined) {
+        message = override;
+        overridesByBus.set(group.setIface!, [...(overridesByBus.get(group.setIface!) ?? []), override.name]);
+      }
       if (message === undefined) {
         const key = messageKey(id, extended);
         unknownFrames.set(key, [...(unknownFrames.get(key) ?? []), ...group.frames]);
@@ -237,18 +259,26 @@ export function createCandumpImporter() {
     if (files[2]) readMarkers(files[2]);
 
     // Import summary, including which DBCs decoded each bus, so a wrong decode can be traced
-    const dbcsByBus = Object.fromEntries(
-      index.ifaces.map((iface) =>
-        busSets.has(iface)
-          ? [iface, { from: "attached", files: sortDBCFiles(Object.keys(busDBCs[iface])) }]
-          : [iface, { from: defaultOrigin, files: defaultFiles }]
-      )
+    // A bus whose snapshot lost frames to the default set's multiplexed definitions lists them
+    const dbcsByBus: {
+      [iface: string]: { from: string; files: string[]; overrides?: string[]; overridesFrom?: string };
+    } = Object.fromEntries(
+      index.ifaces.map((iface) => {
+        if (!busSets.has(iface)) return [iface, { from: defaultOrigin, files: defaultFiles }];
+        const dbcs = { from: "attached", files: sortDBCFiles(Object.keys(busDBCs[iface])) };
+        const overrides = overridesByBus.get(iface);
+        return [iface, overrides ? { ...dbcs, overrides: overrides.sort(), overridesFrom: defaultOrigin } : dbcs];
+      })
     );
     const unusedAttachments = Object.keys(busDBCs).filter((iface) => !index.ifaces.includes(iface));
     console.info(
       "CAN DBCs: " +
         Object.entries(dbcsByBus)
-          .map(([iface, dbcs]) => `${iface} ${dbcs.from} (${dbcs.files.join(", ")})`)
+          .map(
+            ([iface, dbcs]) =>
+              `${iface} ${dbcs.from} (${dbcs.files.join(", ")})` +
+              (dbcs.overrides ? ` with ${dbcs.overridesFrom} multiplexed ${dbcs.overrides.join(", ")}` : "")
+          )
           .join("; ") +
         (unusedAttachments.length ? `; attached for buses with no frames: ${unusedAttachments.join(", ")}` : "")
     );
