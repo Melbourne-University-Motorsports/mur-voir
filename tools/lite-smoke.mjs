@@ -15,9 +15,30 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { chromium, devices, webkit } from "playwright";
 
 process.chdir(fileURLToPath(new URL("../", import.meta.url)));
+// --device <name> runs the smoke as that Playwright device (viewport, scale, touch, user agent), e.g.
+// --device "iPhone 15" or --device "Pixel 7 landscape". iPhones use WebKit when it is installed, else
+// Chromium. Playwright still sends mouse clicks and key presses, so a pass doesn't prove touch use.
+const deviceIndex = process.argv.indexOf("--device");
+const deviceName = deviceIndex === -1 ? null : process.argv[deviceIndex + 1];
+const device = deviceName === null ? null : devices[deviceName];
+if (deviceName !== null && device === undefined) {
+  console.error(`Unknown device "${deviceName}". Playwright knows:\n` + Object.keys(devices).join("\n"));
+  process.exit(2);
+}
+/** Options for every browser context: the device's, or the desktop default. */
+const contextOptions = device === null ? {} : (({ defaultBrowserType, ...options }) => options)(device);
+/** On a device, pages after the first hide the "Not enough space" cover that the first page checks. */
+async function hideCover(target) {
+  if (device === null) return;
+  await target.addInitScript(() =>
+    addEventListener("DOMContentLoaded", () =>
+      document.querySelector(".too-small")?.style.setProperty("display", "none")
+    )
+  );
+}
 const children = [];
 let browser;
 let tlsProxy;
@@ -60,10 +81,17 @@ try {
     `http://127.0.0.1:${mockPort}`
   ]);
   await ready(`http://127.0.0.1:${port}`);
-  browser = await chromium.launch({ headless: true });
+  if (device?.defaultBrowserType === "webkit") {
+    browser = await webkit.launch({ headless: true }).catch(() => {
+      console.log(`[device] WebKit isn't installed (npx playwright install webkit); using Chromium as ${deviceName}`);
+      return null;
+    });
+  }
+  browser ??= await chromium.launch({ headless: true });
   // LITE_SCREENSHOTS=<dir> saves screenshots there; LITE_COLOR_SCHEME=dark takes them in dark mode.
   const page = await browser.newPage({
     viewport: { width: 1440, height: 1000 },
+    ...contextOptions,
     colorScheme: process.env.LITE_COLOR_SCHEME === "dark" ? "dark" : "light"
   });
   /** Saves a screenshot of the page, or of the open popup when `popup` is set. */
@@ -79,6 +107,16 @@ try {
   await page.goto(`http://127.0.0.1:${port}`);
   const hub = page.frameLocator(".hub-frame");
   await hub.locator(".connect-source").waitFor({ state: "attached" });
+  if (device !== null) {
+    // Lite covers a page under 800x400 with "Not enough space". Note it, then hide it to check what's behind.
+    await shot("device_first_open");
+    const size = page.viewportSize();
+    if (await page.locator(".too-small").isVisible()) {
+      console.log(`[device] ${deviceName} ${size.width}x${size.height}: "Not enough space" covers the page; hiding it`);
+      await page.locator(".too-small").evaluate((cover) => (cover.style.display = "none"));
+      await shot("device_behind_cover");
+    }
+  }
   await hub.locator("body").press("Control+k");
   await hub.locator(".connect-source").selectOption("mur");
   assert.equal(await hub.locator(".connect-address").inputValue(), `http://127.0.0.1:${port}`);
@@ -117,6 +155,15 @@ try {
   const tabTitles = () => frame.evaluate(() => window.tabs.saveState().tabs.map((tab) => tab.title));
   assert.deepEqual((await tabTitles()).slice(0, defaultTitles.length), defaultTitles);
   assert.equal((await tabTitles()).length, 10);
+  if (device !== null && process.env.LITE_SCREENSHOTS) {
+    // Each tab of the default layout as this device shows it, with the sidebar hidden.
+    await frame.evaluate(() => window.sidebar.toggleVisible());
+    for (const [index, title] of (await tabTitles()).entries()) {
+      await frame.evaluate((index) => window.tabs.setSelected(index), index);
+      await shot(`device_tab${index}_${(title || "docs").toLowerCase().replaceAll(" ", "-")}`);
+    }
+    await frame.evaluate(() => (window.sidebar.toggleVisible(), window.tabs.setSelected(0)));
+  }
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
@@ -156,7 +203,8 @@ try {
   assert.equal((await tabTitles())[beforeDefault], "Track day");
 
   // ?layout=default in a fresh browser loads the layout once and leaves the URL.
-  const linkContext = await browser.newContext();
+  const linkContext = await browser.newContext(contextOptions);
+  await hideCover(linkContext);
   const linkPage = await linkContext.newPage();
   linkPage.on("pageerror", (error) => errors.push(error.message));
   await linkPage.goto(`http://127.0.0.1:${port}/?layout=default`);
@@ -298,7 +346,8 @@ try {
 
   // A ?run= link opens that run in a fresh browser and keeps the parameters. Hosted Lite starts live
   // data on load, but not while a link opens: live data must never replace the linked run.
-  const runContext = await browser.newContext();
+  const runContext = await browser.newContext(contextOptions);
+  await hideCover(runContext);
   const runPage = await runContext.newPage();
   runPage.on("pageerror", (error) => errors.push(error.message));
   const runSockets = [];
@@ -404,7 +453,8 @@ try {
   tlsProxy.listen(0, "127.0.0.1");
   await once(tlsProxy, "listening");
   const secureOrigin = `https://127.0.0.1:${tlsProxy.address().port}`;
-  const securePage = await browser.newPage({ ignoreHTTPSErrors: true });
+  const securePage = await browser.newPage({ ...contextOptions, ignoreHTTPSErrors: true });
+  await hideCover(securePage);
   const secureErrors = [];
   const sockets = [];
   securePage.on("pageerror", (error) => secureErrors.push(error.message));
@@ -434,7 +484,8 @@ try {
   assert.ok(sockets.includes(secureOrigin.replace("https:", "wss:") + "/api/v1/live"));
   assert.deepEqual(secureErrors, [], "HTTPS browser errors");
   console.log(
-    "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, attached DBCs, links, ?run= without live auto-start), CSV picker."
+    (device === null ? "" : `[device ${deviceName}] `) +
+      "Lite smoke passed: same-host MUR HTTP/WS and HTTPS/WSS, live value, sidebar filter, graph, shared timeline, experimental lap modes, layout download/upload, default layout on first open, from the menu and from ?layout=, Download runs (list, filters, faults, 202, downloads, open over live, open without live, attached DBCs, links, ?run= without live auto-start), CSV picker."
   );
 } finally {
   await browser?.close();
