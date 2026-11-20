@@ -136,6 +136,9 @@ BO_ 578 ECU_DashData3: 8 ECU
  SG_ ECU_FanRequest : 48|8@1+ (1,0) [0|1] "" DASH,TELEMETRY
  SG_ ECU_ABPCActive : 56|8@1+ (1,0) [0|1] "" DASH,TELEMETRY
 
+BO_ 579 ECU_DashSOC: 2 ECU
+ SG_ ECU_AccuSOCMin : 0|16@1+ (0.1,0) [0|100] "%" DASH,TELEMETRY
+
 BO_ 128 MUR_Fault: 8 Vector__XXX
  SG_ FAULT_Node : 0|8@1+ (1,0) [0|255] "" TELEMETRY
  SG_ FAULT_Bitmask : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
@@ -178,7 +181,7 @@ CM_ SG_ 512 DASH_SteeringAngle "Signed to allow left/right steering deflection."
 CM_ BO_ 513 "Dashboard driver button states + rotary mode switch. Transmit rate 20 Hz.";
 CM_ SG_ 513 DASH_ButtonStates "Bit-per-button: bit i = the dashboard's din-gpios[i], debounced, 1 = pressed. Per the team's pinout (2026-11-14): bit 2 = ready-to-drive (DIN[2], PC0), bit 4 = torque down (DIN[4], PA3), bit 5 = torque up (DIN[5], PA4), bit 6 = fans on/off (DIN[6], PA5), bit 7 = drive mode (DIN[7], PA7). Bits 3 and 8 are the wheel-speed encoder DINs, always 0 here. main_compute's MC_DASH_BTN_* constants must match.";
 CM_ SG_ 513 DASH_RotarySwitch "Rotary switch position index (0-15). ASSUMPTION - confirm number of switch positions.";
-CM_ SG_ 513 DASH_ScreenSw "MUR ADDITION (PROVISIONAL): the screen's CAN switches as last received on Dash CAN (Screen_Switches there), relayed so the ECU can act on them: bits 0-6 = CAN switches 1-7 (bit n-1 = switch n): 1 = torque down, 2 = torque up, 3 = traction control, 4 = lap marker (the dashboard acts on 4 itself). Bit 7 = 1 while the screen is being heard (a Screen_Switches frame within the last 500 ms); while it is 0 the whole byte is 0 and means nothing. The screen's switches are toggles, so a CHANGE of bits 0-6 is one press, in either direction - but only between two samples with bit 7 set: the ECU takes the first sample after the screen (re)appears as its new baseline, since a rebooted screen comes back with its switches reset.";
+CM_ SG_ 513 DASH_ScreenSw "MUR ADDITION (PROVISIONAL): the screen's CAN switches as last received on Dash CAN (Screen_Switches there), relayed so the ECU can act on them: bits 0-6 = CAN switches 1-7 (bit n-1 = switch n): 1 = torque down, 2 = torque up, 3 = traction control; 4 is unused (it set the GPS lap marker until 2026-11-19; laps are now marked with the RTD button, see Dashboard_Lap). Bit 7 = 1 while the screen is being heard (a Screen_Switches frame within the last 500 ms); while it is 0 the whole byte is 0 and means nothing. The screen's switches are toggles, so a CHANGE of bits 0-6 is one press, in either direction - but only between two samples with bit 7 set: the ECU takes the first sample after the screen (re)appears as its new baseline, since a rebooted screen comes back with its switches reset.";
 CM_ BO_ 514 "Dashboard wind speed sensor. Transmit rate 10 Hz (MEDIUM).";
 CM_ BO_ 515 "MUR ADDITION (PROVISIONAL): front wheel speeds from the two encoder DINs on the dashboard node (DIN[3] PC13 = FL, DIN[8] PC5 = FR), measured by EXTI edge timing (firmware/lib/dash/dash_wheel). Transmit rate 100 Hz (FAST).";
 CM_ SG_ 515 DASH_WheelSpeedFL "Wheel rpm = pulse frequency x 60 / pulses-per-rev. 0xFFFF (6553.5) = invalid: encoder pulses-per-rev not calibrated yet (TODO(calib)) - read DASH_WheelFreqFL instead. 0 after ~0.5 s with no pulse.";
@@ -199,16 +202,18 @@ CM_ BO_ 576 "MUR ADDITION (PROVISIONAL): driver-display data from the ECU, which
 CM_ SG_ 576 ECU_MotorSpeed "Motor speed magnitude in rpm, from the inverter's INV_MotorPosition on Tractive CAN, clipped to 0-10000 by the ECU; no direction. 0xFFFF = invalid: the ECU has not heard the inverter yet, or has lost it (comms timeout).";
 CM_ SG_ 576 ECU_AccuTempMax "Canonical car accumulator maximum, converted by ECU using voltage recovery and Table 5. Prefer complete fresh sweeps; if no sweep frames are fresh, use a fresh mapped summary maximum (1 degC input resolution). Partial or invalid live sweeps prevent fallback. 0x7FFF is invalid. Identical ECU_DashData bytes reach TTCS on Control CAN and screen on Telemetry/Dash CAN.";
 CM_ SG_ 576 ECU_AccuTempMin "Corrected minimum from complete fresh sensor sweeps. 0x7FFF is invalid, including during summary-maximum fallback; summary supplies no minimum.";
-CM_ SG_ 576 ECU_AccuSOC "MUR ADDITION (PROVISIONAL): accumulator state of charge from the ENNOID BMS's summary frame on Tractive CAN, its 0-255 byte rescaled to whole percent by firmware/lib/ennoid. 0xFF = invalid: the ECU has not heard the BMS yet, or has lost it (comms timeout). Only as good as the BMS's own capacity setting, which was wrong at last check (2000 Ah, reading about 10 %).";
+CM_ SG_ 576 ECU_AccuSOC "Accumulator SOC in whole percent. ECU firmware with ECU_DashSOC derives this from TTCS_ModelSOCMin; older firmware uses ENNOID summary SOC. 0xFF = unavailable.";
+CM_ BO_ 579 "Driver display SOC at 10 Hz. ECU publishes on Telemetry CAN; dashboard forwards the same bytes to Dash CAN.";
+CM_ SG_ 579 ECU_AccuSOCMin "Lowest TTCS model group SOC at 0.1 percent per count. Raw 0xFFFF (6553.5 percent) means TTCS SOC is invalid or stale. Display only.";
 CM_ BO_ 516 "MUR ADDITION (PROVISIONAL): wheel speeds in km/h for the driver's screen, computed on the dashboard node (firmware/lib/dash/dash_speed) and sent with identical bytes on Telemetry and Dash CAN (scripts/validate.py FORWARDED keeps the two definitions the same). Transmit rate 20 Hz. Same equations as mur-embedded's tools/bench/mur_can.py: 0.0766 km/h per wheel rpm (a 16 in tyre, assumed from the factor, not measured on the car).";
 CM_ SG_ 516 DASH_SpeedFL "Front left wheel km/h = DASH_WheelSpeedFL x 0.0766. 0xFFFF (6553.5) = invalid whenever DASH_WheelSpeedFL is.";
 CM_ SG_ 516 DASH_SpeedFR "Front right wheel km/h; see DASH_SpeedFL.";
-CM_ BO_ 518 "MUR ADDITION (PROVISIONAL): lap timing for the driver's screen, computed on the dashboard node (firmware/lib/dash/dash_lap) from the front SBG Ellipse-D's EKF position, and sent with identical bytes on Telemetry and Dash CAN (scripts/validate.py FORWARDED). Transmit rate 10 Hz. Bytes 6-7 carry the best lap. The driver sets the start/finish marker with the screen's lap-marker CAN switch (Screen_Switches, Dash CAN): the car's position at that moment becomes the marker and the lap clock starts. A lap ends at the car's closest approach to the marker on a pass within 10 m of it, at least 10 s after the lap started, and only after the car has left that 10 m circle since. Position arrives at 10 Hz, so a lap time is good to about +/-0.1 s. Bench-unverified. The marker lives in RAM: a dashboard reset clears it.";
-CM_ SG_ 518 DASH_LastLap "Time of the last completed lap. 0xFFFF (655.35) = none yet: no marker set, or no lap completed since it was. A lap longer than 655.34 s reads 655.34.";
-CM_ SG_ 518 DASH_CurrentLap "Time since the current lap started. 0xFFFF (655.35) = no marker set. Saturates at 655.34.";
-CM_ SG_ 518 DASH_LapCount "Laps completed since the marker was last set; wraps at 255.";
-CM_ SG_ 518 DASH_BestLap "Fastest lap completed since the marker was last set. 0xFFFF (655.35) = none yet.";
-CM_ SG_ 518 DASH_LapMarker "1 = a start/finish marker is set. Stays 0 after a press of the lap-marker switch if the front SBG had no valid position (SBG_FRONT_PositionValid) at that moment: press it again once it has.";
+CM_ BO_ 518 "MUR ADDITION (PROVISIONAL): lap timing for the driver's screen, computed on the dashboard node (firmware/lib/dash/dash_lap) from presses of the driver's ready-to-drive (RTD) button, and sent with identical bytes on Telemetry and Dash CAN (scripts/validate.py FORWARDED). Transmit rate 10 Hz. Bytes 6-7 carry the best lap. Manual timing with no GPS (maintainer direction 2026-11-19): while the car is ready to drive (ECU_DashData3 ECU_StartStage 4, heard within 500 ms), each press of the RTD button (a rising edge of Dashboard_Inputs DASH_ButtonStates bit 2) is a lap marker. The first press starts the lap clock; each later press ends the current lap and starts the next, unless it comes less than 2 s after the lap started, which is ignored so a double press cannot record a near-zero lap. Presses while the car is not ready to drive are ignored, including the press that arms ready-to-drive. Entering ready-to-drive clears the lap times and count. Every press goes through the same 30 ms debounce, so a lap time is as good as the driver's timing of the press. Bench-unverified. Lives in RAM: a dashboard reset also clears it.";
+CM_ SG_ 518 DASH_LastLap "Time of the last completed lap. 0xFFFF (655.35) = none yet: no lap completed since the car last entered ready-to-drive (or since the dashboard started). A lap longer than 655.34 s reads 655.34.";
+CM_ SG_ 518 DASH_CurrentLap "Time since the current lap started. 0xFFFF (655.35) = lap timing not started: no RTD-button lap press since the car last entered ready-to-drive. Saturates at 655.34.";
+CM_ SG_ 518 DASH_LapCount "Laps completed since the car last entered ready-to-drive; wraps at 255.";
+CM_ SG_ 518 DASH_BestLap "Fastest lap completed since the car last entered ready-to-drive. 0xFFFF (655.35) = none yet.";
+CM_ SG_ 518 DASH_LapMarker "1 = lap timing is running: the RTD button has been pressed as a lap marker since the car last entered ready-to-drive. 0 = not started. Until 2026-11-19 this meant a GPS start/finish marker was set; the GPS lap timer has been removed.";
 CM_ SG_ 516 DASH_SpeedRear "Rear wheel km/h from motor speed, there being no rear wheel sensor: ECU_MotorSpeed / 4.777 (the final drive ratio as given by the team 2026-11-01) x 0.0766. The diff makes it the average of the two rear wheels, so it reads a little off from either one in a corner. 0xFFFF (6553.5) = invalid: ECU_MotorSpeed is invalid, or the dashboard has had no ECU_DashData for 500 ms.";
 CM_ SG_ 516 DASH_SpeedCar "MUR ADDITION (PROVISIONAL): one car speed for the screen's speed readouts (the lap-timing and autocross pages): the mean of DASH_SpeedFL and DASH_SpeedFR, or whichever one is valid. The fronts are undriven, so wheelspin does not inflate it, unlike DASH_SpeedRear. 0xFFFF (6553.5) = invalid: neither front speed is valid.";
 CM_ BO_ 577 "MUR ADDITION (PROVISIONAL): more driver-display data from the ECU, ECU_DashData being full: brake pressures and throttle from the pedalbox's Pedal_Status, motor and inverter temperatures from the inverter, all on Tractive CAN. Transmit rate 10 Hz (the ECU's best-effort thread). The dashboard forwards it to Dash CAN byte-for-byte, so it must stay identical in mur_dashboard_can.dbc (scripts/validate.py FORWARDED). Byte 7 reserved: add display signals there, byte-aligned and 8 or 16 bits wide, never moving, resizing or rescaling an existing one.";
@@ -248,6 +253,7 @@ BA_ "GenMsgCycleTime" BO_ 560 200;
 BA_ "GenMsgCycleTime" BO_ 561 500;
 BA_ "GenMsgCycleTime" BO_ 128 0;
 BA_ "GenMsgCycleTime" BO_ 576 100;
+BA_ "GenMsgCycleTime" BO_ 579 100;
 BA_ "GenMsgCycleTime" BO_ 516 50;
 BA_ "GenMsgCycleTime" BO_ 577 100;
 BA_ "GenMsgCycleTime" BO_ 578 100;
@@ -265,6 +271,7 @@ BA_ "GenMsgSendType" BO_ 560 0;
 BA_ "GenMsgSendType" BO_ 561 0;
 BA_ "GenMsgSendType" BO_ 128 2;
 BA_ "GenMsgSendType" BO_ 576 0;
+BA_ "GenMsgSendType" BO_ 579 0;
 BA_ "GenMsgSendType" BO_ 516 0;
 BA_ "GenMsgSendType" BO_ 577 0;
 BA_ "GenMsgSendType" BO_ 578 0;

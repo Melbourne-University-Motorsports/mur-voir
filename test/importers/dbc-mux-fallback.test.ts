@@ -7,15 +7,26 @@
 
 // A bus decoded with attached snapshots falls back to the default set's definition of a frame the
 // default set multiplexes and the snapshot doesn't (old runs carry ENNOID_VCell with flat cells).
-// The bundled DBCs aren't multiplexed yet, so the default set here is a DBC folder.
+// The bundled DBCs multiplex it since mur-msgs v1.0.0; OLD_ENNOID rebuilds the flat form runs carry.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BUNDLED_DBCS } from "../../src/hub/dataSources/can/BundledDBCs";
 import { CandumpIndex, DATA_STRIDE, FLAG_EXTENDED } from "../../src/hub/dataSources/can/Candump";
 import { BusDBCs, createCandumpImporter } from "../../src/hub/dataSources/can/CandumpImporter";
 
-const OLD_ENNOID = BUNDLED_DBCS["vendor/ENNOID_BMS.dbc"];
 const VCELL_BLOCK = /(BO_ 2147494154 ENNOID_VCell: )8( ENNOID\r?\n)((?: SG_ [^\n]*\n)+)/;
+const FLAT_VCELL = [
+  ' SG_ ENNOID_CellIndex : 7|8@0+ (1,0) [0|255] "" TTCS',
+  ' SG_ ENNOID_CellTotal : 15|8@0+ (1,0) [0|255] "" TTCS',
+  ' SG_ ENNOID_CellV0 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS',
+  ' SG_ ENNOID_CellV1 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS',
+  ' SG_ ENNOID_CellV2 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS'
+];
+/** ENNOID_BMS.dbc as mur-msgs shipped it before v1.0.0, with ENNOID_VCell's cells flat. */
+const OLD_ENNOID = BUNDLED_DBCS["vendor/ENNOID_BMS.dbc"].replace(
+  VCELL_BLOCK,
+  (_, head: string, tail: string) => `${head}8${tail}${FLAT_VCELL.join("\n")}\n`
+);
 const VCELL_ID = 0x290a;
 const cellKey = (cell: number) => "ENNOID/ENNOID_CellV" + cell.toString().padStart(3, "0");
 const cellMillivolts = (cell: number) => (cell === 108 ? -1 : 3300 + cell);
@@ -40,6 +51,9 @@ function multiplexedEnnoid(factor = 0.001, length = 8): string {
 const MUX_FOLDER = new TextEncoder().encode(
   JSON.stringify({ ...BUNDLED_DBCS, "vendor/ENNOID_BMS.dbc": multiplexedEnnoid() })
 );
+
+/** A DBC folder with the old flat ENNOID_VCell, so neither definition is multiplexed. */
+const FLAT_FOLDER = new TextEncoder().encode(JSON.stringify({ ...BUNDLED_DBCS, "vendor/ENNOID_BMS.dbc": OLD_ENNOID }));
 
 /** One 1 Hz ENNOID_VCell burst (36 frames) on each interface. */
 function burst(ifaces: string[]): CandumpIndex {
@@ -101,7 +115,7 @@ test("an old run's flat ENNOID_VCell snapshot decodes with the multiplexed defau
 
 test("both definitions flat: the attached one decodes, as before", () => {
   const attached = OLD_ENNOID.replace(/\(0\.001,0\)/g, "(0.01,0)");
-  const { cells, values, meta } = open(["can0"], { can0: { "bus0_ENNOID_BMS.dbc": attached } }, null);
+  const { cells, values, meta } = open(["can0"], { can0: { "bus0_ENNOID_BMS.dbc": attached } }, FLAT_FOLDER);
   assert.deepEqual(cells, OLD_CELLS);
   assert.equal(values("ENNOID/ENNOID_CellV0").length, 36, "Every group lands in the same three fields");
   assert.equal(values("ENNOID/ENNOID_CellV0")[0], 33.01, "Scaled by the snapshot");
@@ -132,9 +146,22 @@ test("a bus without attachments decodes with the default set and lists no overri
   assert.deepEqual(Object.keys(meta.dbcsByBus.can1), ["from", "files"]);
   assert.equal(meta.dbcsByBus.can1.from, "DBC folder");
 
-  // With the bundled (flat) set and no attachments, nothing changes
+  // With the bundled set and no attachments, the bundled multiplexed definition decodes directly
   const bundled = open(["can0"], {}, null);
-  assert.deepEqual(bundled.cells, OLD_CELLS);
+  assert.deepEqual(bundled.cells, ALL_CELLS);
   assert.deepEqual(bundled.meta.dbcsByBus.can0, { from: "bundled", files: bundled.meta.dbcsByBus.can0.files });
   assert.equal(bundled.meta.dbcsByBus.can0.overrides, undefined);
+});
+
+test("with no DBC folder, an old run's flat snapshot falls back to the bundled multiplexed definition", () => {
+  assert.doesNotMatch(OLD_ENNOID, / m\d+ : /, "The rebuilt snapshot is flat");
+  const { cells, values, meta } = open(["can0"], { can0: { "bus0_ENNOID_BMS.dbc": OLD_ENNOID } }, null);
+  assert.deepEqual(cells, ALL_CELLS);
+  assert.deepEqual(values(cellKey(108)), [-0.001]);
+  assert.deepEqual(meta.dbcsByBus.can0, {
+    from: "attached",
+    files: ["bus0_ENNOID_BMS.dbc"],
+    overrides: ["ENNOID_VCell"],
+    overridesFrom: "bundled"
+  });
 });

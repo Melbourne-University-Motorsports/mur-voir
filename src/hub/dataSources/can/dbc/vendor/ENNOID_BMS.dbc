@@ -44,11 +44,116 @@ BO_ 2147493642 ENNOID_I: 8 ENNOID
  SG_ ENNOID_PackCurrent2 : 39|32@0- (1,0) [-1000|1000] "A" TTCS
 
 BO_ 2147494154 ENNOID_VCell: 8 ENNOID
- SG_ ENNOID_CellIndex : 7|8@0+ (1,0) [0|255] "" TTCS
+ SG_ ENNOID_CellIndex M : 7|8@0+ (1,0) [0|255] "" TTCS
  SG_ ENNOID_CellTotal : 15|8@0+ (1,0) [0|255] "" TTCS
- SG_ ENNOID_CellV0 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
- SG_ ENNOID_CellV1 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
- SG_ ENNOID_CellV2 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV001 m0 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV002 m0 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV003 m0 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV004 m3 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV005 m3 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV006 m3 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV007 m6 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV008 m6 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV009 m6 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV010 m9 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV011 m9 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV012 m9 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV013 m12 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV014 m12 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV015 m12 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV016 m15 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV017 m15 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV018 m15 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV019 m18 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV020 m18 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV021 m18 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV022 m21 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV023 m21 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV024 m21 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV025 m24 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV026 m24 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV027 m24 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV028 m27 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV029 m27 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV030 m27 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV031 m30 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV032 m30 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV033 m30 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV034 m33 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV035 m33 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV036 m33 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV037 m36 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV038 m36 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV039 m36 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV040 m39 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV041 m39 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV042 m39 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV043 m42 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV044 m42 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV045 m42 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV046 m45 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV047 m45 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV048 m45 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV049 m48 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV050 m48 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV051 m48 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV052 m51 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV053 m51 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV054 m51 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV055 m54 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV056 m54 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV057 m54 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV058 m57 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV059 m57 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV060 m57 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV061 m60 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV062 m60 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV063 m60 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV064 m63 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV065 m63 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV066 m63 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV067 m66 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV068 m66 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV069 m66 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV070 m69 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV071 m69 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV072 m69 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV073 m72 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV074 m72 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV075 m72 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV076 m75 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV077 m75 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV078 m75 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV079 m78 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV080 m78 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV081 m78 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV082 m81 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV083 m81 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV084 m81 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV085 m84 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV086 m84 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV087 m84 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV088 m87 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV089 m87 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV090 m87 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV091 m90 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV092 m90 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV093 m90 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV094 m93 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV095 m93 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV096 m93 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV097 m96 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV098 m96 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV099 m96 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV100 m99 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV101 m99 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV102 m99 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV103 m102 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV104 m102 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV105 m102 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV106 m105 : 23|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV107 m105 : 39|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
+ SG_ ENNOID_CellV108 m105 : 55|16@0- (0.001,0) [-32.768|32.767] "V" TTCS
 
 BO_ 2147494666 ENNOID_Temps: 8 ENNOID
  SG_ ENNOID_TempIndex : 7|8@0+ (1,0) [0|255] "" TTCS
@@ -81,8 +186,8 @@ BO_ 2147486243 ENNOID_KeepAliveSafety: 1 TTCS
 CM_ "PROVISIONAL, DOCUMENTATION-ONLY vendor DBC for the ENNOID BMS in its VESC status protocol (BMS Tool: Load status protocol = VESC), the M25 unit's setting (firmware 6.6, CAN ID 10, VESC ID style, 500 kbit/s; 2026-10-12). Layouts from the newest public source, the ENNOID branch of EnnoidMe/ENNOID-BMS-Firmware (V5.2, modCANSendStatusVESC); TODO(capture): confirm against the 6.6 unit. Everything is sent once per second as one burst; all multi-byte fields are big-endian. Float signals are VESC float32_auto, bit-identical to IEEE-754 single. The firmware decoder is firmware/lib/ennoid/src/ennoid_vesc.c and does NOT use this file. Not wired into dbc/generate.py. Not listed: AH_WH (0x280A) and BAL (0x2A0A).";
 CM_ BO_ 2147493386 "1 Hz. Pack voltage = sum of cells on M25. ChargerVoltage is the BMS's charger-input measurement.";
 CM_ BO_ 2147493642 "1 Hz. MEANINGLESS on M25: the BMS has no current sensor. Not subscribed by the TTCS.";
-CM_ BO_ 2147494154 "1 Hz, one frame per 3 cells (108S = 36 frames). CellIndex is the first cell in the frame. Not subscribed by the TTCS (the summary carries min/max).";
-CM_ BO_ 2147494666 "1 Hz, one frame per 3 sensors; the last frame is shorter (DLC 4/6/8) when the count isn't a multiple of 3. EVERY channel the BMS reports, enabled or not. The TTCS uses the minimum for the charger's cold-charge check only.";
+CM_ BO_ 2147494154 "1 Hz burst of 36 frames on this one ID, 3 cells per frame, sent back to back (108 cells). CellIndex is the multiplexor: the 0-based index of the frame's first cell (0, 3, ..., 105). Cells are numbered from 1 like the BMS Tool's C1..C108: the frame with CellIndex i carries CellV(i+1) to CellV(i+3), so CellV001..003 at 0 and CellV106..108 at 105. CellTotal is the cell count the BMS is configured for. Written by scripts/generate_ennoid_mux.py --cells 108; rerun it if the pack changes. Not subscribed by the TTCS (the summary carries min/max).";
+CM_ BO_ 2147494666 "1 Hz, one frame per 3 sensors; the last frame is shorter (DLC 4/6/8) when the count isn't a multiple of 3. EVERY channel the BMS reports, enabled or not. The TTCS uses the minimum for the charger's cold-charge check only. Not multiplexed yet: the sensor count is unknown (scripts/generate_ennoid_mux.py --temps N multiplexes it).";
 CM_ BO_ 2147494922 "1 Hz. BMS board temperatures and humidity. Not subscribed by the TTCS.";
 CM_ BO_ 2147495178 "1 Hz. CAN_PACKET_BMS_SOC_SOH_TEMP_STAT. TempCellMax is the BMS's own maximum over its ENABLED sensors (1 degC resolution): the TTCS over-temperature input. ChargeAllowed (b2) feeds the TTCS charge enforcement and the charger. There is no discharge-allowed flag in this protocol.";
 CM_ BO_ 2147486243 "TTCS -> ENNOID safety keep-alive, fixed literal ID 0x0A23 (checked before node-ID filtering). The BMS only acts on it with 'Use Safety CAN Input' on (off on M25). TTCS sends 0x0F every 1 s.";

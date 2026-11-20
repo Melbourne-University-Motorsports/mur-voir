@@ -71,6 +71,24 @@ BO_ 274 TTCS_Limits: 8 TTCS
  SG_ TTCS_BattTempValid : 48|1@1+ (1,0) [0|1] "" ECU,TELEMETRY
  SG_ TTCS_LimitsCounter : 56|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
 
+BO_ 275 TTCS_ModelSOC: 8 TTCS
+ SG_ TTCS_ModelSOCMin : 0|16@1+ (0.1,0) [0|100] "%" ECU,TELEMETRY
+ SG_ TTCS_ModelSOCMean : 16|16@1+ (0.1,0) [0|100] "%" ECU,TELEMETRY
+ SG_ TTCS_ModelSOCMax : 32|16@1+ (0.1,0) [0|100] "%" ECU,TELEMETRY
+ SG_ TTCS_ModelSOCSeededGroups : 48|8@1+ (1,0) [0|108] "" ECU,TELEMETRY
+ SG_ TTCS_ModelSOCValid : 56|1@1+ (1,0) [0|1] "" ECU,TELEMETRY
+
+BO_ 276 TTCS_ModelDiagnostics: 8 TTCS
+ SG_ TTCS_ModelCurrentFresh : 0|1@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ TTCS_ModelVoltageFresh : 1|1@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ TTCS_ModelHistoryCovered : 2|1@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ TTCS_ModelQueueOverflowSeen : 3|1@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ TTCS_ModelGatedFrameSeen : 4|1@1+ (1,0) [0|1] "" TELEMETRY
+ SG_ TTCS_ModelDegradedGroups : 8|8@1+ (1,0) [0|108] "" TELEMETRY
+ SG_ TTCS_ModelCurrentAgeMs : 16|16@1+ (1,0) [0|65535] "ms" TELEMETRY
+ SG_ TTCS_ModelAcceptedUpdates : 32|16@1+ (1,0) [0|65535] "" TELEMETRY
+ SG_ TTCS_ModelFutureAcqRejects : 48|16@1+ (1,0) [0|65535] "" TELEMETRY
+
 BO_ 576 ECU_DashData: 8 ECU
  SG_ ECU_MotorSpeed : 0|16@1+ (1,0) [0|10000] "rpm" TTCS,TELEMETRY
  SG_ ECU_AccuTempMax : 16|16@1- (0.1,0) [-3276.8|3276.7] "degC" TTCS,TELEMETRY
@@ -317,6 +335,18 @@ CM_ SG_ 273 TTCS_HVCurrentMismatch "1 = the two DHAB channels disagree beyond to
 CM_ SG_ 274 TTCS_BattHighTemp "Corrected maximum received from ECU_DashData on Control CAN. ECU owns Table 5 conversion and summary fallback. Read only when TTCS_BattTempValid is 1.";
 CM_ SG_ 274 TTCS_BattTempValid "1 = ENNOID pack/summary comms are fresh and a valid ECU temperature arrived within 500 ms. Includes mapped summary fallback. 0 during missing data or TEST bypass.";
 CM_ BO_ 274 "MUR ADDITION (PROVISIONAL): computed pack current limits, the Orion BMS 2 DCL/CCL replacement. The ENNOID only produces voltage-proximity throttle percentages (no amps, no temperature derating, no internal-resistance model - verified against its modPowerElectronics.c), so the TTCS node computes amp-denominated limits from ENNOID cell-voltage extremes + an R-vs-temperature calibration table + temperature derate curves (firmware/lib/ttcs/ttcs_limits). The ECU MUST treat TTCS_DCL as a live torque/current cap (graceful derate path); the TTCS separately latches a fault and opens the SDC if actual current grossly exceeds the limit for a sustained window (enforcement path). 0 A is what an unconfigured/faulted TTCS broadcasts - consumers must treat 0 as 'no traction allowed', never as 'no limit'. Transmit rate 10 Hz.";
+CM_ BO_ 275 "MUR ADDITION (PROVISIONAL DIAGNOSTIC): the TTCS shadow battery model's pack HV state of charge, transmitted by the shadow housekeeping task at 1 Hz. Min/mean/max cover only groups with a seeded model SoC; unseeded groups are excluded. Diagnostic only: nothing in the TTCS uses this frame for DCL/CCL, the shutdown circuit, the dashboard or any other control path, and it carries no accuracy or control-authority guarantee. Zero seeded groups: all three percentages and TTCS_ModelSOCSeededGroups are 0 and TTCS_ModelSOCValid is 0. Partial or stale model: the statistics are still broadcast as diagnostics with TTCS_ModelSOCValid 0. Bits 57-63 are reserved and transmitted as 0.";
+CM_ SG_ 275 TTCS_ModelSOCMin "Lowest per-group model SoC across seeded groups only, 0.1 %/count (raw percent = round(clamped SoC fraction * 1000)). Reads 0 when TTCS_ModelSOCSeededGroups is 0. Diagnostic only; see TTCS_ModelSOCValid.";
+CM_ SG_ 275 TTCS_ModelSOCMean "Arithmetic mean of the per-group model SoC over seeded groups only, 0.1 %/count (raw percent = round(clamped SoC fraction * 1000)). Reads 0 when TTCS_ModelSOCSeededGroups is 0. Diagnostic only; see TTCS_ModelSOCValid.";
+CM_ SG_ 275 TTCS_ModelSOCMax "Highest per-group model SoC across seeded groups only, 0.1 %/count (raw percent = round(clamped SoC fraction * 1000)). Reads 0 when TTCS_ModelSOCSeededGroups is 0. Diagnostic only; see TTCS_ModelSOCValid.";
+CM_ SG_ 275 TTCS_ModelSOCSeededGroups "Number of battery groups with a seeded model SoC and therefore included in TTCS_ModelSOCMin/Mean/Max, 0..108. Unseeded groups are excluded from the statistics. Below 108 means partial coverage, so TTCS_ModelSOCValid is 0.";
+CM_ SG_ 275 TTCS_ModelSOCValid "1 = all 108 groups are seeded, the model's group voltage observations are fresh, pack current is fresh, and no group is degraded (the ttbm_current_limits ALL_SEEDED/FRESH/CURRENT_OK/NO_DEGRADED quality bits excluding its controller-valid flag). 0 = diagnostics only / not fresh full-pack coverage. Even at 1 this is a diagnostic estimate: it carries no accuracy guarantee and no control authority.";
+CM_ BO_ 276 "Provisional TTCS estimator diagnostics, transmitted with TTCS_ModelSOC at 1 Hz. Freshness, history coverage and degraded groups use the estimator's quality checks. These flags and the degraded-group count are reported after all groups seed. Bits 5-7 are reserved.";
+CM_ SG_ 276 TTCS_ModelCurrentAgeMs "Age of the last inverter current sample accepted by the TTCS model worker. 65535 means there has been no accepted sample, or its age is at least 65535 ms.";
+CM_ SG_ 276 TTCS_ModelAcceptedUpdates "Number of accepted per-group voltage corrections since TTCS boot, modulo 65536. Initial SOC seeding does not count as a voltage correction.";
+CM_ SG_ 276 TTCS_ModelFutureAcqRejects "Number of per-group voltage corrections for seeded groups rejected because the estimated acquisition time was newer than the latest current sample, modulo 65536.";
+CM_ SG_ 276 TTCS_ModelGatedFrameSeen "1 once a valid cell frame has been skipped because the VTot marker was missing or too old, or the model was still waiting for its R0 prior.";
+CM_ SG_ 276 TTCS_ModelQueueOverflowSeen "1 once the model worker has observed an RX queue overflow since boot.";
 CM_ BO_ 288 "ECU torque arbitration message, consumed internally by ECU/VCU logic before being translated into the Cascadia PM100DZ M192_Command_Message (vendor ID 0xC0) - these are NOT the same CAN message. Transmit rate capped at 100 Hz (Tractive CAN load; design brief said 200 Hz).";
 CM_ SG_ 288 ECU_TorqueRequest "Signed to allow negative (regen) torque requests per can_standard.md signedness rule.";
 CM_ SG_ 288 ECU_DriveMode "The driver-selected mode, the same value as Telemetry CAN ECU_DashData3.ECU_DashMode (1 Accel, 2 Skidpad, 3 AutoX, 4 Endurance, 5 Custom; see VAL_). Each mode has its own torque limit (Custom's set from the dash); after a change the new limit takes over once the driver is off the throttle. ECU_TorqueLimit shows the cap in force.";
@@ -368,6 +398,8 @@ BA_ "GenMsgCycleTime" BO_ 257 100;
 BA_ "GenMsgCycleTime" BO_ 272 100;
 BA_ "GenMsgCycleTime" BO_ 273 100;
 BA_ "GenMsgCycleTime" BO_ 274 100;
+BA_ "GenMsgCycleTime" BO_ 275 1000;
+BA_ "GenMsgCycleTime" BO_ 276 1000;
 BA_ "GenMsgCycleTime" BO_ 288 10;
 BA_ "GenMsgCycleTime" BO_ 289 50;
 BA_ "GenMsgCycleTime" BO_ 290 100;
@@ -394,6 +426,8 @@ BA_ "GenMsgSendType" BO_ 257 0;
 BA_ "GenMsgSendType" BO_ 272 0;
 BA_ "GenMsgSendType" BO_ 273 0;
 BA_ "GenMsgSendType" BO_ 274 0;
+BA_ "GenMsgSendType" BO_ 275 0;
+BA_ "GenMsgSendType" BO_ 276 0;
 BA_ "GenMsgSendType" BO_ 288 0;
 BA_ "GenMsgSendType" BO_ 289 0;
 BA_ "GenMsgSendType" BO_ 290 0;
