@@ -11,6 +11,7 @@ import { LiveDataSource } from "./LiveDataSource";
 import MQTTSource from "./mqtt/MQTTSource";
 import MURSource from "./mur/MURSource";
 import NT4Source, { NT4Mode } from "./nt4/NT4Source";
+import RadioSource from "./radio/RadioSource";
 
 /** A live data source that can be selected by the user. */
 export interface LiveSourceDefinition extends LiveSourceInfo {
@@ -37,6 +38,14 @@ export const LIVE_SOURCES: LiveSourceDefinition[] = [
     defaultAddress: IS_LITE ? window.location.origin : "http://localhost:8090",
     liteCompatible: true,
     create: () => new MURSource()
+  },
+  {
+    // The base radio over USB serial. It has no address; this is only the window title.
+    id: "radio",
+    name: "900 MHz radio",
+    defaultAddress: "900 MHz radio",
+    liteCompatible: true,
+    create: () => new RadioSource()
   },
   {
     id: "mqtt",

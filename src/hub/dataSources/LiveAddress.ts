@@ -9,6 +9,7 @@
 export const sessionAddresses = new Map<string, string>();
 
 export function validateLiveAddress(source: string, address: string): string | null {
+  if (source === "radio") return null; // Found over USB, not by address
   if (/\s/.test(address)) return "Address cannot contain spaces.";
   if (source === "mqtt") {
     try {

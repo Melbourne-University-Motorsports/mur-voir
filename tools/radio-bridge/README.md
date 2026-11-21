@@ -1,5 +1,7 @@
 # Radio JSONL bridge
 
+To watch the radio live, plug the base radio into USB and choose **900 MHz radio** in File > Connect. You don't need this bridge for that. It replays base-station JSONL files over MQTT for debugging.
+
 Configure Wireless-telem to write base-station JSONL to a local file. Use that file as the bridge input.
 
 From mur-voir, start the local MQTT-over-WebSocket bridge:

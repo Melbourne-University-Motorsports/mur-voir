@@ -20,6 +20,7 @@ import {
   nativeImage,
   nativeTheme,
   powerMonitor,
+  session,
   shell,
   TitleBarOverlay,
   TouchBar,
@@ -2745,6 +2746,16 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin" && !app.isPackaged) {
     app.dock?.setIcon(path.join(__dirname, "../icons/window-icon.png"));
   }
+
+  // The 900 MHz radio source reads the base radio over Web Serial. Allow serial ports without a
+  // chooser, and answer a chooser request with the XBee adapter (FTDI or Silicon Labs) if present.
+  session.defaultSession.setDevicePermissionHandler((details) => details.deviceType === "serial");
+  session.defaultSession.on("select-serial-port", (event, ports, _webContents, callback) => {
+    event.preventDefault();
+    const radio =
+      ports.find((port) => ["1027", "4292"].includes(port.vendorId ?? "")) ?? ports.find((port) => port.vendorId);
+    callback(radio?.portId ?? "");
+  });
 
   // Runs cached by Download Runs in an earlier session
   void downloadRuns.clearCache();
