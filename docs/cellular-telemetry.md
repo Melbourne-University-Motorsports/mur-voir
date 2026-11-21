@@ -74,4 +74,4 @@ It checks five-minute history, wire subscriptions, a backend outage and restart,
 | No recent history             | The backend may have restarted or may return history-unavailable. Live samples still display.                                                     |
 | A saved field stays missing   | The publisher must include the exact `dbc.signal` and `dbc.message` metadata for DBC-decoded signals. Derived channels need reassignment.         |
 
-MQTT direct and the [radio bridge](../tools/radio-bridge/README.md) remain available for debugging and the existing XBee path.
+Without cellular, plug the base 900 MHz radio into USB and choose **900 MHz radio** in File > Connect. MQTT direct and the [radio bridge](../tools/radio-bridge/README.md) remain available for debugging.

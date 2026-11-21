@@ -41,7 +41,7 @@ export class ConnectDialog {
             <td class="label">Source</td>
             <td class="input"><select class="connect-source mv-select" title="Select the live source"></select></td>
           </tr>
-          <tr>
+          <tr class="address-option">
             <td class="label">Address</td>
             <td class="input"><input class="connect-address" type="text" spellcheck="false" title="Address of the live source" /></td>
           </tr>
@@ -104,8 +104,11 @@ export class ConnectDialog {
       this.validate();
     }
     this.backdrop.hidden = false;
-    this.addressInput.focus();
-    this.addressInput.select();
+    if (selected.id === "radio") (this.backdrop.querySelector(".connect-confirm") as HTMLElement).focus();
+    else {
+      this.addressInput.focus();
+      this.addressInput.select();
+    }
   }
 
   updateStatus(status: LiveDataSourceStatus) {
@@ -148,6 +151,7 @@ export class ConnectDialog {
     if (source === undefined) return;
     this.addressInput.placeholder = source.defaultAddress;
     this.addressInput.value = sessionAddresses.get(source.id) ?? source.defaultAddress;
+    (this.backdrop.querySelector(".address-option") as HTMLElement).hidden = source.id === "radio";
     this.loadMQTT();
     this.validate();
   }

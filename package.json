@@ -1,7 +1,7 @@
 {
   "name": "mur-voir",
   "productName": "mur-voir",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Telemetry dashboard for Melbourne Uni Motorsport (based on AdvantageScope)",
   "author": {
     "name": "Melbourne University Motorsports",

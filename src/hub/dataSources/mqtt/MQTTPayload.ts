@@ -115,7 +115,11 @@ export function decodeMQTTCAN(bytes: Uint8Array, timestampPrefix: boolean): MQTT
   const id = rawId & 0x1fffffff;
   const dlc = bytes[offset + 4];
   if (dlc > 8) return [];
-  const data = bytes.subarray(offset + 5, offset + 5 + dlc);
+  return decodeCANFrame(id, extended, bytes.subarray(offset + 5, offset + 5 + dlc), tNs);
+}
+
+/** Decodes one CAN data frame with the bundled DBCs into `<NODE>/<Signal>` values (enums also at `/raw`). */
+export function decodeCANFrame(id: number, extended: boolean, data: Uint8Array, tNs: string | null): MQTTValue[] {
   const message = mqttDBC.get(id, extended);
   if (!message) return [{ path: getUnknownFrameKey(id, extended), value: data, tNs }];
   const mux = message.signals.find((signal) => signal.isMultiplexor);
