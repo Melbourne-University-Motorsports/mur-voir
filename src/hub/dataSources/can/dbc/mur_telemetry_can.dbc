@@ -140,8 +140,12 @@ BO_ 579 ECU_DashSOC: 2 ECU
  SG_ ECU_AccuSOCMin : 0|16@1+ (0.1,0) [0|100] "%" DASH,TELEMETRY
 
 BO_ 128 MUR_Fault: 8 Vector__XXX
- SG_ FAULT_Node : 0|8@1+ (1,0) [0|255] "" TELEMETRY
- SG_ FAULT_Bitmask : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
+ SG_ FAULT_Node M : 0|8@1+ (1,0) [0|255] "" TELEMETRY
+ SG_ FAULT_Bitmask_Pedalbox m1 : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
+ SG_ FAULT_Bitmask_Dash m2 : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
+ SG_ FAULT_Bitmask_Rear m3 : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
+ SG_ FAULT_Bitmask_TTCS m4 : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
+ SG_ FAULT_Bitmask_Charger m5 : 8|32@1+ (1,0) [0|4294967295] "" TELEMETRY
  SG_ FAULT_Counter : 56|8@1+ (1,0) [0|255] "" TELEMETRY
 
 BO_ 1794 MUR_HB_Dash: 8 DASH
@@ -198,6 +202,60 @@ CM_ SG_ 561 TELEM_LVBatteryVoltage "LV battery terminal voltage, from the batter
 CM_ SG_ 561 TELEM_LVBatteryCurrent "LV battery current, from the battery's own BMS; positive = discharging, negative = charging (the battery's own sign). Raw 0x7FFF = invalid (no fresh battery). Battery reports mA: assumed, not yet checked against a clamp meter.";
 CM_ SG_ 561 TELEM_LVBatterySOC "State of charge of the lower of the LV batteries, whole percent, rounded down from the battery BMS's 0.01 % value. Raw 0xFF = invalid (no fresh battery). Only as good as the battery's own SoC estimate.";
 CM_ BO_ 128 "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): latched fault broadcast, any MUR sensor node transmits on fault raise (EVENT). FAULT_Node identifies the sender (1=Pedalbox 2=Dashboard 3=Rear 4=TTCS). Same message exists on Control CAN for nodes homed there.";
+CM_ SG_ 128 FAULT_Node "Sending node, and the multiplexor: each node's fault mask has its own FAULT_Bitmask_<node> signal, because the bit numbers mean different faults on each node.";
+CM_ SG_ 128 FAULT_Bitmask_Pedalbox "The Pedalbox's latched fault mask, sent when FAULT_Node is the Pedalbox. Same bits as PEDAL_BSEStatus and HB_PEDAL_FaultBits (firmware/lib/pedal/include/pedal_faults.h in mur-embedded). Bits 2 to 6 are reserved there and not raised yet.
+bit 0: APPS implausible; Accelerator pedal sensors disagree; warning
+bit 1: Pedal cal invalid; Pedalbox calibration invalid; warning
+bit 2: BSE active; Brake system encoder active; warning
+bit 3: BSPD trip; BSPD fault, shutdown circuit opened; shutdown
+bit 4: APPS A out of range; Accelerator pedal sensor A outside its plausible range; warning
+bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible range; warning
+bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
+CM_ SG_ 128 FAULT_Bitmask_Dash "The dashboard's latched fault mask, sent when FAULT_Node is the dashboard. Only bit 0 is used (firmware/apps/dashboard in mur-embedded); the real fault map is still TBD.
+bit 0: Analog dead; Dashboard ADC failed to start; warning";
+CM_ SG_ 128 FAULT_Bitmask_Rear "The rear node's latched fault mask, sent when FAULT_Node is the rear node. There is no rear node firmware yet; bit 0 is the bench convention firmware/apps/sn_demo in mur-embedded uses.
+bit 0: Analog dead; Rear node ADC failed to start; warning";
+CM_ SG_ 128 FAULT_Bitmask_TTCS "The car TTCS's full latched fault mask, sent when FAULT_Node is the TTCS (firmware/lib/ttcs/include/ttcs_faults.h in mur-embedded). HB_TTCS_FaultBits carries only the low 16 bits; bits 16 and 17 reach only this signal. Bits 0 to 2 mirror the MSS fault lines live and the MSS itself opens the shutdown circuit for them. The other shutdown bits are TTCS_SDC_TRIP_MASK, still provisional pending safety-team sign-off. The car app never raises the charger bits 18 to 21.
+bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
+bit 1: PDOC trip; PDOC fault, shutdown circuit opened; shutdown
+bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
+bit 3: HV overcurrent; HV overcurrent measured by the TTCS; shutdown
+bit 4: ENNOID comms lost; ENNOID BMS status stream stale; shutdown
+bit 5: ECU comms lost; ECU_Status stream stale; shutdown
+bit 6: AIR implausible; AIR feedback disagrees with the expected state; warning
+bit 7: IMD no signal; No PWM edges from the IMD; warning
+bit 8: Cell overvoltage; Highest cell voltage over its limit; shutdown
+bit 9: Cell undervoltage; Lowest cell voltage under its limit; shutdown
+bit 10: Pack overvoltage; Pack voltage over its limit; shutdown
+bit 11: Pack undervoltage; Pack voltage under its limit; shutdown
+bit 12: Battery overtemp; Battery high temperature over its limit; shutdown
+bit 13: Current while blocked; Current flowing while the ENNOID BMS prohibits it; shutdown
+bit 14: Current mismatch; TTCS and ENNOID current readings disagree; shutdown
+bit 15: Battery data bad; Battery data implausible or calibration not configured; shutdown
+bit 16: Cell imbalance; Weak or imbalanced cell, derate and investigate; warning
+bit 17: Current over limit; Current far above the computed discharge or charge limit for a sustained window; shutdown";
+CM_ SG_ 128 FAULT_Bitmask_Charger "The charge-cart TTCS board's latched fault mask, sent when FAULT_Node is the charger (firmware/apps/charger in mur-embedded, cart bus only). Same bit numbers as the car TTCS; shutdown marks TTCS_CART_SDC_TRIP_MASK, still provisional pending safety-team sign-off. The cart has no ECU, so bit 5 is never raised there.
+bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
+bit 1: PDOC trip; PDOC fault line asserted, not a cart trip; warning
+bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
+bit 3: HV overcurrent; HV overcurrent measured by the TTCS; warning
+bit 4: ENNOID comms lost; ENNOID BMS status stream stale; shutdown
+bit 6: AIR implausible; AIR feedback disagrees with the expected state; warning
+bit 7: IMD no signal; No PWM edges from the IMD; warning
+bit 8: Cell overvoltage; Highest cell voltage over its limit; shutdown
+bit 9: Cell undervoltage; Lowest cell voltage under its limit; shutdown
+bit 10: Pack overvoltage; Pack voltage over its limit; shutdown
+bit 11: Pack undervoltage; Pack voltage under its limit; shutdown
+bit 12: Battery overtemp; Battery high temperature over its limit; shutdown
+bit 13: Current while blocked; Current flowing while the ENNOID BMS prohibits it; shutdown
+bit 14: Current mismatch; TTCS and ENNOID current readings disagree; warning
+bit 15: Battery data bad; Battery data implausible or calibration not configured; shutdown
+bit 16: Cell imbalance; Weak or imbalanced cell, derate and investigate; warning
+bit 17: Current over limit; Current far above the computed discharge or charge limit for a sustained window; shutdown
+bit 18: Charger comms lost; Charger status stale while charging; shutdown
+bit 19: Charger fault; Charger reports its own fault; shutdown
+bit 20: Charger voltage mismatch; Charger output voltage disagrees with the ENNOID pack voltage; shutdown
+bit 21: Charger overcurrent; Charger output current above its command plus tolerance; shutdown";
 CM_ BO_ 576 "MUR ADDITION (PROVISIONAL): driver-display data from the ECU, which sits on both Tractive and Telemetry CAN and can see what the dashboard cannot. Transmit rate 10 Hz (the ECU's best-effort thread). 8 bytes from day one; byte 7 is still reserved: add new display signals there, byte-aligned and 8 or 16 bits wide so the MFD28's DSS import reads them cleanly, and never move, resize or rescale an existing one. The dashboard forwards this frame to Dash CAN byte-for-byte, so it must stay identical in mur_dashboard_can.dbc (scripts/validate.py checks); adding a signal then needs no dashboard firmware change.";
 CM_ SG_ 576 ECU_MotorSpeed "Motor speed magnitude in rpm, from the inverter's INV_MotorPosition on Tractive CAN, clipped to 0-10000 by the ECU; no direction. 0xFFFF = invalid: the ECU has not heard the inverter yet, or has lost it (comms timeout).";
 CM_ SG_ 576 ECU_AccuTempMax "Canonical car accumulator maximum, converted by ECU using voltage recovery and Table 5. Prefer complete fresh sweeps; if no sweep frames are fresh, use a fresh mapped summary maximum (1 degC input resolution). Partial or invalid live sweeps prevent fallback. 0x7FFF is invalid. Identical ECU_DashData bytes reach TTCS on Control CAN and screen on Telemetry/Dash CAN.";
@@ -278,6 +336,7 @@ BA_ "GenMsgSendType" BO_ 578 0;
 BA_ "GenMsgSendType" BO_ 518 0;
 BA_ "GenMsgSendType" BO_ 1794 0;
 
+VAL_ 128 FAULT_Node 1 "Pedalbox" 2 "Dashboard" 3 "Rear" 4 "TTCS" 5 "Charger" ;
 VAL_ 578 ECU_DashMode 1 "Accel" 2 "Skidpad" 3 "AutoX" 4 "Endurance" 5 "Custom" ;
 VAL_ 578 ECU_StartStage 0 "NotAvailable" 1 "Wait" 2 "PressBrake" 3 "PressStart" 4 "ReadyToDrive" ;
 

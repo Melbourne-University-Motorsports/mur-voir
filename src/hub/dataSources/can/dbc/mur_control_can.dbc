@@ -51,10 +51,12 @@ BO_ 272 TTCS_Status: 8 TTCS
  SG_ TTCS_SDCStatus2 : 1|1@1+ (1,0) [0|1] "" ECU,TELEMETRY
  SG_ TTCS_TempBypass : 2|1@1+ (1,0) [0|1] "" ECU,TELEMETRY
  SG_ TTCS_DHABBypass : 3|1@1+ (1,0) [0|1] "" ECU,TELEMETRY
+ SG_ TTCS_BMSOpState : 4|4@1+ (1,0) [0|15] "" ECU,TELEMETRY
  SG_ TTCS_IMDState : 8|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
  SG_ TTCS_HeartbeatCounter : 16|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
  SG_ TTCS_IMDFrequency : 24|16@1+ (0.1,0) [0|6553.5] "Hz" ECU,TELEMETRY
  SG_ TTCS_IMDDuty : 40|16@1+ (0.1,0) [0|100] "%" ECU,TELEMETRY
+ SG_ TTCS_BMSFaultCode : 56|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
 
 BO_ 273 TTCS_Diagnostics: 8 TTCS
  SG_ TTCS_IMDResistance : 0|16@1+ (1,0) [0|65535] "kOhm" ECU,TELEMETRY
@@ -169,8 +171,12 @@ BO_ 321 Watchdog_Status: 8 TELEMETRY
  SG_ TELEM_WatchdogCounter : 40|8@1+ (1,0) [0|255] "" ECU
 
 BO_ 128 MUR_Fault: 8 Vector__XXX
- SG_ FAULT_Node : 0|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
- SG_ FAULT_Bitmask : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
+ SG_ FAULT_Node M : 0|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
+ SG_ FAULT_Bitmask_Pedalbox m1 : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
+ SG_ FAULT_Bitmask_Dash m2 : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
+ SG_ FAULT_Bitmask_Rear m3 : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
+ SG_ FAULT_Bitmask_TTCS m4 : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
+ SG_ FAULT_Bitmask_Charger m5 : 8|32@1+ (1,0) [0|4294967295] "" ECU,TELEMETRY
  SG_ FAULT_Counter : 56|8@1+ (1,0) [0|255] "" ECU,TELEMETRY
 
 BO_ 336 Rear_Dynamics: 8 REAR
@@ -267,6 +273,60 @@ CM_ BU_ REAR "MUR ADDITION (PROVISIONAL - pending telemetry team sign-off): Rear
 CM_ BU_ BENCH "MUR ADDITION (PROVISIONAL, bench-only, no on-car meaning): bench debug/calibration tool - a Raspberry Pi + CAN adapter running tools/bench/set_torque_map.py, used to set the ECU's live torque-map calibration during bring-up so firmware/apps/main_compute doesn't need reflashing to change LSMaxTorque/HSMaxTorque/RPM transition points for a motor-spin test. Distinct from the TELEMETRY node (which is the car's own passive-capture Pi) - BENCH is bench-harness-only and is never expected to be present on a running car.";
 CM_ BU_ CHARGER "MUR ADDITION (PROVISIONAL): charge-cart TTCS board running firmware/apps/charger. Same PCB as the car TTCS, separate firmware. Lives on the charge cart's own CAN bus (with the ENNOID BMS and the Valeo OBC), never on the car - its messages are in this DBC only so sn_core/can_proto keep one schema.";
 CM_ BO_ 128 "MUR ADDITION (PROVISIONAL): latched fault broadcast, any MUR sensor node transmits on fault raise (EVENT). FAULT_Node identifies the sender (1=Pedalbox 2=Dashboard 3=Rear 4=TTCS 5=Charger), so one shared message serves all nodes without signal-name collisions. Same message exists on Telemetry CAN for nodes homed there.";
+CM_ SG_ 128 FAULT_Node "Sending node, and the multiplexor: each node's fault mask has its own FAULT_Bitmask_<node> signal, because the bit numbers mean different faults on each node.";
+CM_ SG_ 128 FAULT_Bitmask_Pedalbox "The Pedalbox's latched fault mask, sent when FAULT_Node is the Pedalbox. Same bits as PEDAL_BSEStatus and HB_PEDAL_FaultBits (firmware/lib/pedal/include/pedal_faults.h in mur-embedded). Bits 2 to 6 are reserved there and not raised yet.
+bit 0: APPS implausible; Accelerator pedal sensors disagree; warning
+bit 1: Pedal cal invalid; Pedalbox calibration invalid; warning
+bit 2: BSE active; Brake system encoder active; warning
+bit 3: BSPD trip; BSPD fault, shutdown circuit opened; shutdown
+bit 4: APPS A out of range; Accelerator pedal sensor A outside its plausible range; warning
+bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible range; warning
+bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
+CM_ SG_ 128 FAULT_Bitmask_Dash "The dashboard's latched fault mask, sent when FAULT_Node is the dashboard. Only bit 0 is used (firmware/apps/dashboard in mur-embedded); the real fault map is still TBD.
+bit 0: Analog dead; Dashboard ADC failed to start; warning";
+CM_ SG_ 128 FAULT_Bitmask_Rear "The rear node's latched fault mask, sent when FAULT_Node is the rear node. There is no rear node firmware yet; bit 0 is the bench convention firmware/apps/sn_demo in mur-embedded uses.
+bit 0: Analog dead; Rear node ADC failed to start; warning";
+CM_ SG_ 128 FAULT_Bitmask_TTCS "The car TTCS's full latched fault mask, sent when FAULT_Node is the TTCS (firmware/lib/ttcs/include/ttcs_faults.h in mur-embedded). HB_TTCS_FaultBits carries only the low 16 bits; bits 16 and 17 reach only this signal. Bits 0 to 2 mirror the MSS fault lines live and the MSS itself opens the shutdown circuit for them. The other shutdown bits are TTCS_SDC_TRIP_MASK, still provisional pending safety-team sign-off. The car app never raises the charger bits 18 to 21.
+bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
+bit 1: PDOC trip; PDOC fault, shutdown circuit opened; shutdown
+bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
+bit 3: HV overcurrent; HV overcurrent measured by the TTCS; shutdown
+bit 4: ENNOID comms lost; ENNOID BMS status stream stale; shutdown
+bit 5: ECU comms lost; ECU_Status stream stale; shutdown
+bit 6: AIR implausible; AIR feedback disagrees with the expected state; warning
+bit 7: IMD no signal; No PWM edges from the IMD; warning
+bit 8: Cell overvoltage; Highest cell voltage over its limit; shutdown
+bit 9: Cell undervoltage; Lowest cell voltage under its limit; shutdown
+bit 10: Pack overvoltage; Pack voltage over its limit; shutdown
+bit 11: Pack undervoltage; Pack voltage under its limit; shutdown
+bit 12: Battery overtemp; Battery high temperature over its limit; shutdown
+bit 13: Current while blocked; Current flowing while the ENNOID BMS prohibits it; shutdown
+bit 14: Current mismatch; TTCS and ENNOID current readings disagree; shutdown
+bit 15: Battery data bad; Battery data implausible or calibration not configured; shutdown
+bit 16: Cell imbalance; Weak or imbalanced cell, derate and investigate; warning
+bit 17: Current over limit; Current far above the computed discharge or charge limit for a sustained window; shutdown";
+CM_ SG_ 128 FAULT_Bitmask_Charger "The charge-cart TTCS board's latched fault mask, sent when FAULT_Node is the charger (firmware/apps/charger in mur-embedded, cart bus only). Same bit numbers as the car TTCS; shutdown marks TTCS_CART_SDC_TRIP_MASK, still provisional pending safety-team sign-off. The cart has no ECU, so bit 5 is never raised there.
+bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
+bit 1: PDOC trip; PDOC fault line asserted, not a cart trip; warning
+bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
+bit 3: HV overcurrent; HV overcurrent measured by the TTCS; warning
+bit 4: ENNOID comms lost; ENNOID BMS status stream stale; shutdown
+bit 6: AIR implausible; AIR feedback disagrees with the expected state; warning
+bit 7: IMD no signal; No PWM edges from the IMD; warning
+bit 8: Cell overvoltage; Highest cell voltage over its limit; shutdown
+bit 9: Cell undervoltage; Lowest cell voltage under its limit; shutdown
+bit 10: Pack overvoltage; Pack voltage over its limit; shutdown
+bit 11: Pack undervoltage; Pack voltage under its limit; shutdown
+bit 12: Battery overtemp; Battery high temperature over its limit; shutdown
+bit 13: Current while blocked; Current flowing while the ENNOID BMS prohibits it; shutdown
+bit 14: Current mismatch; TTCS and ENNOID current readings disagree; warning
+bit 15: Battery data bad; Battery data implausible or calibration not configured; shutdown
+bit 16: Cell imbalance; Weak or imbalanced cell, derate and investigate; warning
+bit 17: Current over limit; Current far above the computed discharge or charge limit for a sustained window; shutdown
+bit 18: Charger comms lost; Charger status stale while charging; shutdown
+bit 19: Charger fault; Charger reports its own fault; shutdown
+bit 20: Charger voltage mismatch; Charger output voltage disagrees with the ENNOID pack voltage; shutdown
+bit 21: Charger overcurrent; Charger output current above its command plus tolerance; shutdown";
 CM_ BO_ 336 "MUR ADDITION (PROVISIONAL): rear shock pot travel + counter, 100 Hz. Mirrors Dashboard_Dynamics for the rear axle.";
 CM_ BO_ 337 "MUR ADDITION (PROVISIONAL): rear cooling loop temps, 10 Hz. OPEN QUESTION - overlaps ECU_Cooling 0x121 radiator temps; ownership (ECU vs rear node sensors) to be settled at the CAN meeting.";
 CM_ BO_ 1793 "MUR ADDITION (PROVISIONAL): 1 Hz node heartbeat, ID 0x700 + node id. Uptime, CAN error counters, low 16 bits of latched fault mask. Signals are node-prefixed because the telemetry pipeline requires bus-wide unique signal names.";
@@ -283,7 +343,7 @@ bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible ran
 bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
 CM_ SG_ 1795 HB_REAR_FaultBits "Low 16 bits of the rear node's latched fault mask. There is no rear node firmware yet; bit 0 is the bench convention firmware/apps/sn_demo in mur-embedded uses.
 bit 0: Analog dead; Rear node ADC failed to start; warning";
-CM_ SG_ 1796 HB_TTCS_FaultBits "Low 16 bits of the TTCS latched fault mask (firmware/lib/ttcs/include/ttcs_faults.h in mur-embedded); higher bits only reach MUR_Fault. Bits 0 to 2 mirror the MSS fault lines live and the MSS itself opens the shutdown circuit for them. The other shutdown bits are TTCS_SDC_TRIP_MASK, still provisional pending safety-team sign-off.
+CM_ SG_ 1796 HB_TTCS_FaultBits "Low 16 bits of the TTCS latched fault mask (firmware/lib/ttcs/include/ttcs_faults.h in mur-embedded); higher bits only reach FAULT_Bitmask_TTCS in MUR_Fault. Bits 0 to 2 mirror the MSS fault lines live and the MSS itself opens the shutdown circuit for them. The other shutdown bits are TTCS_SDC_TRIP_MASK, still provisional pending safety-team sign-off.
 bit 0: IMD trip; IMD fault, shutdown circuit opened; shutdown
 bit 1: PDOC trip; PDOC fault, shutdown circuit opened; shutdown
 bit 2: BMS trip; BMS fault, shutdown circuit opened; shutdown
@@ -312,7 +372,7 @@ bit 3: BSPD trip; BSPD fault, shutdown circuit opened; shutdown
 bit 4: APPS A out of range; Accelerator pedal sensor A outside its plausible range; warning
 bit 5: APPS B out of range; Accelerator pedal sensor B outside its plausible range; warning
 bit 6: Brake out of range; Brake pressure sensor outside its plausible range; warning";
-CM_ BO_ 272 "TTCS shutdown circuit + IMD state + heartbeat. Transmit rate 10 Hz.";
+CM_ BO_ 272 "TTCS shutdown circuit + IMD state + heartbeat + last BMS status (bits 4-7 = op state, byte 7 = fault code). Transmit rate 10 Hz.";
 CM_ SG_ 272 TTCS_SDCStatus1 "AIR- state, from the TTCS AIR- sense input (PC1): 1 = AIR- closed, 0 = open. Confirmed on the car 2026-10-14.";
 CM_ SG_ 272 TTCS_SDCStatus2 "AIR+ state, from the TTCS AIR+ sense input (PC2): 1 = AIR+ closed, 0 = open. AIR+ only closes after precharge. Confirmed on the car 2026-10-14.";
 CM_ SG_ 272 TTCS_IMDState "IMD operating state per Bender IMD datasheet. ASSUMPTION placeholder - exact enum values TBD, see VAL_ table below for suggested starting point.
@@ -325,6 +385,8 @@ CM_ SG_ 272 TTCS_TempBypass "1 = the TTCS is running its battery checks WITHOUT 
 CM_ SG_ 272 TTCS_DHABBypass "1 = the TTCS is ignoring its DHAB current sensor (TEST-mode bypass, TTCS_DHAB_BYPASS_IN_TEST in firmware/apps/ttcs/src/main.c): the ECU is fresh and in TEST mode and the bypass is compiled in. OVERCURRENT and I_IMPLAUS are not raised and the battery/limit checks see 0 A, so pack current is NOT monitored by the TTCS while this is 1. Testing only (2026-10-14, DHAB not set up). TTCS_Diagnostics still carries the raw DHAB readings.";
 CM_ SG_ 272 TTCS_IMDFrequency "Raw measured IMD PWM frequency, before decode - for cross-checking TTCS_IMDState against a scope. 0 = no signal (no edge for 500 ms). Not filtered; a glitch edge can show as a very high value (clamped at 6553.5).";
 CM_ SG_ 272 TTCS_IMDDuty "Raw measured IMD PWM high-time duty, before decode and before any IR155-3203 inversion - for cross-checking TTCS_IMDResistance against a scope. 0 when TTCS_IMDFrequency is 0.";
+CM_ SG_ 272 TTCS_BMSOpState "ENNOID BMS operational state, from byte 46 of its F7 (COMM_EBMS_GET_VALUES) reply. 15 = no value yet: the TTCS has not completed a poll since boot, or the BMS returned a state outside 0-11. The TTCS polls the BMS only when its BMS_FAULT line rises, so any other value is the last state it read and is stale by design until the next fault. 0 is a genuine INIT from the BMS.";
+CM_ SG_ 272 TTCS_BMSFaultCode "ENNOID fault code, from byte 48 of the same F7 (COMM_EBMS_GET_VALUES) reply. 0 = none. 255 = no value yet: not read since boot, or the BMS returned a code outside 0-26. Latched by the TTCS until a later poll returns a different code or the TTCS resets.";
 CM_ BO_ 273 "MUR CHANGE (PROVISIONAL): IMD insulation resistance + the TTCS's own HV current measurement (LEM DHAB S/134). Replaces TTCS_IMDVoltage (it was the IMD's insulation resistance all along - Bender IMDs report kOhm, not volts) and the dead TTCS_HVCellTemp1..3 (Orion cell-temp taps that were never wired; the ENNOID broadcasts its own temps). Bits 60-63 reserved. Snapshot sampled at transmit time, not averaged. Transmit rate 10 Hz (MEDIUM).";
 CM_ SG_ 273 TTCS_IMDResistance "Insulation resistance decoded from the IMD PWM duty (10/20 Hz measuring states). 65535 = no valid measurement (no signal, speed start, device error, earth-connection fault, duty outside 5..95 %). Valid readings clamp at 65534.";
 CM_ SG_ 273 TTCS_HVCurrent "Pack current from the DHAB, discharge positive. Low range channel up to 45 A, high range beyond. 0 when the TTCS analog layer is dead. When TTCS_HVCurrentSaturated is set the true current is AT LEAST this (range end, +/-200 A).";
@@ -450,8 +512,11 @@ BA_ "GenMsgSendType" BO_ 1796 0;
 BA_ "GenMsgSendType" BO_ 1797 0;
 BA_ "GenMsgSendType" BO_ 280 0;
 
+VAL_ 128 FAULT_Node 1 "Pedalbox" 2 "Dashboard" 3 "Rear" 4 "TTCS" 5 "Charger" ;
 VAL_ 280 CHG_State 0 "Idle" 1 "Precheck" 2 "CC" 3 "CV" 4 "Done" 5 "Fault" ;
 VAL_ 272 TTCS_IMDState 0 "Normal" 1 "Undervoltage" 2 "Speed Start" 3 "Device Error" 4 "Earth Fault" 5 "Ground Fault Warning" 6 "SST Warning" 7 "SST Fault" 255 "Invalid/Init" ;
+VAL_ 272 TTCS_BMSOpState 0 "INIT" 1 "CHARGING" 2 "PRE_CHARGE" 3 "LOAD_ENABLED" 4 "BATTERY_DEAD" 5 "POWER_DOWN" 6 "EXTERNAL" 7 "ERROR" 8 "ERROR_PRECHARGE" 9 "BALANCING" 10 "CHARGED" 11 "FORCEON" 15 "UNKNOWN" ;
+VAL_ 272 TTCS_BMSFaultCode 0 "NONE" 1 "PACK_OVER_VOLTAGE" 2 "PACK_UNDER_VOLTAGE" 3 "LOAD_OVER_VOLTAGE" 4 "LOAD_UNDER_VOLTAGE" 5 "CHARGER_OVER_VOLTAGE" 6 "CHARGER_UNDER_VOLTAGE" 7 "CELL_HARD_OVER_VOLTAGE" 8 "CELL_HARD_UNDER_VOLTAGE" 9 "CELL_SOFT_OVER_VOLTAGE" 10 "CELL_SOFT_UNDER_VOLTAGE" 11 "MAX_UVP_OVP_ERRORS" 12 "MAX_UVT_OVT_ERRORS" 13 "OVER_CURRENT" 14 "OVER_TEMP_BMS" 15 "UNDER_TEMP_BMS" 16 "DISCHARGE_OVER_TEMP_CELLS" 17 "DISCHARGE_UNDER_TEMP_CELLS" 18 "CHARGE_OVER_TEMP_CELLS" 19 "CHARGE_UNDER_TEMP_CELLS" 20 "PRECHARGE_TIMEOUT" 21 "DISCHARGE_RETRY" 22 "CHARGE_RETRY" 23 "CAN_DELAYED_POWER_DOWN" 24 "NOT_USED_TIMEOUT" 25 "CHARGER_DISCONNECT" 26 "CONFIG_INVALID" 255 "UNKNOWN" ;
 VAL_ 288 ECU_DriveMode 0 "Off" 1 "Accel" 2 "Skidpad" 3 "AutoX" 4 "Endurance" 5 "Custom" 255 "Invalid/Init" ;
 VAL_ 290 ECU_ECUState 0 "Init" 1 "Standby" 2 "Ready To Drive" 3 "Driving" 4 "Fault" 5 "Shutdown" 255 "Invalid/Init" ;
 VAL_ 290 ECU_TrackMode 0 "Test" 1 "Track" ;
