@@ -177,3 +177,42 @@ test("the radio port is the XBee adapter when several are allowed", () => {
   assert.equal(pickRadioPort([port(), other]), other);
   assert.equal(pickRadioPort([port()]), null);
 });
+
+test("version 2 packets decode with one base time and compact records", () => {
+  // Wireless-telem tests/test_telem.py known vector: an 11-bit frame on bus 0 at base time 3.
+  const vector = "5754020100000000000000020000000300000000000000" + "01000000" + "000101" + "12";
+  const packet = decodeRadioPacket(Uint8Array.from(Buffer.from(vector, "hex")))!;
+  assert.equal(packet.sequence, 2);
+  assert.equal(packet.runId, "0000000000000001");
+  assert.deepEqual(packet.records, [
+    { type: "can", bus: 0, timeUs: 3n, id: 0x100, extended: false, flags: 0, data: Uint8Array.from([0x12]) }
+  ]);
+
+  const bytes = new Uint8Array(23 + 15 + 17 + 21);
+  const view = new DataView(bytes.buffer);
+  bytes.set([0x57, 0x54, 2]);
+  view.setBigUint64(15, 1_000_000n, true);
+  let pos = 23;
+  bytes.set([0x11, 0x10, 0, 0], pos); // Bus 1, kind 1, offset 16 us
+  view.setUint16(pos + 4, 0x203, true);
+  bytes[pos + 6] = 8;
+  pos += 15;
+  bytes.set([0x03, 0x20, 0, 0], pos); // Bus 0, kind 3 (29-bit), offset 32 us
+  view.setUint32(pos + 4, 0x18ff50e5, true);
+  bytes[pos + 8] = 8;
+  pos += 17;
+  bytes.set([0x02, 0xff, 0xff, 0xff], pos); // Value, largest offset
+  view.setFloat64(pos + 4, 97, true);
+  bytes[pos + 12] = 8;
+  bytes.set(new TextEncoder().encode("lvb1.soc"), pos + 13);
+  const records = decodeRadioPacket(bytes)!.records;
+  assert.deepEqual(
+    records.map((r) => (r.type === "can" ? [r.bus, r.id, r.extended, r.timeUs] : [r.name, r.value, r.timeUs])),
+    [
+      [1, 0x203, false, 1_000_016n],
+      [0, 0x18ff50e5, true, 1_000_032n],
+      ["lvb1.soc", 97, 1_000_000n + 0xffffffn]
+    ]
+  );
+  assert.equal(decodeRadioPacket(bytes.subarray(0, bytes.length - 1)), null);
+});
