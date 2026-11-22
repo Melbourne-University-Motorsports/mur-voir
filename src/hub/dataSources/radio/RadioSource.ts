@@ -12,13 +12,17 @@ import { decodeCANFrame, mqttMetadata, MQTTValue } from "../mqtt/MQTTPayload";
 import { LiveClock, SessionTimeBase } from "../mur/MURTime";
 import { atCommandFrame, decodeRadioPacket, XBeeFrameParser } from "./RadioProtocol";
 
-/** The serial speed the Wireless-telem radios use (config/telem.toml [radio] baud). */
-export const RADIO_BAUD = 9600;
+/**
+ * Serial speeds tried in order until the radio answers an AT query: Wireless-telem's 230400
+ * (config/telem.toml [radio] baud), its old 9600, then the other standard XBee speeds.
+ */
+export const RADIO_BAUDS = [230400, 9600, 115200, 57600, 921600, 460800, 38400, 19200];
+let lastBaud: number | null = null;
 /** USB vendor IDs of XBee adapters: FTDI (Digi's XBee USB boards) and Silicon Labs. */
 export const RADIO_USB_VENDORS = [0x0403, 0x10c4];
 /** Car timestamps further than this from the laptop clock fall back to receive time. */
 const CLOCK_TOLERANCE_NS = 10_000_000_000n;
-const REPLY_TIMEOUT_MS = 3000;
+const REPLY_TIMEOUT_MS = 700;
 const RETRY_MS = 2000;
 
 // Minimal Web Serial types (Chromium and Electron); TypeScript's DOM library does not include them.
@@ -138,35 +142,43 @@ export default class RadioSource extends LiveDataSource implements LiveStatusPro
       this.fail("No 900 MHz radio found. Plug the base radio into USB");
       return;
     }
-    try {
-      await port.open({ baudRate: RADIO_BAUD });
-    } catch (error) {
-      this.fail(
-        "Cannot open the 900 MHz radio" +
-          (error instanceof Error && /already open|busy|in use/i.test(error.message)
-            ? ". Another program (XCTU or the base station) is using it"
-            : "")
-      );
-      return;
+    const bauds = lastBaud === null ? RADIO_BAUDS : [lastBaud, ...RADIO_BAUDS.filter((b) => b !== lastBaud)];
+    for (const baud of bauds) {
+      try {
+        await port.open({ baudRate: baud });
+      } catch (error) {
+        this.fail(
+          "Cannot open the 900 MHz radio" +
+            (error instanceof Error && /already open|busy|in use/i.test(error.message)
+              ? ". Another program (XCTU or the base station) is using it"
+              : "")
+        );
+        return;
+      }
+      if (this.stopped()) {
+        await port.close().catch(() => {});
+        return;
+      }
+      this.port = port;
+      this.parser = new XBeeFrameParser();
+      this.radioAddress = null;
+      this.addressParts = {};
+      this.backend = "connecting";
+      this.detail = "Radio found, waiting for its reply";
+      void this.readLoop(port);
+      // AP tells us whether frames are escaped; SH and SL give the address the car must send to.
+      await this.write([atCommandFrame(1, "AP"), atCommandFrame(2, "SH"), atCommandFrame(3, "SL")]);
+      const deadline = Date.now() + REPLY_TIMEOUT_MS;
+      while (this.backend === "connecting" && this.port === port && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      if (this.stopped() || this.port !== port) return;
+      if ((this.backend as BackendState) === "connected") {
+        lastBaud = baud;
+        return;
+      }
+      await this.closePort(); // No reply at this speed: try the next.
     }
-    if (this.stopped()) {
-      await port.close().catch(() => {});
-      return;
-    }
-    this.port = port;
-    this.parser = new XBeeFrameParser();
-    this.radioAddress = null;
-    this.addressParts = {};
-    this.backend = "connecting";
-    this.detail = "Radio found, waiting for its reply";
-    // AP tells us whether frames are escaped; SH and SL give the address the car must send to.
-    await this.write([atCommandFrame(1, "AP"), atCommandFrame(2, "SH"), atCommandFrame(3, "SL")]);
-    this.replyTimer = setTimeout(() => {
-      this.replyTimer = null;
-      if (this.backend === "connecting")
-        this.fail(`The radio did not reply. It needs API mode (AP=1 or AP=2) at ${RADIO_BAUD} baud`);
-    }, REPLY_TIMEOUT_MS);
-    void this.readLoop(port);
+    this.fail("The radio did not reply at any serial speed. It needs API mode (AP=1 or AP=2)");
   }
 
   private async write(frames: Uint8Array[]) {

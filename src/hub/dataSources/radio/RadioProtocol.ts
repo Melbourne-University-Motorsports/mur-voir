@@ -120,52 +120,114 @@ export interface RadioPacket {
 const HEADER_SIZE = 15;
 const CAN_SIZE = 17;
 const VALUE_SIZE = 18;
+const HEADER_V2_SIZE = 23;
+
+function decodeName(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function validCAN(id: number, extended: boolean, flags: number, dlc: number, length: number): boolean {
+  return length <= 64 && dlc <= 64 && (flags & ~63) === 0 && id <= (extended ? 0x1fffffff : 0x7ff);
+}
 
 /**
- * Decodes one Wireless-telem radio datagram (services/telem/src/telem/protocol.py, version 1).
- * Returns null for anything malformed, like the base station.
+ * Decodes one Wireless-telem radio datagram (services/telem/src/telem/protocol.py, versions 1
+ * and 2). Returns null for anything malformed, like the base station.
  */
 export function decodeRadioPacket(payload: Uint8Array): RadioPacket | null {
-  if (payload.length < HEADER_SIZE || payload[0] !== 0x57 || payload[1] !== 0x54 || payload[2] !== 1) return null;
+  if (payload.length < 3 || payload[0] !== 0x57 || payload[1] !== 0x54) return null;
   const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-  const runId = view.getBigUint64(3, true).toString(16).padStart(16, "0");
-  const sequence = view.getUint32(11, true);
   const records: RadioRecord[] = [];
-  let pos = HEADER_SIZE;
-  while (pos < payload.length) {
-    const kind = payload[pos];
-    if (kind === 1) {
-      if (pos + CAN_SIZE > payload.length) return null;
-      const bus = payload[pos + 1];
-      const timeUs = view.getBigUint64(pos + 2, true);
-      const id = view.getUint32(pos + 10, true);
-      const flags = payload[pos + 14];
-      const dlc = payload[pos + 15];
-      const length = payload[pos + 16];
-      pos += CAN_SIZE;
+  let pos: number;
+  if (payload[2] === 1) {
+    if (payload.length < HEADER_SIZE) return null;
+    pos = HEADER_SIZE;
+    while (pos < payload.length) {
+      const kind = payload[pos];
+      if (kind === 1) {
+        if (pos + CAN_SIZE > payload.length) return null;
+        const bus = payload[pos + 1];
+        const timeUs = view.getBigUint64(pos + 2, true);
+        const id = view.getUint32(pos + 10, true);
+        const flags = payload[pos + 14];
+        const dlc = payload[pos + 15];
+        const length = payload[pos + 16];
+        pos += CAN_SIZE;
+        const extended = (flags & 1) !== 0;
+        if (!validCAN(id, extended, flags, dlc, length) || pos + length > payload.length) return null;
+        records.push({ type: "can", bus, timeUs, id, extended, flags, data: payload.subarray(pos, pos + length) });
+        pos += length;
+      } else if (kind === 2) {
+        if (pos + VALUE_SIZE > payload.length) return null;
+        const timeUs = view.getBigUint64(pos + 1, true);
+        const value = view.getFloat64(pos + 9, true);
+        const length = payload[pos + 17];
+        pos += VALUE_SIZE;
+        if (length === 0 || length > 96 || pos + length > payload.length || !Number.isFinite(value)) return null;
+        const name = decodeName(payload.subarray(pos, pos + length));
+        if (name === null) return null;
+        records.push({ type: "value", name, timeUs, value });
+        pos += length;
+      } else return null;
+    }
+  } else if (payload[2] === 2) {
+    // One base time per packet; each record has a tag (kind in the low nibble) and a uint24 offset.
+    if (payload.length < HEADER_V2_SIZE) return null;
+    const base = view.getBigUint64(15, true);
+    pos = HEADER_V2_SIZE;
+    while (pos < payload.length) {
+      if (pos + 4 > payload.length) return null;
+      const tag = payload[pos];
+      const kind = tag & 15;
+      const nibble = tag >> 4;
+      const timeUs = base + BigInt(payload[pos + 1] | (payload[pos + 2] << 8) | (payload[pos + 3] << 16));
+      pos += 4;
+      let bus: number, id: number, flags: number, dlc: number, length: number;
+      if (kind === 1 || kind === 3) {
+        const idSize = kind === 1 ? 2 : 4;
+        if (pos + idSize + 1 > payload.length) return null;
+        id = kind === 1 ? view.getUint16(pos, true) : view.getUint32(pos, true);
+        length = payload[pos + idSize];
+        pos += idSize + 1;
+        bus = nibble;
+        flags = kind === 1 ? 0 : 1;
+        dlc = length;
+        if (length > 8) return null;
+      } else if (kind === 4 && nibble === 0) {
+        if (pos + 8 > payload.length) return null;
+        bus = payload[pos];
+        id = view.getUint32(pos + 1, true);
+        flags = payload[pos + 5];
+        dlc = payload[pos + 6];
+        length = payload[pos + 7];
+        pos += 8;
+      } else if (kind === 2 && nibble === 0) {
+        if (pos + 9 > payload.length) return null;
+        const value = view.getFloat64(pos, true);
+        length = payload[pos + 8];
+        pos += 9;
+        if (length === 0 || length > 96 || pos + length > payload.length || !Number.isFinite(value)) return null;
+        const name = decodeName(payload.subarray(pos, pos + length));
+        if (name === null) return null;
+        records.push({ type: "value", name, timeUs, value });
+        pos += length;
+        continue;
+      } else return null;
       const extended = (flags & 1) !== 0;
-      if (length > 64 || dlc > 64 || flags & ~63 || id > (extended ? 0x1fffffff : 0x7ff)) return null;
-      if (pos + length > payload.length) return null;
+      if (!validCAN(id, extended, flags, dlc, length) || pos + length > payload.length) return null;
       records.push({ type: "can", bus, timeUs, id, extended, flags, data: payload.subarray(pos, pos + length) });
       pos += length;
-    } else if (kind === 2) {
-      if (pos + VALUE_SIZE > payload.length) return null;
-      const timeUs = view.getBigUint64(pos + 1, true);
-      const value = view.getFloat64(pos + 9, true);
-      const length = payload[pos + 17];
-      pos += VALUE_SIZE;
-      if (length === 0 || length > 96 || pos + length > payload.length || !Number.isFinite(value)) return null;
-      let name: string;
-      try {
-        name = new TextDecoder("utf-8", { fatal: true }).decode(payload.subarray(pos, pos + length));
-      } catch {
-        return null;
-      }
-      records.push({ type: "value", name, timeUs, value });
-      pos += length;
-    } else {
-      return null;
     }
-  }
-  return records.length > 0 ? { runId, sequence, records } : null;
+  } else return null;
+  return records.length > 0
+    ? {
+        runId: view.getBigUint64(3, true).toString(16).padStart(16, "0"),
+        sequence: view.getUint32(11, true),
+        records
+      }
+    : null;
 }
