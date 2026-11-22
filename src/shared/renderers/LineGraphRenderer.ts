@@ -489,22 +489,28 @@ export default class LineGraphRenderer implements TabRenderer {
     let drawNumericFields = (fields: LineGraphRendererCommand_NumericField[], yRange: [number, number]) => {
       const yScaler = new ValueScaler(yRange, [graphTop + graphHeightOpen, graphTop]);
       fields.forEach((original) => {
-        const prepared = prepareTrace(original.timestamps, original.values, original.gaps ?? []);
         const runs: { timestamps: number[]; values: number[]; hold: boolean }[] = [];
-        let start = 0;
-        for (let i = 0; i < prepared.timestamps.length; i++) {
-          if (prepared.gapAfter[i] || i === prepared.timestamps.length - 1) {
-            runs.push({
-              timestamps: prepared.timestamps.slice(start, i + 1),
-              values: prepared.values.slice(start, i + 1),
-              hold: i === prepared.timestamps.length - 1 && !original.gaps?.some((g) => g.t1 > prepared.timestamps[i])
-            });
-            start = i + 1;
+        if (
+          // Points retain stock samples (including missing-value breaks).
+          original.type === "points" ||
+          original.gaps === undefined ||
+          // Without gaps or missing values the trace is one held run, drawn without copying it
+          (original.gaps.length === 0 && !original.values.some(Number.isNaN))
+        ) {
+          runs.push({ timestamps: original.timestamps, values: original.values, hold: true });
+        } else {
+          const prepared = prepareTrace(original.timestamps, original.values, original.gaps);
+          let start = 0;
+          for (let i = 0; i < prepared.timestamps.length; i++) {
+            if (prepared.gapAfter[i] || i === prepared.timestamps.length - 1) {
+              runs.push({
+                timestamps: prepared.timestamps.slice(start, i + 1),
+                values: prepared.values.slice(start, i + 1),
+                hold: i === prepared.timestamps.length - 1 && !original.gaps.some((g) => g.t1 > prepared.timestamps[i])
+              });
+              start = i + 1;
+            }
           }
-        }
-        // Points retain stock samples (including missing-value breaks).
-        if (original.type === "points" || original.gaps === undefined) {
-          runs.splice(0, runs.length, { timestamps: original.timestamps, values: original.values, hold: true });
         }
         runs.forEach((run) => {
           const field = { ...original, ...run };
@@ -562,20 +568,49 @@ export default class LineGraphRenderer implements TabRenderer {
               context.stroke();
               break;
 
-            case "smooth":
+            case "smooth": {
+              // Samples that land in the same device pixel column draw as one vertical span (lowest,
+              // highest, then last value), so a dense live trace costs one segment per column.
               context.beginPath();
+              let column = NaN;
+              let columnX = 0;
+              let minY = 0;
+              let maxY = 0;
+              let lastY = 0;
+              let pending = false;
+              const flush = () => {
+                if (!pending) return;
+                pending = false;
+                context.lineTo(columnX, minY);
+                context.lineTo(columnX, maxY);
+                context.lineTo(columnX, lastY);
+              };
               for (let i = 0; i < field.timestamps.length; i++) {
                 let x = xScaler.calculate(field.timestamps[i]);
                 let y = yScaler.calculate(field.values[i]);
+                let pixel = Math.floor(x * devicePixelRatio);
                 if (i === 0 || isNaN(field.values[i - 1])) {
                   // NaN marks "no data" (e.g. CAN sentinels): leave a gap instead of bridging it
+                  flush();
                   context.moveTo(x, y);
+                } else if (pixel === column && !isNaN(y)) {
+                  minY = Math.min(minY, y);
+                  maxY = Math.max(maxY, y);
+                  lastY = y;
+                  pending = true;
+                  continue;
                 } else {
+                  flush();
                   context.lineTo(x, y);
                 }
+                column = isNaN(y) ? NaN : pixel;
+                columnX = x;
+                minY = maxY = lastY = y;
               }
+              flush();
               context.stroke();
               break;
+            }
 
             case "points":
               let deltaX = graphWidth / Math.max(1, field.timestamps.length - 1);

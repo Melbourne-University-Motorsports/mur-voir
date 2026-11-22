@@ -86,13 +86,11 @@ export default class Tabs {
   }[] = [];
   private selectedTab = 0;
   private activeSatellites: string[] = [];
-  private HIDDEN_REFRESH_MS = 1000;
   /** Satellites redraw from every command, so commands go out only when they change, and at most this often. */
   private SATELLITE_INTERVAL_MS = 100;
   private SATELLITE_INTERACTIVE_INTERVAL_MS = 1000 / 30;
   private satelliteSends = new Map<string, { time: number; command: string }>();
   private satelliteRetry: ReturnType<typeof setTimeout> | null = null;
-  private lastHiddenRefresh = -Infinity;
   /** Tabs that skipped a refresh while hidden. */
   private staleTabs = new WeakSet<object>();
   private fieldDragHover: { index: number; timer: number } | null = null;
@@ -515,15 +513,12 @@ export default class Tabs {
 
   /**
    * Refresh based on new log data. Live data calls this many times a second, so tabs that are not on
-   * screen refresh at most once a second, and again just before they are next drawn.
+   * screen are only marked stale, and refresh just before they are next drawn.
    */
   refresh() {
-    const now = performance.now();
-    const refreshHidden = now - this.lastHiddenRefresh >= this.HIDDEN_REFRESH_MS;
-    if (refreshHidden) this.lastHiddenRefresh = now;
     this.tabList.forEach((tab, index) => {
       const visible = index === this.selectedTab || this.activeSatellites.includes(tab.controller.UUID);
-      if (visible || refreshHidden) {
+      if (visible) {
         this.staleTabs.delete(tab);
         tab.controller.refresh();
       } else {
@@ -566,6 +561,8 @@ export default class Tabs {
   private shouldSendSatellite(uuid: string, command: unknown): boolean {
     const now = performance.now();
     const last = this.satelliteSends.get(uuid);
+    const serialized = JSON.stringify(command);
+    if (last !== undefined && serialized === last.command) return false;
     const interval = isInteractive() ? this.SATELLITE_INTERACTIVE_INTERVAL_MS : this.SATELLITE_INTERVAL_MS;
     if (last !== undefined && now - last.time < interval - 4) {
       // Make sure a frame runs once the interval passes, so the latest command still goes out
@@ -579,22 +576,61 @@ export default class Tabs {
         );
       return false;
     }
-    const serialized = JSON.stringify(command);
-    if (last !== undefined && serialized === last.command) return false;
     this.satelliteSends.set(uuid, { time: now, command: serialized });
     return true;
   }
 
-  /** Returns the set of fields currently being displayed. */
-  getActiveFields(): Set<string> {
-    const hasLapView = this.tabList.some(
-      (tab) =>
-        tab.type === TabType.TrackMap ||
-        tab.type === TabType.Laps ||
-        (tab.type === TabType.LineGraph && (tab.controller as LineGraphController).getLapMode() !== "time")
+  /** Whether a tab draws laps, so it needs the lap service's fields. */
+  private static showsLaps(tab: { type: TabType; controller: TabController }): boolean {
+    return (
+      tab.type === TabType.TrackMap ||
+      tab.type === TabType.Laps ||
+      (tab.type === TabType.LineGraph && (tab.controller as LineGraphController).getLapMode() !== "time")
     );
+  }
+
+  private visibleFields: { at: number; tab: number; satellites: string[]; keys: Set<string> } | null = null;
+
+  /**
+   * Fields drawn by the selected tab and by tabs open in satellites, with their parent keys, so new data
+   * for any of them needs a frame. Cached briefly: the set changes only after input, which draws frames
+   * anyway.
+   */
+  getVisibleFields(): ReadonlySet<string> {
+    const now = performance.now();
+    const cache = this.visibleFields;
+    if (cache && now - cache.at < 250 && cache.tab === this.selectedTab && cache.satellites === this.activeSatellites) {
+      return cache.keys;
+    }
+    const keys = new Set<string>();
+    this.tabList.forEach((tab, index) => {
+      if (index !== this.selectedTab && !this.activeSatellites.includes(tab.controller.UUID)) return;
+      const fields = [...tab.controller.getActiveFields(), ...(Tabs.showsLaps(tab) ? lapService.fields() : [])];
+      fields.forEach((field) => {
+        for (let key = field; key.length > 0 && !keys.has(key); key = key.substring(0, key.lastIndexOf("/"))) {
+          keys.add(key);
+        }
+      });
+    });
+    this.visibleFields = { at: now, tab: this.selectedTab, satellites: this.activeSatellites, keys: keys };
+    return keys;
+  }
+
+  /** Changes when the selected tab or the set of satellite tabs changes. */
+  getVisibleTabsKey(): string {
+    return this.selectedTab.toString() + "|" + this.activeSatellites.join(",");
+  }
+
+  /**
+   * Returns the set of fields currently being displayed. With `onlyVisible`, fields of tabs that are
+   * not on screen are left out; live sources use it to stream only what is drawn and backfill a tab's
+   * history when it is shown. Alerts, laps and enabled state are background features and always count.
+   */
+  getActiveFields(onlyVisible = false): Set<string> {
+    const hasLapView = this.tabList.some((tab) => Tabs.showsLaps(tab));
     let activeFields = new Set<string>([...this.getDbcFields(), ...(hasLapView ? lapService.fields() : [])]);
-    this.tabList.forEach((tab) => {
+    this.tabList.forEach((tab, index) => {
+      if (onlyVisible && index !== this.selectedTab && !this.activeSatellites.includes(tab.controller.UUID)) return;
       tab.controller.getActiveFields().forEach((field) => {
         activeFields.add(field);
       });

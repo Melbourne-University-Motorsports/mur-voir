@@ -20,7 +20,14 @@ import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
 import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
-import { invalidateFrames, onAfterFrame, requestFrame, setFramePaceSupplier, wakeFrames } from "./FrameScheduler";
+import {
+  invalidateFrames,
+  isInteractive,
+  onAfterFrame,
+  requestFrame,
+  setFramePaceSupplier,
+  wakeFrames
+} from "./FrameScheduler";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
 import Sidebar from "./Sidebar";
@@ -38,6 +45,7 @@ import { LiveStatusProvider } from "./dataSources/LiveStatus";
 // Constants
 const STATE_SAVE_PERIOD_MS = 250;
 const TYPE_MEMORY_SAVE_PERIOD_MS = 1000;
+const QUIET_SAVE_PERIOD_MS = 5000;
 const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 
 // Global variables
@@ -139,8 +147,10 @@ function guardedInterval(action: () => void, period: number) {
  * Runs `action` after frames, at most once per `period`. State that can only change through input,
  * messages or data (which all cause frames) is checked here instead of on a timer, so an idle window
  * wakes for none of it. A trailing run catches a change in the last frame before the window goes idle.
+ * Without recent input, the check runs at most once per `quietPeriod`, so live data frames alone do
+ * not keep rebuilding state that input changes.
  */
-function afterFrames(action: () => void, period: number) {
+function afterFrames(action: () => void, period: number, quietPeriod = period) {
   const guard = new RenderGuard();
   let last = -Infinity;
   let trailing: ReturnType<typeof setTimeout> | null = null;
@@ -149,7 +159,7 @@ function afterFrames(action: () => void, period: number) {
     guard.run(action);
   };
   onAfterFrame(() => {
-    const wait = last + period - performance.now();
+    const wait = last + (isInteractive() ? period : quietPeriod) - performance.now();
     if (wait <= 0) {
       if (trailing !== null) clearTimeout(trailing);
       trailing = null;
@@ -271,22 +281,30 @@ function restoreState(state: HubState) {
 
 // Checked after frames so nothing is lost on quit, but only sent when it changed
 let lastSavedState = "";
-afterFrames(() => {
-  const state = saveState();
-  const serialized = JSON.stringify(state);
-  if (serialized === lastSavedState) return;
-  lastSavedState = serialized;
-  window.sendMainMessage("save-state", state);
-}, STATE_SAVE_PERIOD_MS);
+afterFrames(
+  () => {
+    const state = saveState();
+    const serialized = JSON.stringify(state);
+    if (serialized === lastSavedState) return;
+    lastSavedState = serialized;
+    window.sendMainMessage("save-state", state);
+  },
+  STATE_SAVE_PERIOD_MS,
+  QUIET_SAVE_PERIOD_MS
+);
 
 // Main reads and merges the type memory file for each message, so only send changes
 let lastSavedTypeMemory = "";
-afterFrames(() => {
-  const serialized = JSON.stringify(window.typeMemory);
-  if (serialized === lastSavedTypeMemory) return;
-  lastSavedTypeMemory = serialized;
-  window.sendMainMessage("save-type-memory", window.typeMemory);
-}, TYPE_MEMORY_SAVE_PERIOD_MS);
+afterFrames(
+  () => {
+    const serialized = JSON.stringify(window.typeMemory);
+    if (serialized === lastSavedTypeMemory) return;
+    lastSavedTypeMemory = serialized;
+    window.sendMainMessage("save-type-memory", window.typeMemory);
+  },
+  TYPE_MEMORY_SAVE_PERIOD_MS,
+  QUIET_SAVE_PERIOD_MS
+);
 
 // MANAGE DRAGGING
 
@@ -508,6 +526,25 @@ function startHistorical(path: string, clear = true, merge = false) {
   );
 }
 
+/** Whether new data for these keys can change what is on screen. Null means unknown. */
+function showsAnyField(changed: ReadonlySet<string> | null): boolean {
+  if (changed === null) return true;
+  if (changed.size === 0) return false;
+  const sidebarFields = window.sidebar.getOnScreenFields();
+  if (sidebarFields === null) return true;
+  const tabFields = window.tabs.getVisibleFields();
+  for (const key of changed) {
+    if (tabFields.has(key)) return true;
+  }
+  // A sidebar row can be the child of a struct field that changed
+  for (const field of sidebarFields) {
+    for (let key = field; key.length > 0; key = key.substring(0, key.lastIndexOf("/"))) {
+      if (changed.has(key)) return true;
+    }
+  }
+  return false;
+}
+
 /** Connects from the prompt and saves the source and address. */
 function connectLive(sourceId: string, address: string) {
   if (!window.preferences) return;
@@ -601,7 +638,9 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
       window.selection.setLiveConnected(timeSupplier);
       window.sidebar.refresh();
       window.tabs.refresh();
-      invalidateFrames(); // Frames follow the data, up to the live frame cap
+      // Frames follow data that is on screen, up to the live frame cap. The live clock frames move
+      // the timeline and age the freshness marks in between.
+      if (showsAnyField(source.takeChangedFields())) invalidateFrames();
     },
     (detail) => {
       if (liveConnection !== connection) return;
@@ -685,7 +724,7 @@ function reportViewSource() {
   document.body.classList.toggle("has-run-link", openRun !== null);
 }
 // Most changes report straight away; the interval catches the rest (e.g. a live connection dropping).
-afterFrames(reportViewSource, 250);
+afterFrames(reportViewSource, 250, 1000);
 COPY_RUN_LINK.addEventListener("click", () => {
   if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
 });

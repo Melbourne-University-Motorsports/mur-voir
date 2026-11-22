@@ -70,8 +70,8 @@ export function numberAt(key: string | undefined, time: number, unit: string, uu
 
 /** Previews the logged value before the source's Invert option, as Line Graph does. */
 export function numberPreview(key: string, time: number): string | null {
-  const range = window.selection.getTimelineRange();
-  const data = window.log.getNumber(key, range[0], range[1]);
+  // Only the sample at `time` is shown, so read just that one instead of the whole visible range
+  const data = window.log.getNumber(key, time, time);
   if (data === undefined) return null;
   const from = window.log.getUnit(key);
   const to = from === null ? null : axisDisplayUnit(from, window.log.getChannelProfile(key));

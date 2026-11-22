@@ -23,7 +23,10 @@ test("resubscribing requests history again and merges overlapping samples once",
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { tabs: { getActiveFields: () => active }, sidebar: { getActiveFields: () => [] } }
+    value: {
+      tabs: { getActiveFields: () => active, getVisibleTabsKey: () => "" },
+      sidebar: { getActiveFields: () => [] }
+    }
   });
   t.after(() => {
     if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
@@ -32,8 +35,10 @@ test("resubscribing requests history again and merges overlapping samples once",
   const sample = (seq: number) => ({ stream_id: "test", seq, t_ns: String(seq * 1000000000), value: seq });
   let history = [sample(1), sample(2)];
   let requests = 0;
-  t.mock.method(globalThis, "fetch", async () => {
+  const urls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
     requests++;
+    urls.push(url);
     return { ok: true, status: 200, json: async () => ({ samples: history }) };
   });
   source.send = () => {};
@@ -62,10 +67,13 @@ test("resubscribing requests history again and merges overlapping samples once",
   assert.equal(source.historyRequested.has(path), false);
   history = [sample(1), sample(2), sample(3), sample(4)];
   active = new Set(["/" + path]);
+  source.lastSampleNs.set(path, "2000000000"); // The newest sample before the tab was hidden
   live(4);
   periodic();
   await pending!;
   assert.equal(requests, 2);
+  assert.doesNotMatch(urls[0], /from_ns/);
+  assert.match(urls[1], /from_ns=2000000000/); // The gap since the tab was hidden fills in
   const data = source.log.getNumber("/" + path, -Infinity, Infinity);
   assert.deepEqual(data.values, [1, 2, 3, 4]);
   assert.equal(new Set(data.timestamps).size, 4);

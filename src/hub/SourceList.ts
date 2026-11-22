@@ -28,7 +28,7 @@ import { getLogValueText, getOrDefault } from "../shared/log/LogUtil";
 import LoggableType from "../shared/log/LoggableType";
 import { Units } from "../shared/units";
 import { createUUID, jsonCopy } from "../shared/util";
-import { requestFrame } from "./FrameScheduler";
+import { isTextFrame, requestFrame } from "./FrameScheduler";
 
 export default class SourceList {
   private events = new AbortController();
@@ -88,13 +88,17 @@ export default class SourceList {
     requestFrame(SourceList.periodic);
   }
 
+  private static lastPreviews = -Infinity;
+
   private static periodic = () => {
     SourceList.frameRequested = false;
+    const updatePreviews = isTextFrame(SourceList.lastPreviews);
+    if (updatePreviews) SourceList.lastPreviews = performance.now();
     let anyVisible = false;
     for (const instance of SourceList.instances) {
       if (!SourceList.visibleRoots.has(instance.ROOT)) continue;
       anyVisible = true;
-      instance.updateAllPreviews();
+      if (updatePreviews) instance.updateAllPreviews();
     }
     // With every list hidden the loop stops; the observer restarts it when one appears
     if (anyVisible) SourceList.schedule();

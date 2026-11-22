@@ -24,8 +24,9 @@
 export type FramePace = "display" | "live" | "idle";
 
 const INTERACTIVE_MS = 1000;
-const LIVE_FPS = 30;
+const LIVE_FPS = 20;
 const LIVE_CLOCK_FPS = 4;
+const TEXT_PERIOD_MS = 100;
 
 let queue: FrameRequestCallback[] = [];
 let animationFrame: number | null = null;
@@ -36,6 +37,7 @@ let interactiveUntil = -Infinity;
 let invalidated = true; // The first frame always runs
 let paceSupplier: () => FramePace = () => "idle";
 let listening = false;
+let textTimer: ReturnType<typeof setTimeout> | null = null;
 const afterFrameCallbacks: (() => void)[] = [];
 
 /** Sets how the window paces frames when nobody is interacting with it. */
@@ -70,6 +72,25 @@ export function wakeFrames(durationMs = INTERACTIVE_MS) {
   arm();
 }
 
+/**
+ * Whether live text (values next to fields, previews) should update in this frame. Numbers that change
+ * 30 times a second cannot be read, and each text change costs a layout, so without recent input text
+ * follows at most every TEXT_PERIOD_MS while graphs keep the full frame rate. `last` is the caller's
+ * time of its previous text update.
+ */
+export function isTextFrame(last: number): boolean {
+  const wait = last + TEXT_PERIOD_MS - 4 - performance.now();
+  if (wait <= 0 || isInteractive()) return true;
+  // A skipped update still lands once the period passes, even if nothing else asks for a frame
+  if (textTimer === null) {
+    textTimer = setTimeout(() => {
+      textTimer = null;
+      invalidateFrames();
+    }, wait);
+  }
+  return false;
+}
+
 /** Whether someone interacted with the window in the last second (or a message from main arrived). */
 export function isInteractive(): boolean {
   return performance.now() < interactiveUntil;
@@ -87,7 +108,7 @@ function frameDelay(now: number): number {
 function arm() {
   if (queue.length === 0 || animationFrame !== null) return;
   const now = performance.now();
-  // A few ms of slack so a 30 Hz pace lands on every second 60 Hz frame instead of every third
+  // A few ms of slack so a 20 Hz pace lands on every third 60 Hz frame instead of every fourth
   const delay = frameDelay(now) - 4;
   if (delay === Infinity) return;
   if (delay <= 0) {

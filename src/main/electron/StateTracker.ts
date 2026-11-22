@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import fs from "fs";
 import jsonfile from "jsonfile";
 import { getAllTabTypes } from "../../shared/TabType";
@@ -22,10 +22,27 @@ export default class StateTracker {
   private lastSaved = "";
   private rendererStates: { [id: number]: any } = {};
   private satelliteUUIDs: { [id: number]: string } = {};
+  private saveTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     this.lastSaved = JSON.stringify(this.getSavedApplicationState(false));
-    setInterval(() => this.save(), this.SAVE_PERIOD_MS);
+    // Save a second after something changes: a renderer's state, the satellite set, or a window's
+    // bounds. A stable app never builds or serializes the state.
+    const watch = (window: BrowserWindow) => {
+      window.on("move", () => this.markChanged());
+      window.on("resize", () => this.markChanged());
+      window.on("closed", () => this.markChanged());
+    };
+    BrowserWindow.getAllWindows().forEach(watch);
+    app.on("browser-window-created", (_, window) => watch(window));
+  }
+
+  private markChanged() {
+    if (this.saveTimer !== null) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.save();
+    }, this.SAVE_PERIOD_MS);
   }
 
   /** Writes the state file if the state changed. Also called before quitting, so the last second is kept. */
@@ -113,6 +130,7 @@ export default class StateTracker {
   /** Caches the renderer state for a window. */
   saveRendererState(window: BrowserWindow, rendererState: any) {
     this.rendererStates[window.id] = rendererState;
+    this.markChanged();
   }
 
   /** Returns the cached renderer state for a window. */
@@ -128,6 +146,7 @@ export default class StateTracker {
         this.satelliteUUIDs[window.id] = uuid;
       });
     });
+    this.markChanged();
   }
 }
 

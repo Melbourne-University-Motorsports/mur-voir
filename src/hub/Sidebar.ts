@@ -17,7 +17,7 @@ import { RenderGuard } from "../shared/RenderGuard";
 import { SelectionMode } from "../shared/Selection";
 import { arraysEqual, htmlEncode, setsEqual } from "../shared/util";
 import CustomSchemas from "./dataSources/schema/CustomSchemas";
-import { requestFrame } from "./FrameScheduler";
+import { invalidateFrames, isTextFrame, requestFrame } from "./FrameScheduler";
 import { attachResizeHandle } from "./ResizeHandle";
 
 export default class Sidebar {
@@ -74,6 +74,12 @@ export default class Sidebar {
   private activeFieldCallbacks: (() => void)[] = [];
   private updateTypeWarningCallbacks: (() => void)[] = [];
   private updateValueCallbacks: ((time: number | null) => void)[] = [];
+  /** Field rows on screen, reported by an observer so value updates never measure every row. */
+  private rowOnScreen = new WeakMap<Element, boolean>();
+  private rowKeys = new WeakMap<Element, string>();
+  private onScreenFields = new Set<string>();
+  private rowObserver =
+    typeof IntersectionObserver === "function" ? new IntersectionObserver((entries) => this.rowsMoved(entries)) : null;
   private selectGroup: string[] = [];
   private selectGroupClearCallbacks: (() => void)[] = [];
   private revealKey: string | null = null;
@@ -207,12 +213,16 @@ export default class Sidebar {
     const liveFilterGuard = new RenderGuard();
     let lastTuningPublish = -Infinity;
     let lastLiveFilter = -Infinity;
+    let lastValues = -Infinity;
     let periodic = () => {
       requestFrame(periodic);
       guard.run(() => {
         this.updateLiveFilterControl();
         this.updateTitle();
-        this.updateValues();
+        if (isTextFrame(lastValues)) {
+          lastValues = performance.now();
+          this.updateValues();
+        }
         this.updateTuningButton();
       });
       const now = performance.now();
@@ -404,6 +414,47 @@ export default class Sidebar {
     setInnerText(this.SIDEBAR_TITLE, title);
   }
 
+  /** Watches a field row so value updates know whether it is on screen. */
+  private observeRow(element: Element, key: string | null) {
+    if (this.rowObserver === null) return;
+    if (key !== null) this.rowKeys.set(element, key);
+    this.rowObserver.observe(element);
+  }
+
+  private rowsMoved(entries: IntersectionObserverEntry[]) {
+    let shown = false;
+    entries.forEach((entry) => {
+      const rect = entry.boundingClientRect;
+      const onScreen = entry.isIntersecting && rect.width > 0 && rect.height > 0;
+      this.rowOnScreen.set(entry.target, onScreen);
+      const key = this.rowKeys.get(entry.target);
+      if (key === undefined) return;
+      if (onScreen) {
+        this.onScreenFields.add(key);
+        shown = true;
+      } else {
+        this.onScreenFields.delete(key);
+      }
+    });
+    if (shown) invalidateFrames(); // Fill in rows that scrolled or expanded into view
+  }
+
+  /** Whether a field row is on screen. A row the observer has not reported yet is measured. */
+  private isRowOnScreen(element: Element): boolean {
+    const known = this.rowOnScreen.get(element);
+    if (known !== undefined) return known;
+    const rect = element.getBoundingClientRect();
+    return rect.height > 0 && rect.width > 0 && rect.top >= -rect.height && rect.top <= window.innerHeight;
+  }
+
+  /**
+   * Keys of the field rows on screen, which show live values and freshness, or null when rows are
+   * not observed and any field may be on screen.
+   */
+  getOnScreenFields(): ReadonlySet<string> | null {
+    return this.rowObserver === null ? null : this.onScreenFields;
+  }
+
   /** Updates the values displayed next to next field. */
   private updateValues() {
     let time: number | null = null;
@@ -499,6 +550,8 @@ export default class Sidebar {
       this.revealCallbacks = [];
 
       // Add new list
+      this.rowObserver?.disconnect();
+      this.onScreenFields.clear();
       let tree = this.getDisplayTree();
       this.filterResult = this.computeFilter(tree);
       Object.keys(tree)
@@ -551,6 +604,7 @@ export default class Sidebar {
     let valueElement = document.createElement("div");
     fieldElementContainer.appendChild(valueElement);
     valueElement.classList.add("field-value");
+    this.observeRow(fieldElement, field.fullKey);
     fieldElementContainer.style.setProperty("--value-width", "0px");
     if (this.filterResult !== null && field.fullKey !== null && this.filterResult.matches.has(fullTitle)) {
       fieldElementContainer.classList.add("filter-match");
@@ -560,9 +614,10 @@ export default class Sidebar {
 
     // Active fields callback
     this.activeFieldCallbacks.push(() => {
-      let rect = fieldElement.getBoundingClientRect();
-      let expanded = rect.height > 0;
-      let onScreen = rect.height > 0 && rect.width > 0 && rect.top >= -rect.height && rect.top <= window.innerHeight;
+      // The observer knows which rows are on screen. Only array and structured rows also count while
+      // scrolled out of view, so only they measure whether their parent is expanded.
+      let onScreen = this.isRowOnScreen(fieldElement);
+      let isExpanded = () => onScreen || fieldElement.getBoundingClientRect().height > 0;
 
       if (field.fullKey !== null) {
         let isActive = false;
@@ -572,12 +627,12 @@ export default class Sidebar {
 
         // Active if expanded and array or structured
         if (
-          expanded &&
           (type === LoggableType.BooleanArray ||
             type === LoggableType.NumberArray ||
             type === LoggableType.StringArray ||
             (type !== LoggableType.Empty && structuredType !== null) ||
-            (type === LoggableType.Raw && wpilibType !== null && CustomSchemas.has(wpilibType)))
+            (type === LoggableType.Raw && wpilibType !== null && CustomSchemas.has(wpilibType))) &&
+          isExpanded()
         ) {
           isActive = true;
         }
@@ -601,7 +656,7 @@ export default class Sidebar {
       // Add type subkey if available
       if (TYPE_KEY in field.children && field.children[TYPE_KEY].fullKey !== null) {
         let typeKey = field.children[TYPE_KEY].fullKey;
-        if (expanded) {
+        if (isExpanded()) {
           this.activeFields.add(typeKey);
         } else {
           this.activeFields.delete(typeKey);
@@ -679,7 +734,15 @@ export default class Sidebar {
         unsyncSpan.hidden = true;
         let lastFreshness: string | null = null;
         let lastUnsync = false;
+        // Built on hover: the sample age changes every frame, and nobody reads it until then
+        freshnessDot.addEventListener("pointerenter", () => {
+          const age = window.liveStatus?.getFieldAge(field.fullKey!);
+          freshnessDot.title = `${lastFreshness ?? "unknown"} · ${
+            age === null || age === undefined ? "No sample received" : `sample age ${age.toFixed(1)} s`
+          }`;
+        });
         this.updateValueCallbacks.push(() => {
+          if (!this.isRowOnScreen(fieldElement)) return;
           let freshness = window.liveStatus?.getFieldFreshness(field.fullKey!) ?? null;
           if (freshness !== lastFreshness) {
             lastFreshness = freshness;
@@ -688,10 +751,6 @@ export default class Sidebar {
             freshnessDot.innerText =
               freshness === "online" ? "●" : freshness === "stale" ? "◇" : freshness === "offline" ? "⊘" : "?";
           }
-          const age = window.liveStatus?.getFieldAge(field.fullKey!);
-          freshnessDot.title = `${freshness ?? "unknown"} · ${
-            age === null || age === undefined ? "No sample received" : `sample age ${age.toFixed(1)} s`
-          }`;
           let unsync = window.liveStatus?.isFieldUnsynchronised(field.fullKey!) ?? false;
           if (unsync !== lastUnsync) {
             lastUnsync = unsync;
@@ -855,10 +914,7 @@ export default class Sidebar {
         let lastValue: boolean | null = null;
         let lastHidden: boolean | null = null;
         this.updateValueCallbacks.push((time) => {
-          let rect = fieldElement.getBoundingClientRect();
-          let onScreen =
-            rect.height > 0 && rect.width > 0 && rect.top >= -rect.height && rect.top <= window.innerHeight;
-          if (!onScreen) return;
+          if (!this.isRowOnScreen(fieldElement)) return;
 
           let value: boolean | null =
             time === null ? null : getOrDefault(window.log, field.fullKey!, LoggableType.Boolean, time, null);
@@ -921,10 +977,7 @@ export default class Sidebar {
         let lastValue: number | null = null;
         let lastCharCount: number | null = null;
         this.updateValueCallbacks.push((time) => {
-          let rect = fieldElement.getBoundingClientRect();
-          let onScreen =
-            rect.height > 0 && rect.width > 0 && rect.top >= -rect.height && rect.top <= window.innerHeight;
-          if (!onScreen) return;
+          if (!this.isRowOnScreen(fieldElement)) return;
 
           let value: number | null =
             time === null ? null : getOrDefault(window.log, field.fullKey!, LoggableType.Number, time, null);
@@ -950,10 +1003,7 @@ export default class Sidebar {
         let lastCharCount: number | null = null;
         let lastSidebarWidth = 0;
         this.updateValueCallbacks.push((time) => {
-          let rect = fieldElement.getBoundingClientRect();
-          let onScreen =
-            rect.height > 0 && rect.width > 0 && rect.top >= -rect.height && rect.top <= window.innerHeight;
-          if (!onScreen) return;
+          if (!this.isRowOnScreen(fieldElement)) return;
 
           let value: string | null =
             time === null ? null : getOrDefault(window.log, field.fullKey!, LoggableType.String, time, null);

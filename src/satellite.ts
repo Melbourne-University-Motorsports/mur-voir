@@ -167,8 +167,9 @@ window.addEventListener("message", (event) => {
           }
 
           // Render frame
+          // Commands change a visualizer's saved state only when it first draws; input covers the rest
+          if (lastCommand === null) scheduleSaveState();
           lastCommand = message.data.command;
-          scheduleSaveState();
           if (renderer) {
             guardedRender(() => renderer!.render(message.data.command));
             let aspectRatio = renderer.getAspectRatio();

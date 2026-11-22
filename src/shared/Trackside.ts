@@ -17,7 +17,6 @@ export type TracksideTile = {
   state: string;
   severity: Severity;
   freshness: Freshness | null;
-  age: number | null;
   /** Full names of the set fault bits, one per line, for the tooltip. */
   detail?: string;
 };
@@ -112,6 +111,7 @@ export function tileState(
     : fault?.severity === "unknown"
     ? "ok"
     : fault?.severity ?? "ok";
+  // The age shows only as text at 0.1 s steps, so the tile changes (and a satellite is sent it) only then
   const age = live?.age ?? null;
   const ageText = age === null ? "" : ` ${age.toFixed(1)} s`;
   let state = severity === "critical" ? "Alarm" : severity === "warn" ? "Warning" : "";
@@ -133,7 +133,6 @@ export function tileState(
     state,
     severity,
     freshness: live?.freshness ?? null,
-    age,
     ...(fault?.detail ? { detail: fault.detail } : {})
   };
 }
