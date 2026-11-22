@@ -45,7 +45,7 @@ import VideoController from "./controllers/VideoController";
 
 import { setHidden, setRootProperty } from "../shared/domWrite";
 import LapRenderer from "../shared/renderers/LapRenderer";
-import { requestFrame } from "./FrameScheduler";
+import { invalidateFrames, isInteractive, requestFrame } from "./FrameScheduler";
 import { lapService } from "./LapService";
 import LapController from "./controllers/LapController";
 
@@ -87,6 +87,11 @@ export default class Tabs {
   private selectedTab = 0;
   private activeSatellites: string[] = [];
   private HIDDEN_REFRESH_MS = 1000;
+  /** Satellites redraw from every command, so commands go out only when they change, and at most this often. */
+  private SATELLITE_INTERVAL_MS = 100;
+  private SATELLITE_INTERACTIVE_INTERVAL_MS = 1000 / 30;
+  private satelliteSends = new Map<string, { time: number; command: string }>();
+  private satelliteRetry: ReturnType<typeof setTimeout> | null = null;
   private lastHiddenRefresh = -Infinity;
   /** Tabs that skipped a refresh while hidden. */
   private staleTabs = new WeakSet<object>();
@@ -382,7 +387,7 @@ export default class Tabs {
               if (activeLocal) {
                 tab.renderer.render(command);
               }
-              if (activeSatellite) {
+              if (activeSatellite && this.shouldSendSatellite(tab.controller.UUID, command)) {
                 let title =
                   tab.type === TabType.Documentation
                     ? "Documentation"
@@ -556,6 +561,28 @@ export default class Tabs {
       keys
     };
     return keys;
+  }
+
+  private shouldSendSatellite(uuid: string, command: unknown): boolean {
+    const now = performance.now();
+    const last = this.satelliteSends.get(uuid);
+    const interval = isInteractive() ? this.SATELLITE_INTERACTIVE_INTERVAL_MS : this.SATELLITE_INTERVAL_MS;
+    if (last !== undefined && now - last.time < interval - 4) {
+      // Make sure a frame runs once the interval passes, so the latest command still goes out
+      if (this.satelliteRetry === null)
+        this.satelliteRetry = setTimeout(
+          () => {
+            this.satelliteRetry = null;
+            invalidateFrames();
+          },
+          last.time + interval - now
+        );
+      return false;
+    }
+    const serialized = JSON.stringify(command);
+    if (last !== undefined && serialized === last.command) return false;
+    this.satelliteSends.set(uuid, { time: now, command: serialized });
+    return true;
   }
 
   /** Returns the set of fields currently being displayed. */
@@ -806,6 +833,9 @@ export default class Tabs {
   /** Updates the list of active satellites for data publishing. */
   setActiveSatellites(activeSatellites: string[]) {
     this.activeSatellites = activeSatellites;
+    // A satellite that closes and reopens needs its first command again
+    for (const uuid of this.satelliteSends.keys())
+      if (!activeSatellites.includes(uuid)) this.satelliteSends.delete(uuid);
   }
 
   /** Check whether the UUID is associated with a tab. */

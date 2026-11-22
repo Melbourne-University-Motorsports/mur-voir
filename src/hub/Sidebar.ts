@@ -202,8 +202,11 @@ export default class Sidebar {
       });
     });
 
-    // Periodic functions
+    // Periodic functions, run in paced frames so an idle window does none of this
     const guard = new RenderGuard();
+    const liveFilterGuard = new RenderGuard();
+    let lastTuningPublish = -Infinity;
+    let lastLiveFilter = -Infinity;
     let periodic = () => {
       requestFrame(periodic);
       guard.run(() => {
@@ -212,14 +215,18 @@ export default class Sidebar {
         this.updateValues();
         this.updateTuningButton();
       });
+      const now = performance.now();
+      if (this.isTuningMode && now - lastTuningPublish >= 250) {
+        lastTuningPublish = now;
+        this.tuningModePublishCallbacks.forEach((callback) => callback());
+      }
+      // Fields go live or stale continuously; follow them at most once per period, never per sample
+      if (now - lastLiveFilter >= this.LIVE_FILTER_PERIOD_MS) {
+        lastLiveFilter = now;
+        liveFilterGuard.run(() => this.updateLiveFilter());
+      }
     };
     requestFrame(periodic);
-    setInterval(() => {
-      this.tuningModePublishCallbacks.forEach((callback) => callback());
-    }, 250);
-    // Fields go live or stale continuously; follow them at most once per period, never per sample
-    const liveFilterGuard = new RenderGuard();
-    setInterval(() => liveFilterGuard.run(() => this.updateLiveFilter()), this.LIVE_FILTER_PERIOD_MS);
   }
 
   /** Returns the current state. */

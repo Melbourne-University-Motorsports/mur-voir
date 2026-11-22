@@ -20,7 +20,7 @@ import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
 import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
-import { requestFrame, setFramePaceSupplier, wakeFrames } from "./FrameScheduler";
+import { invalidateFrames, onAfterFrame, requestFrame, setFramePaceSupplier, wakeFrames } from "./FrameScheduler";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
 import Sidebar from "./Sidebar";
@@ -135,7 +135,35 @@ function guardedInterval(action: () => void, period: number) {
   return window.setInterval(() => guard.run(action), period);
 }
 
-guardedInterval(() => {
+/**
+ * Runs `action` after frames, at most once per `period`. State that can only change through input,
+ * messages or data (which all cause frames) is checked here instead of on a timer, so an idle window
+ * wakes for none of it. A trailing run catches a change in the last frame before the window goes idle.
+ */
+function afterFrames(action: () => void, period: number) {
+  const guard = new RenderGuard();
+  let last = -Infinity;
+  let trailing: ReturnType<typeof setTimeout> | null = null;
+  const run = () => {
+    last = performance.now();
+    guard.run(action);
+  };
+  onAfterFrame(() => {
+    const wait = last + period - performance.now();
+    if (wait <= 0) {
+      if (trailing !== null) clearTimeout(trailing);
+      trailing = null;
+      run();
+    } else if (trailing === null) {
+      trailing = setTimeout(() => {
+        trailing = null;
+        run();
+      }, wait);
+    }
+  });
+}
+
+afterFrames(() => {
   if (!liveActive || liveStatus !== LiveDataSourceStatus.Active) return;
   const status = window.liveStatus?.getLiveStatus();
   setWindowTitle(liveAddress, status?.backend === "connected" && !status.hasFreshData ? "No car data" : undefined);
@@ -241,9 +269,9 @@ function restoreState(state: HubState) {
   window.tabs.restoreState(state.tabs);
 }
 
-// Checked often so nothing is lost on quit, but only sent when it changed
+// Checked after frames so nothing is lost on quit, but only sent when it changed
 let lastSavedState = "";
-guardedInterval(() => {
+afterFrames(() => {
   const state = saveState();
   const serialized = JSON.stringify(state);
   if (serialized === lastSavedState) return;
@@ -253,7 +281,7 @@ guardedInterval(() => {
 
 // Main reads and merges the type memory file for each message, so only send changes
 let lastSavedTypeMemory = "";
-guardedInterval(() => {
+afterFrames(() => {
   const serialized = JSON.stringify(window.typeMemory);
   if (serialized === lastSavedTypeMemory) return;
   lastSavedTypeMemory = serialized;
@@ -374,7 +402,7 @@ function startHistorical(path: string, clear = true, merge = false) {
     window.log = new Log();
     window.sidebar.refresh();
     window.tabs.refresh();
-    wakeFrames(0);
+    invalidateFrames();
   }
 
   liveConnection?.stop();
@@ -475,7 +503,7 @@ function startHistorical(path: string, clear = true, merge = false) {
     (hasNewFields: boolean) => {
       window.sidebar.refresh();
       if (hasNewFields) window.tabs.refresh();
-      wakeFrames(0); // Show the new data now, not at the idle pace
+      invalidateFrames(); // Show the new data
     }
   );
 }
@@ -545,6 +573,7 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
     (status: LiveDataSourceStatus) => {
       if (liveConnection !== connection) return;
       liveStatus = status;
+      invalidateFrames();
       connectDialog.updateStatus(status);
       switch (status) {
         case LiveDataSourceStatus.Connecting:
@@ -572,6 +601,7 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
       window.selection.setLiveConnected(timeSupplier);
       window.sidebar.refresh();
       window.tabs.refresh();
+      invalidateFrames(); // Frames follow the data, up to the live frame cap
     },
     (detail) => {
       if (liveConnection !== connection) return;
@@ -655,14 +685,14 @@ function reportViewSource() {
   document.body.classList.toggle("has-run-link", openRun !== null);
 }
 // Most changes report straight away; the interval catches the rest (e.g. a live connection dropping).
-guardedInterval(reportViewSource, 250);
+afterFrames(reportViewSource, 250);
 COPY_RUN_LINK.addEventListener("click", () => {
   if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
 });
 
 // Update touch bar slider position, only when it moves
 let lastTouchBarPercent: number | null = null;
-guardedInterval(() => {
+afterFrames(() => {
   if (window.platform === "darwin") {
     let range = window.log.getTimestampRange();
     let liveTime = window.selection.getCurrentLiveTime();

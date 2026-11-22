@@ -146,12 +146,14 @@ window.addEventListener("message", (event) => {
         case "set-type":
           type = message.data;
           updateVisualizer();
+          scheduleSaveState();
           break;
 
         case "restore-state":
           type = message.data.type;
           updateVisualizer();
           renderer?.restoreState(message.data.visualizer);
+          scheduleSaveState();
           break;
 
         case "render":
@@ -166,6 +168,7 @@ window.addEventListener("message", (event) => {
 
           // Render frame
           lastCommand = message.data.command;
+          scheduleSaveState();
           if (renderer) {
             guardedRender(() => renderer!.render(message.data.command));
             let aspectRatio = renderer.getAspectRatio();
@@ -253,15 +256,24 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-// Checked often so nothing is lost on quit, but only sent when it changed
+// The visualizer's state changes through input and commands, so check shortly after either instead of on a
+// timer; an idle satellite then never wakes for it. Only changes are sent.
 let lastSavedState = "";
-setInterval(() => {
-  const state = { type: type, visualizer: renderer?.saveState() };
-  const serialized = JSON.stringify(state);
-  if (serialized === lastSavedState) return;
-  lastSavedState = serialized;
-  window.sendMainMessage("save-state", state);
-}, SAVE_PERIOD_MS);
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSaveState() {
+  if (saveTimer !== null) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const state = { type: type, visualizer: renderer?.saveState() };
+    const serialized = JSON.stringify(state);
+    if (serialized === lastSavedState) return;
+    lastSavedState = serialized;
+    window.sendMainMessage("save-state", state);
+  }, SAVE_PERIOD_MS);
+}
+for (const event of ["pointerup", "wheel", "keyup", "resize", "change"]) {
+  window.addEventListener(event, scheduleSaveState, { capture: true, passive: true });
+}
 
 // Mock selection, send setter calls back to hub
 

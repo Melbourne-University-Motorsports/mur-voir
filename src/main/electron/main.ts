@@ -171,6 +171,45 @@ function sendAssets() {
   });
 }
 
+// Reload assets when the user assets folder changes. Every window rebuilds on new assets, so only send changes.
+// A file watcher keeps the synchronous folder scan off the steady state; polling is the fallback.
+let assetWatcher: fs.FSWatcher | null = null;
+let assetPoll: ReturnType<typeof setInterval> | null = null;
+let assetReloadTimer: ReturnType<typeof setTimeout> | null = null;
+async function reloadAssets() {
+  const assets = await loadAssets();
+  if (JSON.stringify(assets) === JSON.stringify(advantageScopeAssets)) return;
+  advantageScopeAssets = assets;
+  sendAssets();
+}
+/** Watches the current user assets folder, replacing any earlier watch. */
+function watchUserAssets() {
+  assetWatcher?.close();
+  assetWatcher = null;
+  if (assetPoll !== null) clearInterval(assetPoll);
+  assetPoll = null;
+  try {
+    assetWatcher = fs.watch(getUserAssetsPath(), { recursive: true }, () => {
+      if (assetReloadTimer !== null) clearTimeout(assetReloadTimer);
+      assetReloadTimer = setTimeout(() => {
+        assetReloadTimer = null;
+        void reloadAssets();
+      }, 500);
+    });
+  } catch {
+    assetPoll = setInterval(reloadAssets, 5000);
+  }
+}
+
+/** The last command each satellite tab was sent, replayed to satellite windows that load or show later. */
+const latestSatelliteRenders: { [uuid: string]: { command: unknown; title: string } } = {};
+
+function replaySatelliteRender(satellite: BrowserWindow, uuid: string) {
+  const latest = latestSatelliteRenders[uuid];
+  if (latest !== undefined && !satellite.isDestroyed() && satellite.isVisible())
+    sendMessage(satellite, "render", latest);
+}
+
 /** Sends the list of active satellites to all hub windows. */
 function sendActiveSatellites() {
   let activeSatellites: string[] = [];
@@ -1223,6 +1262,8 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       let satelliteUUID = message.data.uuid;
       let command = message.data.command;
       let title = message.data.title;
+      // Hubs send only changed commands, so keep the latest for satellites that load or show later
+      latestSatelliteRenders[satelliteUUID] = { command: command, title: title };
       if (satelliteUUID in satelliteWindows) {
         satelliteWindows[satelliteUUID].forEach((satellite) => {
           if (satellite.isVisible()) {
@@ -1461,6 +1502,7 @@ function setupMenu() {
             advantageScopeAssets = await loadAssets();
             sendAllPreferences();
             sendAssets();
+            watchUserAssets();
           }
         },
         ...(isMac
@@ -2454,6 +2496,8 @@ function createSatellite(
   satellite.setMenu(null);
   satellite.setMenuBarVisibility(false);
   satellite.once("ready-to-show", satellite.show);
+  satellite.on("show", () => replaySatelliteRender(satellite, uuid!));
+  satellite.on("restore", () => replaySatelliteRender(satellite, uuid!));
   satellite.loadFile(path.join(__dirname, "../www/satellite.html"));
   let firstLoad = true;
   satellite.webContents.on("dom-ready", () => {
@@ -2548,6 +2592,7 @@ function createSatellite(
       }
     }
     sendAllPreferences();
+    replaySatelliteRender(satellite, uuid);
     firstLoad = false;
   });
   satellite.webContents.setWindowOpenHandler((details) => {
@@ -2762,13 +2807,7 @@ app.whenReady().then(async () => {
 
   // Load assets
   createAssetFolders();
-  setInterval(async () => {
-    // Periodically load assets in case they are updated. Every window rebuilds on new assets, so only send changes.
-    const assets = await loadAssets();
-    if (JSON.stringify(assets) === JSON.stringify(advantageScopeAssets)) return;
-    advantageScopeAssets = assets;
-    sendAssets();
-  }, 5000);
+  watchUserAssets();
   advantageScopeAssets = await loadAssets();
 
   // Create menu and windows
