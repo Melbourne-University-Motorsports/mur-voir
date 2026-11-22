@@ -36,6 +36,67 @@ export default class SourceList {
   static typePromptCallbacks: { [key: string]: (state: SourceListItemState) => void } = {};
   static clearPromptCallbacks: { [key: string]: () => void } = {};
 
+  // One animation-frame loop serves every source list. Lists on hidden tabs cost nothing per frame:
+  // visibility comes from an IntersectionObserver, so no list forces a layout to check it.
+  private static instances = new Set<SourceList>();
+  private static visibleRoots = new WeakSet<Element>();
+  private static observer: IntersectionObserver | null = null;
+  private static frame: number | null = null;
+  private static darkQuery: MediaQueryList | null = null;
+
+  private static register(list: SourceList) {
+    if (typeof IntersectionObserver === "undefined") {
+      // No observer (tests): treat every list as visible
+      SourceList.instances.add(list);
+      SourceList.visibleRoots.add(list.ROOT);
+      SourceList.schedule();
+      return;
+    }
+    if (SourceList.observer === null) {
+      SourceList.observer = new IntersectionObserver((entries) => {
+        let anyVisible = false;
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            SourceList.visibleRoots.add(entry.target);
+            anyVisible = true;
+          } else {
+            SourceList.visibleRoots.delete(entry.target);
+          }
+        }
+        if (anyVisible) SourceList.schedule();
+      });
+      // Icon colors depend on the theme
+      SourceList.darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      SourceList.darkQuery.addEventListener("change", () =>
+        SourceList.instances.forEach((instance) => instance.updateAllItems())
+      );
+    }
+    SourceList.instances.add(list);
+    SourceList.observer.observe(list.ROOT);
+  }
+
+  private static unregister(list: SourceList) {
+    SourceList.instances.delete(list);
+    SourceList.observer?.unobserve(list.ROOT);
+    SourceList.visibleRoots.delete(list.ROOT);
+  }
+
+  private static schedule() {
+    if (SourceList.frame === null) SourceList.frame = window.requestAnimationFrame(SourceList.periodic);
+  }
+
+  private static periodic = () => {
+    SourceList.frame = null;
+    let anyVisible = false;
+    for (const instance of SourceList.instances) {
+      if (!SourceList.visibleRoots.has(instance.ROOT)) continue;
+      anyVisible = true;
+      instance.updateAllPreviews();
+    }
+    // With every list hidden the loop stops; the observer restarts it when one appears
+    if (anyVisible) SourceList.schedule();
+  };
+
   private UUID = createUUID();
   private ITEM_TEMPLATE = document.getElementById("sourceListItemTemplate")?.firstElementChild as HTMLElement;
   private ROOT: HTMLElement;
@@ -51,7 +112,10 @@ export default class SourceList {
   /** Status text for fields hidden by the current graph mode. */
   itemStatus = new Map<string, { text: string; error: boolean; warn?: boolean; title?: string }>();
   private stopped = false;
-  private animationFrame = 0;
+  /** The item under the pointer. Only it gets the sample age tooltip, which changes every frame. */
+  private hoveredItem: HTMLElement | null = null;
+  /** The text last written to each preview, so updates skip reading innerText (which forces layout). */
+  private previewTexts = new WeakMap<HTMLElement, string>();
   private config: SourceListConfig;
   private configStr: string;
   private state: SourceListState = [];
@@ -213,6 +277,28 @@ export default class SourceList {
       { signal: this.events.signal }
     );
 
+    // Track the hovered item so its tooltip is filled in right away
+    this.LIST.addEventListener(
+      "pointerover",
+      (event) => {
+        let element = event.target as HTMLElement | null;
+        while (element !== null && element.parentElement !== this.LIST) element = element.parentElement;
+        if (element === this.hoveredItem) return;
+        this.hoveredItem = element;
+        if (element === null) return;
+        const index = Array.prototype.indexOf.call(this.LIST.children, element);
+        if (index >= 0 && index < this.state.length) this.updatePreview(element, this.state[index]);
+      },
+      { signal: this.events.signal }
+    );
+    this.LIST.addEventListener(
+      "pointerleave",
+      () => {
+        this.hoveredItem = null;
+      },
+      { signal: this.events.signal }
+    );
+
     // Entry dragging support
     this.LIST.addEventListener(
       "mousedown",
@@ -305,24 +391,8 @@ export default class SourceList {
       { signal: this.events.signal }
     );
 
-    // Periodic method
-    let lastIsDark: boolean | null = null;
-    let periodic = () => {
-      if (this.stopped) return;
-
-      // Update items when theme changes (some icon colors will change)
-      let isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      if (isDark !== lastIsDark) {
-        lastIsDark = isDark;
-        this.updateAllItems();
-      }
-
-      // Update value previews
-      if (this.ROOT.isConnected && this.ROOT.getClientRects().length > 0) this.updateAllPreviews();
-
-      this.animationFrame = window.requestAnimationFrame(periodic);
-    };
-    this.animationFrame = window.requestAnimationFrame(periodic);
+    // Value previews run from one shared loop, and only while this list is on screen
+    SourceList.register(this);
   }
 
   setTitle(title: string): void {
@@ -370,7 +440,7 @@ export default class SourceList {
 
   stop() {
     this.stopped = true;
-    window.cancelAnimationFrame(this.animationFrame);
+    SourceList.unregister(this);
     this.events.abort();
     delete SourceList.clearPromptCallbacks[this.UUID];
     delete SourceList.typePromptCallbacks[this.UUID];
@@ -1450,17 +1520,19 @@ export default class SourceList {
       }
     }
 
+    // The raw value and sample age tooltip changes every frame, so only the hovered item builds it
+    let title: string | null = null;
     const rawTime = window.selection.getRenderTime();
-    if (rawTime !== null) {
+    if (item === this.hoveredItem && rawTime !== null) {
       const type = window.log.getType(state.logKey);
       const raw = type === null ? null : getOrDefault(window.log, state.logKey, type, rawTime, null);
-      valueText.title = rawChannelValue(raw, window.log.getChannelProfile(state.logKey));
+      title = rawChannelValue(raw, window.log.getChannelProfile(state.logKey));
       if (type === LoggableType.Number) {
         // Sample age and rate, so a held value from a stalled source is not mistaken for a live one
         const recent = window.log.getNumber(state.logKey, rawTime - 10, rawTime);
         const ts = recent?.timestamps ?? [];
         const last = ts.findLast((t) => t <= rawTime);
-        if (last === undefined) valueText.title += "\nno sample in the last 10 s";
+        if (last === undefined) title += "\nno sample in the last 10 s";
         else {
           const recentRate = ts.filter((t) => t <= rawTime && t > last - 1).length - 1;
           let nominalRate: number | undefined;
@@ -1469,7 +1541,7 @@ export default class SourceList {
           } catch {
             /* Not every imported field has JSON metadata. */
           }
-          valueText.title +=
+          title +=
             `\nsample age ${(rawTime - last).toFixed(2)} s` +
             (nominalRate ? ` · source ${nominalRate} Hz` : recentRate > 0 ? ` · retained ${recentRate} Hz` : "");
         }
@@ -1478,13 +1550,17 @@ export default class SourceList {
     const status = this.itemStatus.get(state.logKey);
     if (status) {
       text = status.text;
-      valueText.title = status.title ?? status.text;
+      title = status.title ?? status.text;
     }
-    // Update state
-    valueSymbol.hidden = text === null;
-    valueText.hidden = text === null;
-    item.style.height = valueSymbol.hidden ? "30px" : "50px";
-    if (text !== null && text !== valueText.innerText) {
+    // Update state, writing only what changed so an unchanged preview costs no style or layout work
+    if (title !== null && valueText.title !== title) valueText.title = title;
+    const hidden = text === null;
+    if (valueSymbol.hidden !== hidden) valueSymbol.hidden = hidden;
+    if (valueText.hidden !== hidden) valueText.hidden = hidden;
+    const height = hidden ? "30px" : "50px";
+    if (item.style.height !== height) item.style.height = height;
+    if (text !== null && text !== this.previewTexts.get(valueText)) {
+      this.previewTexts.set(valueText, text);
       valueText.innerText = text;
     }
   }

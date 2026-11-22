@@ -140,15 +140,25 @@ export default class TracksideRenderer implements TabRenderer {
     return null;
   }
   render(command: TracksideRendererCommand) {
-    this.graphRoot.hidden = !command.graph;
-    this.grid.classList.toggle("with-graph", !!command.graph);
+    // Runs every frame, so every DOM write below happens only when its value changed.
+    // Rewriting unchanged text or attributes still invalidates style and layout.
+    const showGraph = !!command.graph;
+    if (this.graphRoot.hidden === showGraph) this.graphRoot.hidden = !showGraph;
+    if (this.grid.classList.contains("with-graph") !== showGraph) this.grid.classList.toggle("with-graph", showGraph);
     if (command.graph) this.graph.render(command.graph);
     if (command.message || !command.tiles.length) {
-      this.grid.replaceChildren();
-      const message = document.createElement("div");
-      message.className = "tab-centered";
-      message.textContent = command.message || "Drag fields into the tile list below.";
-      this.grid.append(message);
+      const text = command.message || "Drag fields into the tile list below.";
+      const current = this.grid.firstElementChild;
+      if (
+        this.grid.children.length !== 1 ||
+        !current?.classList.contains("tab-centered") ||
+        current.textContent !== text
+      ) {
+        const message = document.createElement("div");
+        message.className = "tab-centered";
+        message.textContent = text;
+        this.grid.replaceChildren(message);
+      }
       return;
     }
     if (
@@ -173,13 +183,20 @@ export default class TracksideRenderer implements TabRenderer {
     }
     command.tiles.forEach((tile, index) => {
       const cell = this.grid.children[index] as HTMLElement;
-      cell.dataset.severity = tile.severity;
-      cell.dataset.freshness = tile.state.includes("link lost") ? "offline" : tile.freshness ?? "";
-      cell.children[0].textContent = tile.label;
-      cell.children[1].children[0].textContent = tile.text;
-      cell.children[1].children[1].textContent = tile.unit ? " " + tile.unit : "";
-      cell.children[2].textContent = tile.state;
-      cell.title = `${tile.label}: ${tile.text} ${tile.unit} ${tile.state}` + (tile.detail ? "\n" + tile.detail : "");
+      const freshness = tile.state.includes("link lost") ? "offline" : tile.freshness ?? "";
+      if (cell.dataset.severity !== tile.severity) cell.dataset.severity = tile.severity;
+      if (cell.dataset.freshness !== freshness) cell.dataset.freshness = freshness;
+      setText(cell.children[0], tile.label);
+      setText(cell.children[1].children[0], tile.text);
+      setText(cell.children[1].children[1], tile.unit ? " " + tile.unit : "");
+      setText(cell.children[2], tile.state);
+      const title = `${tile.label}: ${tile.text} ${tile.unit} ${tile.state}` + (tile.detail ? "\n" + tile.detail : "");
+      if (cell.title !== title) cell.title = title;
     });
   }
+}
+
+/** Sets an element's text only when it differs, so unchanged tiles cost no layout. */
+function setText(element: Element, text: string) {
+  if (element.textContent !== text) element.textContent = text;
 }

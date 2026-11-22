@@ -122,6 +122,25 @@ export default class Timeline {
     this.bandSupplier = supplier;
   }
 
+  private static darkQuery: MediaQueryList | null = null;
+  private lastDraw: { key: string; range: [number, number] } | null = null;
+
+  /** Opacity of the "Scroll timeline to zoom" hint, which fades out after the first zoom. */
+  private getHelpTextOpacity(): number {
+    // Reset scrollTime once preference is set
+    let hasScrolledTimeline = (window.preferences?.hasScrolledTimeline ?? false) || this.scrollSensor.shouldHideHint();
+    if (hasScrolledTimeline) {
+      this.scrollTime = null;
+      this.zoomInAccumulator = 0;
+      return 0;
+    }
+    if (this.scrollTime === null) return 0.5;
+    let elapsed = Date.now() - this.scrollTime;
+    if (elapsed < 600) return 0.5;
+    if (elapsed < 1000) return 0.5 * (1 - (elapsed - 600) / 400);
+    return 0;
+  }
+
   private isHidden() {
     return this.CONTAINER.clientHeight === 0;
   }
@@ -130,17 +149,50 @@ export default class Timeline {
     if (this.isHidden()) return;
     this.scrollSensor.periodic();
 
-    // Initial setup and scaling
     const devicePixelRatio = window.devicePixelRatio;
-    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     let width = this.CONTAINER.clientWidth;
     let height = this.CONTAINER.clientHeight;
-    let light = !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    Timeline.darkQuery ??= window.matchMedia("(prefers-color-scheme: dark)");
+    let light = !Timeline.darkQuery.matches;
     let timeRange = window.selection.getTimelineRange();
-    this.CANVAS.width = width * devicePixelRatio;
-    this.CANVAS.height = height * devicePixelRatio;
-    context.scale(devicePixelRatio, devicePixelRatio);
+    const bands = this.bandSupplier();
+    const helpTextOpacity = this.getHelpTextOpacity();
+
+    // Skip the redraw when nothing visible changed. The range counts as moved once either end
+    // shifts half a pixel, so a long live timeline redraws about once per pixel, not every frame.
+    const key = JSON.stringify([
+      width,
+      height,
+      devicePixelRatio,
+      light,
+      window.log.getTimestampDisplayOffset(),
+      bands,
+      window.selection.getGrabZoomRange(),
+      window.selection.getHoveredTime(),
+      window.selection.getSelectedTime(),
+      this.lastCursorX,
+      helpTextOpacity
+    ]);
+    const last = this.lastDraw;
+    if (last !== null && last.key === key) {
+      const pxPerSecond = width / (last.range[1] - last.range[0]);
+      if (
+        Math.abs(timeRange[0] - last.range[0]) * pxPerSecond < 0.5 &&
+        Math.abs(timeRange[1] - last.range[1]) * pxPerSecond < 0.5
+      )
+        return;
+    }
+    this.lastDraw = { key, range: [timeRange[0], timeRange[1]] };
+
+    // Setup and scaling. Resizing a canvas reallocates it, so only do it when the size changes.
+    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
+    if (this.CANVAS.width !== Math.round(width * devicePixelRatio))
+      this.CANVAS.width = Math.round(width * devicePixelRatio);
+    if (this.CANVAS.height !== Math.round(height * devicePixelRatio))
+      this.CANVAS.height = Math.round(height * devicePixelRatio);
+    context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
     context.clearRect(0, 0, width, height);
+    context.globalAlpha = 1;
     let helpFont = "200 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
     let labelFont = "200 12px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
 
@@ -155,11 +207,11 @@ export default class Timeline {
     let stepSize = calcAxisStepSize(displayTimeRange, width, this.STEP_TARGET_PX + extraDigits * 12);
 
     // Draw bands (e.g. laps)
-    const bandsLabelled = this.bandSupplier().some((b) => b.label);
+    const bandsLabelled = bands.some((b) => b.label);
     const tickLabelY = bandsLabelled ? 9 : height / 2;
     context.lineWidth = 1;
     let rangeBorders: number[] = [];
-    this.bandSupplier().forEach((range) => {
+    bands.forEach((range) => {
       let startTime = range.start;
       let endTime = range.end === undefined ? timeRange[1] : range.end;
       context.fillStyle = light ? range.color : range.darkColor;
@@ -255,28 +307,6 @@ export default class Timeline {
     let helpText = "Scroll timeline to zoom";
     context.font = helpFont;
     let helpTextWidth = context.measureText(helpText).width;
-
-    // Reset scrollTime once preference is set
-    let hasScrolledTimeline = (window.preferences?.hasScrolledTimeline ?? false) || this.scrollSensor.shouldHideHint();
-    if (hasScrolledTimeline) {
-      this.scrollTime = null;
-      this.zoomInAccumulator = 0;
-    }
-
-    // Calculate opacity of help text
-    let helpTextOpacity = 0.5;
-    if (hasScrolledTimeline) {
-      helpTextOpacity = 0;
-    } else if (this.scrollTime !== null) {
-      let elapsed = Date.now() - this.scrollTime;
-      if (elapsed < 600) {
-        helpTextOpacity = 0.5;
-      } else if (elapsed < 1000) {
-        helpTextOpacity = 0.5 * (1 - (elapsed - 600) / 400);
-      } else {
-        helpTextOpacity = 0;
-      }
-    }
 
     context.lineWidth = 0.5;
     context.strokeStyle = light ? "#222" : "#eee";
