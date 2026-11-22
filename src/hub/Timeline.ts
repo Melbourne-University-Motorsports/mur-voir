@@ -4,6 +4,7 @@
 // Use of this source code is governed by a BSD
 // license that can be found in the LICENSE file
 // at the root directory of this project.
+import { prepareCanvas } from "../shared/domWrite";
 import { calcAxisStepSize, clampValue, cleanFloat, scaleValue } from "../shared/util";
 import ScrollSensor from "./ScrollSensor";
 
@@ -184,15 +185,9 @@ export default class Timeline {
     }
     this.lastDraw = { key, range: [timeRange[0], timeRange[1]] };
 
-    // Setup and scaling. Resizing a canvas reallocates it, so only do it when the size changes.
+    // Setup and scaling
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    if (this.CANVAS.width !== Math.round(width * devicePixelRatio))
-      this.CANVAS.width = Math.round(width * devicePixelRatio);
-    if (this.CANVAS.height !== Math.round(height * devicePixelRatio))
-      this.CANVAS.height = Math.round(height * devicePixelRatio);
-    context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    context.clearRect(0, 0, width, height);
-    context.globalAlpha = 1;
+    prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
     let helpFont = "200 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
     let labelFont = "200 12px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
 

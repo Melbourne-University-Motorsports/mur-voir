@@ -15,6 +15,7 @@ import { calcAxisStepSize, clampValue, cleanFloat, scaleValue, shiftColor, Value
 import TabRenderer from "./TabRenderer";
 
 import { prepareTrace, TraceGap } from "../TraceGaps";
+import { prepareCanvas } from "../domWrite";
 import { niceTicks } from "../laps/LapAnalysis";
 import { interpolate } from "../laps/LapEngine";
 import { LapViewport } from "../laps/LapViewport";
@@ -267,9 +268,7 @@ export default class LineGraphRenderer implements TabRenderer {
     this.lastRenderState = renderStateString;
 
     // Apply setup and scaling
-    this.CANVAS.width = width * devicePixelRatio;
-    this.CANVAS.height = height * devicePixelRatio;
-    context.scale(devicePixelRatio, devicePixelRatio);
+    prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
     context.clearRect(0, 0, width, height);
     const trackside = document.body.classList.contains("trackside-layout");
     context.font = `${trackside ? 14 : 12}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont`;

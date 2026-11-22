@@ -6,6 +6,7 @@
 // at the root directory of this project.
 
 import ScrollSensor, { ScrollSensorMouseControl } from "../../hub/ScrollSensor";
+import { prepareCanvas, setStyle } from "../domWrite";
 import { Field2dCameraMode } from "../Field2dCameraMode";
 import { AnnotatedPose2d, ModuleVelocity, Pose2d, Translation2d } from "../geometry";
 import { Units } from "../units";
@@ -218,11 +219,9 @@ export default class Field2dRenderer implements TabRenderer {
     this.lastRenderState = renderStateString;
 
     // Set up canvas
-    this.CANVAS.style.width = width.toString() + "px";
-    this.CANVAS.style.height = height.toString() + "px";
-    this.CANVAS.width = width * window.devicePixelRatio;
-    this.CANVAS.height = height * window.devicePixelRatio;
-    context.scale(window.devicePixelRatio, window.devicePixelRatio);
+    setStyle(this.CANVAS, "width", width.toString() + "px");
+    setStyle(this.CANVAS, "height", height.toString() + "px");
+    prepareCanvas(this.CANVAS, context, width, height, window.devicePixelRatio);
     context.clearRect(0, 0, width, height);
     context.lineCap = "round";
     context.lineJoin = "round";

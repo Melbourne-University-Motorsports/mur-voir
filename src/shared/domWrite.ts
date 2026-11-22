@@ -34,3 +34,32 @@ export function setRootProperty(name: string, value: string) {
   rootProperties.set(name, value);
   document.documentElement.style.setProperty(name, value);
 }
+
+/** Sets an inline style property only when it changes. */
+export function setStyle(element: HTMLElement, property: "width" | "height", value: string) {
+  if (element.style[property] !== value) element.style[property] = value;
+}
+
+/**
+ * Readies a canvas for a full redraw at `cssWidth` x `cssHeight` CSS pixels: cleared, with default
+ * context state and scaled for the device pixel ratio. Assigning `canvas.width` reallocates the
+ * backing store even when the size is unchanged, so it only happens when the size changes;
+ * otherwise `context.reset()` clears the bitmap and state in place.
+ */
+export function prepareCanvas(
+  canvas: HTMLCanvasElement,
+  context: CanvasRenderingContext2D,
+  cssWidth: number,
+  cssHeight: number,
+  devicePixelRatio: number
+) {
+  const width = Math.floor(cssWidth * devicePixelRatio);
+  const height = Math.floor(cssHeight * devicePixelRatio);
+  if (canvas.width !== width || canvas.height !== height || typeof context.reset !== "function") {
+    canvas.width = width;
+    canvas.height = height;
+  } else {
+    context.reset();
+  }
+  context.scale(devicePixelRatio, devicePixelRatio);
+}

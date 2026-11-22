@@ -8,6 +8,7 @@
 // Ported from the upstream JoysticksRenderer. It keeps the canvas, colours, line widths, axis bars and
 // aspect-fit layout, and draws one steering wheel and three pedal bars instead of joystick layouts.
 
+import { prepareCanvas } from "../domWrite";
 import { scaleValue } from "../util";
 import TabRenderer from "./TabRenderer";
 
@@ -50,9 +51,7 @@ export default class DriverInputsRenderer implements TabRenderer {
     this.lastRenderState = "";
 
     // Apply setup and scaling
-    this.CANVAS.width = canvasWidth * window.devicePixelRatio;
-    this.CANVAS.height = canvasHeight * window.devicePixelRatio;
-    context.scale(window.devicePixelRatio, window.devicePixelRatio);
+    prepareCanvas(this.CANVAS, context, canvasWidth, canvasHeight, window.devicePixelRatio);
     context.clearRect(0, 0, canvasWidth, canvasHeight);
     let color = isLight ? this.BLACK_COLOR : this.WHITE_COLOR;
 

@@ -9,6 +9,7 @@
 // unchanged; the g circle and damper readouts are added at the end.
 
 import { NeonColors_RedStart } from "../Colors";
+import { prepareCanvas, setStyle } from "../domWrite";
 import { RobotVelocities, Rotation2d } from "../geometry";
 import { transformPx, wrapRadians } from "../util";
 import TabRenderer from "./TabRenderer";
@@ -56,11 +57,9 @@ export default class CarDynamicsRenderer implements TabRenderer {
     // Update canvas size
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     let size = Math.min(this.CONTAINER.clientWidth, this.CONTAINER.clientHeight);
-    this.CANVAS.style.width = size.toString() + "px";
-    this.CANVAS.style.height = size.toString() + "px";
-    this.CANVAS.width = size * window.devicePixelRatio;
-    this.CANVAS.height = size * window.devicePixelRatio;
-    context.scale(window.devicePixelRatio, window.devicePixelRatio);
+    setStyle(this.CANVAS, "width", size.toString() + "px");
+    setStyle(this.CANVAS, "height", size.toString() + "px");
+    prepareCanvas(this.CANVAS, context, size, size, window.devicePixelRatio);
     context.clearRect(0, 0, size, size);
     context.lineCap = "round";
     context.lineJoin = "round";
