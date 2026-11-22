@@ -99,9 +99,12 @@ jobs:
           path: dist/mur-voir-lite-*.zip
           retention-days: 1
 
+  # Pull requests already package the merge result, and branch pushes would
+  # throw the installers away, so only PRs, tags and manual runs package.
   desktop:
     name: Package ${{ matrix.os }} ${{ matrix.arch }}
     needs: verify
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
