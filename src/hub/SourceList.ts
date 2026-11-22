@@ -358,24 +358,6 @@ export default class SourceList {
           dragContainer.style.padding = "none";
           dragContainer.classList.add("source-list");
           let elementClone = element.cloneNode(true) as HTMLElement;
-          {
-            // Apply icon color
-            Array.from(elementClone.getElementsByTagName("object")).forEach((objElement) => {
-              const color = objElement.getAttribute("type-color");
-              objElement.addEventListener(
-                "load",
-                () => {
-                  if (color !== null && objElement.contentDocument !== null) {
-                    let svgs = objElement.contentDocument.getElementsByTagName("svg");
-                    if (svgs.length > 0) {
-                      svgs[0].style.color = color;
-                    }
-                  }
-                },
-                { signal: this.events.signal }
-              );
-            });
-          }
           dragContainer.appendChild(elementClone);
           this.DRAG_ITEM.appendChild(dragContainer);
 
@@ -963,25 +945,6 @@ export default class SourceList {
       }
     }
     let item = this.ITEM_TEMPLATE.cloneNode(true) as HTMLElement;
-    Array.from(item.getElementsByTagName("object")).forEach((objElement) => {
-      // Add a persistent load listener to re-apply the correct color.
-      // This is necessary because Safari may unload and reload the SVG when
-      // the element is detached or hidden (e.g. switching tabs).
-      objElement.addEventListener(
-        "load",
-        () => {
-          let color = objElement.getAttribute("type-color");
-          if (color !== null && objElement.contentDocument !== null) {
-            let svgs = objElement.contentDocument.getElementsByTagName("svg");
-            if (svgs.length > 0) {
-              svgs[0].style.color = color;
-            }
-          }
-        },
-        { signal: this.events.signal }
-      );
-    });
-
     if (insertIndex === undefined) {
       this.LIST.appendChild(item);
       this.state.push(state);
@@ -1186,13 +1149,7 @@ export default class SourceList {
     if (typeConfig === undefined) throw 'Unknown type "' + state.type + '"';
 
     // Update type icon
-    let typeIconVisible = item.getElementsByTagName("object")[0] as HTMLObjectElement;
-    let typeIconHidden = item.getElementsByTagName("object")[1] as HTMLObjectElement;
-    if (typeIconVisible.classList.contains("hidden")) {
-      let temp = typeIconVisible;
-      typeIconVisible = typeIconHidden;
-      typeIconHidden = temp;
-    }
+    let typeIcon = item.getElementsByClassName("type-icon")[0] as HTMLElement;
     let color: string;
     const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (typeConfig.color.startsWith("#")) {
@@ -1211,30 +1168,11 @@ export default class SourceList {
       }
     }
     color = ensureThemeContrast(color);
-    typeIconVisible.setAttribute("type-color", color);
-    typeIconHidden.setAttribute("type-color", color);
-
-    let symbol = typeConfig.symbol;
-    let dataPath = "symbols/sourceList/" + symbol + ".svg";
-    if (dataPath !== typeIconVisible.getAttribute("data")) {
-      // Load new image on hidden icon
-      typeIconHidden.data = dataPath;
-      typeIconHidden.addEventListener(
-        "load",
-        () => {
-          if (typeIconHidden.contentDocument) {
-            typeIconHidden.classList.remove("hidden");
-            typeIconVisible.classList.add("hidden");
-          }
-        },
-        { signal: this.events.signal, once: true }
-      );
-    } else if (typeIconVisible.contentDocument !== null) {
-      // Replace color on visible icon
-      let svgs = typeIconVisible.contentDocument.getElementsByTagName("svg");
-      if (svgs.length > 0) {
-        svgs[0].style.color = color;
-      }
+    const icon = 'url("symbols/sourceList/' + typeConfig.symbol + '.svg")';
+    if (typeIcon.style.getPropertyValue("--type-icon") !== icon) typeIcon.style.setProperty("--type-icon", icon);
+    if (typeIcon.dataset.color !== color) {
+      typeIcon.dataset.color = color;
+      typeIcon.style.backgroundColor = color;
     }
 
     // Update type name

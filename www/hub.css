@@ -1103,8 +1103,16 @@ div.source-list div.item.child button.type {
   left: 40px;
 }
 
-div.source-list button.type object.hidden {
-  opacity: 0;
+/* A mask, not an <object>: each SVG <object> is a subframe that runs the full rendering lifecycle every frame */
+div.source-list button.type span.type-icon {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(75%);
+  -webkit-mask: var(--type-icon) center / contain no-repeat;
+  mask: var(--type-icon) center / contain no-repeat;
 }
 
 div.source-list div.hidden button.type,
