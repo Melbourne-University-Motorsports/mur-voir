@@ -11,14 +11,16 @@ import { HubState } from "../shared/HubState";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import { RenderGuard } from "../shared/RenderGuard";
-import Selection from "../shared/Selection";
+import Selection, { SelectionMode } from "../shared/Selection";
 import { SourceListItemState, SourceListTypeMemory } from "../shared/SourceListConfig";
 import { IS_LITE } from "../shared/buildConstants";
+import { setHidden } from "../shared/domWrite";
 import Log from "../shared/log/Log";
 import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
 import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
+import { requestFrame, setFramePaceSupplier, wakeFrames } from "./FrameScheduler";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
 import Sidebar from "./Sidebar";
@@ -117,6 +119,15 @@ let openRun: RunRef | null = null;
 /** The address of the last MUR live connection in this window, whichever way it was started. */
 let murConnectionAddress: string | null = null;
 
+// Frames run at display rate during playback, at the live pace while live data streams, and slowly otherwise
+setFramePaceSupplier(() =>
+  window.selection.getMode() === SelectionMode.Playback
+    ? "display"
+    : liveActive && liveStatus === LiveDataSourceStatus.Active
+    ? "live"
+    : "idle"
+);
+
 const connectDialog = new ConnectDialog((sourceId, address) => connectLive(sourceId, address));
 
 function guardedInterval(action: () => void, period: number) {
@@ -141,9 +152,12 @@ let dragData: any = null;
 
 // WINDOW UTILITIES
 
+let lastWindowTitle = "";
 function setWindowTitle(name: string, status?: string) {
   let title =
     htmlEncode(name) + (status ? " (" + htmlEncode(status) + ")" : "") + " &mdash; mur-voir" + (IS_LITE ? " Lite" : "");
+  if (title === lastWindowTitle) return; // Called twice a second while live
+  lastWindowTitle = title;
   document.getElementsByTagName("title")[0].innerHTML = title;
   document.getElementsByClassName("title-bar-text")[0].innerHTML = title;
 }
@@ -227,11 +241,22 @@ function restoreState(state: HubState) {
   window.tabs.restoreState(state.tabs);
 }
 
+// Checked often so nothing is lost on quit, but only sent when it changed
+let lastSavedState = "";
 guardedInterval(() => {
-  window.sendMainMessage("save-state", saveState());
+  const state = saveState();
+  const serialized = JSON.stringify(state);
+  if (serialized === lastSavedState) return;
+  lastSavedState = serialized;
+  window.sendMainMessage("save-state", state);
 }, STATE_SAVE_PERIOD_MS);
 
+// Main reads and merges the type memory file for each message, so only send changes
+let lastSavedTypeMemory = "";
 guardedInterval(() => {
+  const serialized = JSON.stringify(window.typeMemory);
+  if (serialized === lastSavedTypeMemory) return;
+  lastSavedTypeMemory = serialized;
   window.sendMainMessage("save-type-memory", window.typeMemory);
 }, TYPE_MEMORY_SAVE_PERIOD_MS);
 
@@ -296,7 +321,7 @@ const fpsDiv = document.getElementsByClassName("fps")[0] as HTMLElement;
 const sampleLength = 10;
 let frameTimes: number[] = [];
 let periodic = () => {
-  window.requestAnimationFrame(periodic);
+  requestFrame(periodic);
   frameTimes.push(window.performance.now());
   while (frameTimes.length > sampleLength) {
     frameTimes.shift();
@@ -306,12 +331,12 @@ let periodic = () => {
     let avgFrameTime = (frameTimes[frameTimes.length - 1] - frameTimes[0]) / (frameTimes.length - 1);
     fps = 1000 / avgFrameTime;
   }
-  fpsDiv.hidden = !window.fps;
+  setHidden(fpsDiv, !window.fps);
   if (window.fps) {
     fpsDiv.innerText = "FPS: " + fps.toFixed(1);
   }
 };
-window.requestAnimationFrame(periodic);
+requestFrame(periodic);
 
 // DATA SOURCE HANDLING
 
@@ -349,6 +374,7 @@ function startHistorical(path: string, clear = true, merge = false) {
     window.log = new Log();
     window.sidebar.refresh();
     window.tabs.refresh();
+    wakeFrames(0);
   }
 
   liveConnection?.stop();
@@ -449,6 +475,7 @@ function startHistorical(path: string, clear = true, merge = false) {
     (hasNewFields: boolean) => {
       window.sidebar.refresh();
       if (hasNewFields) window.tabs.refresh();
+      wakeFrames(0); // Show the new data now, not at the idle pace
     }
   );
 }
@@ -594,6 +621,7 @@ window.addEventListener("message", (event) => {
     window.messagePort.onmessage = (event) => {
       let message: NamedMessage = event.data;
       handleMainMessage(message);
+      wakeFrames();
     };
 
     // Share the registered live sources for the main process menus
@@ -632,7 +660,8 @@ COPY_RUN_LINK.addEventListener("click", () => {
   if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
 });
 
-// Update touch bar slider position
+// Update touch bar slider position, only when it moves
+let lastTouchBarPercent: number | null = null;
 guardedInterval(() => {
   if (window.platform === "darwin") {
     let range = window.log.getTimestampRange();
@@ -645,9 +674,12 @@ guardedInterval(() => {
       selectedTime = range[0];
     }
     let timePercent = clampValue(scaleValue(selectedTime, range, [0, 1]), 0, 1);
+    // The slider is a few hundred points wide, so finer changes are invisible
+    if (lastTouchBarPercent !== null && Math.abs(timePercent - lastTouchBarPercent) < 0.002) return;
+    lastTouchBarPercent = timePercent;
     window.sendMainMessage("update-touch-bar-slider", timePercent);
   }
-}, 1000 / 60);
+}, 100);
 
 async function handleMainMessage(message: NamedMessage) {
   switch (message.name) {

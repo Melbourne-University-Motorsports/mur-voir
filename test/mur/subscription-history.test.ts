@@ -37,6 +37,12 @@ test("resubscribing requests history again and merges overlapping samples once",
     return { ok: true, status: 200, json: async () => ({ samples: history }) };
   });
   source.send = () => {};
+  // The subscription check runs at most every 250 ms; step the clock past that before each periodic()
+  t.mock.timers.enable({ apis: ["Date"] });
+  const periodic = () => {
+    t.mock.timers.tick(250);
+    source.periodic();
+  };
   const fetchHistory = source.fetchHistory.bind(source);
   let pending: Promise<void>;
   source.fetchHistory = (path: string) => (pending = fetchHistory(path));
@@ -47,17 +53,17 @@ test("resubscribing requests history again and merges overlapping samples once",
     }
   };
   live(2);
-  source.periodic();
+  periodic();
   await pending!;
-  source.periodic();
+  periodic();
   assert.equal(requests, 1);
   active = new Set();
-  source.periodic();
+  periodic();
   assert.equal(source.historyRequested.has(path), false);
   history = [sample(1), sample(2), sample(3), sample(4)];
   active = new Set(["/" + path]);
   live(4);
-  source.periodic();
+  periodic();
   await pending!;
   assert.equal(requests, 2);
   const data = source.log.getNumber("/" + path, -Infinity, Infinity);

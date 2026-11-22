@@ -7,6 +7,7 @@
 
 import { IS_LITE } from "../shared/buildConstants";
 import { formatChannelValue, rawChannelValue } from "../shared/display/ChannelProfile";
+import { setInnerText } from "../shared/domWrite";
 import { SidebarState } from "../shared/HubState";
 import { FieldFilter, FieldFilterResult, filterFieldTree, isFilterActive, LiveFilter } from "../shared/log/FieldFilter";
 import LogFieldTree from "../shared/log/LogFieldTree";
@@ -16,6 +17,7 @@ import { RenderGuard } from "../shared/RenderGuard";
 import { SelectionMode } from "../shared/Selection";
 import { arraysEqual, htmlEncode, setsEqual } from "../shared/util";
 import CustomSchemas from "./dataSources/schema/CustomSchemas";
+import { requestFrame } from "./FrameScheduler";
 import { attachResizeHandle } from "./ResizeHandle";
 
 export default class Sidebar {
@@ -203,7 +205,7 @@ export default class Sidebar {
     // Periodic functions
     const guard = new RenderGuard();
     let periodic = () => {
-      window.requestAnimationFrame(periodic);
+      requestFrame(periodic);
       guard.run(() => {
         this.updateLiveFilterControl();
         this.updateTitle();
@@ -211,7 +213,7 @@ export default class Sidebar {
         this.updateTuningButton();
       });
     };
-    window.requestAnimationFrame(periodic);
+    requestFrame(periodic);
     setInterval(() => {
       this.tuningModePublishCallbacks.forEach((callback) => callback());
     }, 250);
@@ -392,9 +394,7 @@ export default class Sidebar {
         runtimeUnit +
         " runtime";
     }
-    if (title !== this.SIDEBAR_TITLE.innerText) {
-      this.SIDEBAR_TITLE.innerText = title;
-    }
+    setInnerText(this.SIDEBAR_TITLE, title);
   }
 
   /** Updates the values displayed next to next field. */

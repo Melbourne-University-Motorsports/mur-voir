@@ -6,6 +6,7 @@
 // at the root directory of this project.
 
 import { alertLine, dbcDefinition, isTracksideLive, Limits, tileLabel, tileState } from "../shared/Trackside";
+import { setHidden, setText } from "../shared/domWrite";
 
 export function updateTracksideAlerts(
   element: HTMLElement,
@@ -45,9 +46,10 @@ export function updateTracksideAlerts(
       return { tile, value, profile, limits, fault };
     })
   );
-  element.hidden = !result.text;
-  element.textContent = result.text;
-  element.title = result.detail ? result.text + "\n" + result.detail : result.text;
+  setHidden(element, !result.text);
+  setText(element, result.text);
+  const title = result.detail ? result.text + "\n" + result.detail : result.text;
+  if (element.title !== title) element.title = title;
   element.dataset.severity = result.severity;
   document.body.classList.toggle("has-trackside-alerts", !!result.text);
 }

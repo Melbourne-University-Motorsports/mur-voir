@@ -43,7 +43,9 @@ import TableController from "./controllers/TableController";
 import TracksideController from "./controllers/TracksideController";
 import VideoController from "./controllers/VideoController";
 
+import { setHidden, setRootProperty } from "../shared/domWrite";
 import LapRenderer from "../shared/renderers/LapRenderer";
+import { requestFrame } from "./FrameScheduler";
 import { lapService } from "./LapService";
 import LapController from "./controllers/LapController";
 
@@ -84,6 +86,10 @@ export default class Tabs {
   }[] = [];
   private selectedTab = 0;
   private activeSatellites: string[] = [];
+  private HIDDEN_REFRESH_MS = 1000;
+  private lastHiddenRefresh = -Infinity;
+  /** Tabs that skipped a refresh while hidden. */
+  private staleTabs = new WeakSet<object>();
   private fieldDragHover: { index: number; timer: number } | null = null;
 
   constructor() {
@@ -333,7 +339,7 @@ export default class Tabs {
     const guards = new WeakMap<object, RenderGuard>();
     // Periodic function
     let periodic = () => {
-      window.requestAnimationFrame(periodic);
+      requestFrame(periodic);
       periodicGuard.run(() => {
         if (performance.now() - lastAlerts >= 200) {
           lastAlerts = performance.now();
@@ -362,6 +368,10 @@ export default class Tabs {
           }
           guard.run(
             () => {
+              if (this.staleTabs.has(tab)) {
+                this.staleTabs.delete(tab);
+                tab.controller.refresh();
+              }
               if (tab.type === TabType.Table) {
                 // Update range from renderer
                 let renderer = tab.renderer as TableRenderer;
@@ -396,7 +406,7 @@ export default class Tabs {
         }
       });
     };
-    window.requestAnimationFrame(periodic);
+    requestFrame(periodic);
   }
 
   private updateControlsHeight() {
@@ -415,9 +425,9 @@ export default class Tabs {
       if (appliedHeight < 30) appliedHeight = 0;
     }
     selectedTab.controlsHeight = appliedHeight;
-    this.CONTROLS_HANDLE.hidden = fixedHeight === 0;
-    this.CONTROLS_CONTENT.hidden = appliedHeight === 0;
-    document.documentElement.style.setProperty("--tab-controls-height", appliedHeight.toString() + "px");
+    setHidden(this.CONTROLS_HANDLE, fixedHeight === 0);
+    setHidden(this.CONTROLS_CONTENT, appliedHeight === 0);
+    setRootProperty("--tab-controls-height", appliedHeight.toString() + "px");
     document.documentElement.style.setProperty("--show-tab-controls", appliedHeight === 0 ? "0" : "1");
   }
 
@@ -498,10 +508,22 @@ export default class Tabs {
     this.updateControlsHeight();
   }
 
-  /** Refresh based on new log data. */
+  /**
+   * Refresh based on new log data. Live data calls this many times a second, so tabs that are not on
+   * screen refresh at most once a second, and again just before they are next drawn.
+   */
   refresh() {
-    this.tabList.forEach((tab) => {
-      tab.controller.refresh();
+    const now = performance.now();
+    const refreshHidden = now - this.lastHiddenRefresh >= this.HIDDEN_REFRESH_MS;
+    if (refreshHidden) this.lastHiddenRefresh = now;
+    this.tabList.forEach((tab, index) => {
+      const visible = index === this.selectedTab || this.activeSatellites.includes(tab.controller.UUID);
+      if (visible || refreshHidden) {
+        this.staleTabs.delete(tab);
+        tab.controller.refresh();
+      } else {
+        this.staleTabs.add(tab);
+      }
     });
   }
 
@@ -512,6 +534,30 @@ export default class Tabs {
     });
   }
 
+  private dbcFields: { log: typeof window.log; fieldsVersion: number; metadataVersion: number; keys: string[] } | null =
+    null;
+
+  /** Fields with a DBC definition, cached until the log's fields or metadata change. */
+  private getDbcFields(): string[] {
+    const log = window.log;
+    const cache = this.dbcFields;
+    if (
+      cache &&
+      cache.log === log &&
+      cache.fieldsVersion === log.getFieldKeysVersion() &&
+      cache.metadataVersion === log.getMetadataVersion()
+    )
+      return cache.keys;
+    const keys = log.getFieldKeys().filter((key) => dbcDefinition(log.getMetadataString(key), key));
+    this.dbcFields = {
+      log,
+      fieldsVersion: log.getFieldKeysVersion(),
+      metadataVersion: log.getMetadataVersion(),
+      keys
+    };
+    return keys;
+  }
+
   /** Returns the set of fields currently being displayed. */
   getActiveFields(): Set<string> {
     const hasLapView = this.tabList.some(
@@ -520,10 +566,7 @@ export default class Tabs {
         tab.type === TabType.Laps ||
         (tab.type === TabType.LineGraph && (tab.controller as LineGraphController).getLapMode() !== "time")
     );
-    let activeFields = new Set<string>([
-      ...window.log.getFieldKeys().filter((key) => dbcDefinition(window.log.getMetadataString(key), key)),
-      ...(hasLapView ? lapService.fields() : [])
-    ]);
+    let activeFields = new Set<string>([...this.getDbcFields(), ...(hasLapView ? lapService.fields() : [])]);
     this.tabList.forEach((tab) => {
       tab.controller.getActiveFields().forEach((field) => {
         activeFields.add(field);
@@ -880,7 +923,7 @@ export default class Tabs {
   /** Hides or shows the timeline based on the controller request. */
   private updateTimelineVisibility() {
     let show = this.tabList[this.selectedTab].controller.showTimeline();
-    document.documentElement.style.setProperty("--show-timeline", show ? "1" : "0");
-    this.TIMELINE_CONTAINER.hidden = !show;
+    setRootProperty("--show-timeline", show ? "1" : "0");
+    setHidden(this.TIMELINE_CONTAINER, !show);
   }
 }

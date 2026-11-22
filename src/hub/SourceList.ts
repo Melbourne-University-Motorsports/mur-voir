@@ -28,6 +28,7 @@ import { getLogValueText, getOrDefault } from "../shared/log/LogUtil";
 import LoggableType from "../shared/log/LoggableType";
 import { Units } from "../shared/units";
 import { createUUID, jsonCopy } from "../shared/util";
+import { requestFrame } from "./FrameScheduler";
 
 export default class SourceList {
   private events = new AbortController();
@@ -41,7 +42,7 @@ export default class SourceList {
   private static instances = new Set<SourceList>();
   private static visibleRoots = new WeakSet<Element>();
   private static observer: IntersectionObserver | null = null;
-  private static frame: number | null = null;
+  private static frameRequested = false;
   private static darkQuery: MediaQueryList | null = null;
 
   private static register(list: SourceList) {
@@ -82,11 +83,13 @@ export default class SourceList {
   }
 
   private static schedule() {
-    if (SourceList.frame === null) SourceList.frame = window.requestAnimationFrame(SourceList.periodic);
+    if (SourceList.frameRequested) return;
+    SourceList.frameRequested = true;
+    requestFrame(SourceList.periodic);
   }
 
   private static periodic = () => {
-    SourceList.frame = null;
+    SourceList.frameRequested = false;
     let anyVisible = false;
     for (const instance of SourceList.instances) {
       if (!SourceList.visibleRoots.has(instance.ROOT)) continue;

@@ -17,24 +17,22 @@ export default class DocumentationRenderer implements TabRenderer {
   private shouldResetScroll = false;
   private firstRender = true;
 
-  private stopped = false;
+  private observer: IntersectionObserver | null = null;
   dispose() {
-    this.stopped = true;
+    this.observer?.disconnect();
   }
 
   constructor(content: HTMLElement) {
     this.CONTAINER = content.getElementsByClassName("documentation-container")[0] as HTMLElement;
     this.IFRAME = this.CONTAINER.firstElementChild as HTMLIFrameElement;
 
-    // Periodic function to record when tab is hidden
-    let periodic = () => {
-      if (this.stopped) return;
-      if (this.CONTAINER.getBoundingClientRect().height === 0) {
-        this.shouldResetScroll = true;
-      }
-      window.requestAnimationFrame(periodic);
-    };
-    window.requestAnimationFrame(periodic);
+    // Record when the tab is hidden. An observer instead of a per-frame size check, which forced a layout.
+    if (typeof IntersectionObserver !== "undefined") {
+      this.observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => !entry.isIntersecting)) this.shouldResetScroll = true;
+      });
+      this.observer.observe(this.CONTAINER);
+    }
   }
 
   saveState(): unknown {

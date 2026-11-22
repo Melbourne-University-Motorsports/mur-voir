@@ -2763,8 +2763,10 @@ app.whenReady().then(async () => {
   // Load assets
   createAssetFolders();
   setInterval(async () => {
-    // Periodically load assets in case they are updated
-    advantageScopeAssets = await loadAssets();
+    // Periodically load assets in case they are updated. Every window rebuilds on new assets, so only send changes.
+    const assets = await loadAssets();
+    if (JSON.stringify(assets) === JSON.stringify(advantageScopeAssets)) return;
+    advantageScopeAssets = assets;
     sendAssets();
   }, 5000);
   advantageScopeAssets = await loadAssets();
@@ -2848,6 +2850,9 @@ setInterval(() => {
     });
   }
 }, AKIT_PATH_INPUT_PERIOD);
+
+// Keep state changes from the last save period
+app.on("before-quit", () => stateTracker.save());
 
 // Clean up files on quit
 app.on("quit", () => {

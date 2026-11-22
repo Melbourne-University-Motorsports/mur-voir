@@ -18,19 +18,24 @@ import {
 } from "./ElectronConstants";
 
 export default class StateTracker {
-  private SAVE_PERIOD_MS = 250;
+  private SAVE_PERIOD_MS = 1000;
+  private lastSaved = "";
   private rendererStates: { [id: number]: any } = {};
   private satelliteUUIDs: { [id: number]: string } = {};
 
   constructor() {
-    let lastState = this.getSavedApplicationState(false);
-    setInterval(() => {
-      let state: ApplicationState = this.getCurrentApplicationState();
-      if (state.hubs.length > 0 && JSON.stringify(state) !== JSON.stringify(lastState)) {
-        jsonfile.writeFileSync(STATE_FILENAME, state);
-        lastState = state;
-      }
-    }, this.SAVE_PERIOD_MS);
+    this.lastSaved = JSON.stringify(this.getSavedApplicationState(false));
+    setInterval(() => this.save(), this.SAVE_PERIOD_MS);
+  }
+
+  /** Writes the state file if the state changed. Also called before quitting, so the last second is kept. */
+  save() {
+    let state: ApplicationState = this.getCurrentApplicationState();
+    if (state.hubs.length === 0) return;
+    const serialized = JSON.stringify(state);
+    if (serialized === this.lastSaved) return;
+    jsonfile.writeFileSync(STATE_FILENAME, state);
+    this.lastSaved = serialized;
   }
 
   /** Reads the full application state based on the saved file. */

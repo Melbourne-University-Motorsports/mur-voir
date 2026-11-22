@@ -21,6 +21,7 @@ export default class ScrollSensor {
 
   private lastScrollUpdate = 0;
   private resetNext = false;
+  private idleReset = false;
   private lastScrollLeft: number = 0;
   private lastScrollTop: number = 0;
 
@@ -52,6 +53,12 @@ export default class ScrollSensor {
 
     // Scroll events
     this.resetNext = true;
+    // A hidden container loses its scroll position, so recentre whenever it comes back into view
+    if (typeof IntersectionObserver !== "undefined") {
+      new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) this.resetNext = true;
+      }).observe(container);
+    }
     this.container.addEventListener("scroll", () => {
       this.update();
     });
@@ -99,8 +106,10 @@ export default class ScrollSensor {
   /** Should be called periodically to trigger resets. */
   periodic() {
     let currentTime = new Date().getTime();
-    if (this.resetNext || currentTime - this.lastScrollUpdate > this.RESET_MS) {
+    // Recentre once after scrolling stops, not every frame: writing scroll positions forces a layout
+    if (this.resetNext || (!this.idleReset && currentTime - this.lastScrollUpdate > this.RESET_MS)) {
       this.resetNext = false;
+      this.idleReset = true;
       this.reset();
     }
   }
@@ -108,6 +117,7 @@ export default class ScrollSensor {
   /** Measure the scroll and update if necessary. */
   private update() {
     this.lastScrollUpdate = new Date().getTime();
+    this.idleReset = false;
 
     // Reset if necessary
     if (this.resetNext) {

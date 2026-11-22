@@ -44,6 +44,10 @@ import { LiveClock, SessionTimeBase } from "./MURTime";
 const API_VERSION = 1;
 const SUBSCRIPTION_ID = "mur-voir-active";
 const MAX_RATE_HZ = 50;
+/** Output to the hub at the live frame pace (FrameScheduler LIVE_FPS). */
+const OUTPUT_PERIOD_MS = 1000 / 30;
+/** How often the subscription is checked against the fields the tabs and sidebar show. */
+const SUBSCRIPTION_PERIOD_MS = 250;
 const HISTORY_MAX_POINTS = 2000;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 5000;
@@ -66,6 +70,8 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   private reconnectTimeout: number | null = null;
   private reconnectDelayMs = RECONNECT_MIN_MS;
   private periodicActive = false;
+  private periodicTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastSubscriptionCheck = -Infinity;
   private shouldRunOutputCallback = false;
 
   private receiptTimes = new Map<string, number>();
@@ -100,27 +106,23 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     this.log = new Log();
     this.openSocket();
 
-    // Periodic subscription updates and output (same scheduling as NT4Source)
+    // Periodic subscription updates and output. A timer, not an idle callback: idle callbacks run
+    // every display frame, and output faster than the live frame pace is never seen.
     this.periodicActive = true;
-    const schedule = (callback: () => void) => {
-      if (window.requestIdleCallback !== undefined) {
-        window.requestIdleCallback(callback, { timeout: 100 });
-      } else {
-        window.requestAnimationFrame(callback);
-      }
-    };
     const periodic = () => {
       if (!this.periodicActive) return;
       this.periodic();
-      schedule(periodic);
+      this.periodicTimer = setTimeout(periodic, OUTPUT_PERIOD_MS);
     };
-    schedule(periodic);
+    periodic();
   }
 
   stop() {
     super.stop();
     this.requests.abort();
     this.periodicActive = false;
+    if (this.periodicTimer !== null) clearTimeout(this.periodicTimer);
+    this.periodicTimer = null;
     if (this.reconnectTimeout !== null) window.clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = null;
     if (this.socket !== null) {
@@ -173,6 +175,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       this.socket = null;
       this.catalogue = null;
       this.subscribedPaths = [];
+      this.lastSubscriptionCheck = -Infinity;
       if (this.backend === "connected") {
         this.backend = "connecting";
         this.backendDetail = "Connection lost, reconnecting";
@@ -258,6 +261,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
     // Subscriptions are not durable across sockets: periodic() replays them. Refetch history to fill the gap.
     this.subscribedPaths = [];
+    this.lastSubscriptionCheck = -Infinity;
     this.historyRequested.clear();
 
     this.backend = "connected";
@@ -344,7 +348,10 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   private periodic() {
     if (this.status === LiveDataSourceStatus.Stopped || !this.log) return;
 
-    if (this.catalogue !== null) {
+    // The subscription check walks every tab's fields, so it runs a few times a second, not every output
+    const now = Date.now();
+    if (this.catalogue !== null && now - this.lastSubscriptionCheck >= SUBSCRIPTION_PERIOD_MS) {
+      this.lastSubscriptionCheck = now;
       // Active fields (same sources as NT4Source.periodic): tabs plus visible sidebar fields
       const isKnownPath = (path: string) => this.descriptors.has(path);
       const tabPaths = new Set<string>();

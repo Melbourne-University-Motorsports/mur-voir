@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
+import { setText } from "../domWrite";
 import { TracksideTile } from "../Trackside";
 import LineGraphRenderer, { LineGraphRendererCommand } from "./LineGraphRenderer";
 import TabRenderer from "./TabRenderer";
@@ -194,9 +195,4 @@ export default class TracksideRenderer implements TabRenderer {
       if (cell.title !== title) cell.title = title;
     });
   }
-}
-
-/** Sets an element's text only when it differs, so unchanged tiles cost no layout. */
-function setText(element: Element, text: string) {
-  if (element.textContent !== text) element.textContent = text;
 }

@@ -253,8 +253,14 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
+// Checked often so nothing is lost on quit, but only sent when it changed
+let lastSavedState = "";
 setInterval(() => {
-  window.sendMainMessage("save-state", { type: type, visualizer: renderer?.saveState() });
+  const state = { type: type, visualizer: renderer?.saveState() };
+  const serialized = JSON.stringify(state);
+  if (serialized === lastSavedState) return;
+  lastSavedState = serialized;
+  window.sendMainMessage("save-state", state);
 }, SAVE_PERIOD_MS);
 
 // Mock selection, send setter calls back to hub
