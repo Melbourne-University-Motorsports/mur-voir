@@ -44,6 +44,7 @@ type ConvertedSamples = {
   values: number[];
 };
 
+const graphSession = createUUID();
 let graphDataRevision = 0;
 
 export default class LineGraphController implements TabController {
@@ -740,8 +741,8 @@ export default class LineGraphController implements TabController {
 
         // Convert units
         let hasUnit = false;
+        const sourceUnit = autoTargetResult.status === "success" ? log.getUnit(fieldItem.logKey) : null;
         if (autoTargetResult.status === "success") {
-          let sourceUnit = window.log.getUnit(fieldItem.logKey);
           if (
             sourceUnit !== null &&
             sourceUnit in Units.GROUP_BY_UNIT &&
@@ -765,7 +766,7 @@ export default class LineGraphController implements TabController {
         const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
         const field = log.getField(fieldItem.logKey)!;
         const reusable = filter === LineGraphFilter.None && akitTimestamps === undefined && decimated === null;
-        const config = JSON.stringify([autoTargetResult, unitConversion]);
+        const config = JSON.stringify([autoTargetResult, unitConversion, sourceUnit]);
         const history = reusable ? log.getHistoryVersion(fieldItem.logKey) : -1;
         const discard = field.getDiscardVersion();
         const previous = reusable ? this.convertedSamples.get(field) : undefined;
@@ -1102,7 +1103,7 @@ export default class LineGraphController implements TabController {
       selectedTime,
       hoveredTime,
       grabZoomRange,
-      dataRevision: ++graphDataRevision,
+      dataRevision: graphSession + ":" + ++graphDataRevision,
 
       leftRange: leftRange,
       rightRange: rightRange,

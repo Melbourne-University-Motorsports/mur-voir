@@ -1112,7 +1112,7 @@ export default class LineGraphRenderer implements TabRenderer {
 
 export type LineGraphRendererCommand = {
   /** Changes when the controller rebuilds graph data, even if the sample counts stay the same. */
-  dataRevision?: number;
+  dataRevision?: string;
   message?: string;
   lapMode?: string;
   leftTitle?: string;

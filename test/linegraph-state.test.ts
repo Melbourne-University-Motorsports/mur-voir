@@ -53,11 +53,12 @@ test("a fixed, locked graph clips reduced data and redraws after same-length bac
   // The inserted maximum will replace the point at 20.01 in the same bucket.
   log.putNumber(key, 20.01, 30);
   log.putNumber(key, 50.14, -1000);
+  let viewport = [0.105, 50.13];
   const windowBefore = globalThis.window;
   globalThis.window = {
     log,
     selection: {
-      getTimelineRange: () => [0.105, 50.13],
+      getTimelineRange: () => viewport,
       getMode: () => SelectionMode.Static,
       getSelectedTime: () => 10,
       getHoveredTime: () => null,
@@ -77,7 +78,7 @@ test("a fixed, locked graph clips reduced data and redraws after same-length bac
       discreteSourceList: { getState: () => [] },
       leftFilter: LineGraphFilter.None,
       rightFilter: LineGraphFilter.None,
-      leftUnitConversion: { autoTarget: null, preset: null },
+      leftUnitConversion: { autoTarget: "meters/second", preset: null },
       rightUnitConversion: { autoTarget: null, preset: null },
       leftLockedRange: [0, 100],
       rightLockedRange: null,
@@ -122,6 +123,14 @@ test("a fixed, locked graph clips reduced data and redraws after same-length bac
     assert.equal(second.leftFields[0].values.length, samples.values.length);
     assert.ok(second.leftFields[0].values.includes(60));
     assert.throws(() => renderer.render(second), draw);
+
+    viewport = [0.1, 0.2];
+    log.setMetadataString(key, '{"unit":"m/s"}');
+    const metric = controller.getCommand().leftFields[0];
+    assert.equal(metric.values[0], 10);
+    log.setMetadataString(key, '{"unit":"km/h"}');
+    const converted = controller.getCommand().leftFields[0];
+    assert.ok(Math.abs(converted.values[0] - 10 / 3.6) < 1e-10);
   } finally {
     globalThis.window = windowBefore;
   }
