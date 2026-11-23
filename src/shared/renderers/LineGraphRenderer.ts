@@ -104,6 +104,7 @@ export default class LineGraphRenderer implements TabRenderer {
   private zoomInAccumulator = 0;
   private scrollSensor: ScrollSensor;
   private lastRenderState = "";
+  private axisTextWidths = new Map<string, number>();
   private leftSteppedPaths: SteppedPaths[][] = [];
   private rightSteppedPaths: SteppedPaths[][] = [];
   private lapViewport = new LapViewport();
@@ -375,7 +376,15 @@ export default class LineGraphRenderer implements TabRenderer {
       let length = 0;
       let value = Math.floor(range[1] / stepSize) * stepSize;
       for (let ticks = 0; value > range[0] && ticks < 100; ticks++) {
-        length = Math.max(length, context.measureText(this.getAxisValueText(value, units, filter)).width);
+        const label = this.getAxisValueText(value, units, filter);
+        const key = context.font + label;
+        let width = this.axisTextWidths.get(key);
+        if (width === undefined) {
+          if (this.axisTextWidths.size >= 256) this.axisTextWidths.clear();
+          width = context.measureText(label).width;
+          this.axisTextWidths.set(key, width);
+        }
+        length = Math.max(length, width);
         value -= stepSize;
       }
       return Math.ceil(length / 10) * 10;
@@ -1074,66 +1083,41 @@ export default class LineGraphRenderer implements TabRenderer {
     context.fillStyle = light ? "#222" : "#eee";
     context.textBaseline = "middle";
 
-    if (command.showLeftAxis) {
-      context.textAlign = "right";
-      let stepPos = Math.floor(command.leftRange[1] / leftStepSize) * leftStepSize;
-      let iterCount = 0;
-      while (iterCount++ < 100) {
-        let y = scaleValue(stepPos, command.leftRange, [graphTop + graphHeightOpen, graphTop]);
+    const horizontalGuides: number[] = [];
+    const drawYAxis = (side: "left" | "right", stepSize: number) => {
+      const left = side === "left";
+      const range = left ? command.leftRange : command.rightRange;
+      const x = left ? graphLeft : graphLeft + graphWidth;
+      const direction = left ? -1 : 1;
+      const units = left ? command.leftUnits : command.rightUnits;
+      const filter = left ? command.leftFilter : command.rightFilter;
+      const scaler = new ValueScaler(range, [graphTop + graphHeightOpen, graphTop]);
+      context.textAlign = left ? "right" : "left";
+      context.beginPath();
+      let value = Math.floor(range[1] / stepSize) * stepSize;
+      for (let tick = 0; tick < 100; tick++, value -= stepSize) {
+        const y = scaler.calculate(value);
         if (y > graphTop + graphHeightOpen) break;
-
-        context.globalAlpha = 1;
-        if (Math.abs(stepPos) < this.MAX_DECIMAL_VALUE || stepPos % 1 === 0) {
-          context.fillText(this.getAxisValueText(stepPos, command.leftUnits, command.leftFilter), graphLeft - 15, y);
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft - 5, y);
-          context.stroke();
+        if (Math.abs(value) < this.MAX_DECIMAL_VALUE || value % 1 === 0) {
+          context.fillText(this.getAxisValueText(value, units, filter), x + direction * 15, y);
+          context.moveTo(x, y);
+          context.lineTo(x + direction * 5, y);
         }
-
-        if (command.priorityAxis === "left") {
-          context.globalAlpha = 0.1;
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft + graphWidth, y);
-          context.stroke();
-        }
-
-        stepPos -= leftStepSize;
+        if (side === command.priorityAxis) horizontalGuides.push(y);
       }
-    }
-
-    if (command.showRightAxis) {
-      context.textAlign = "left";
-      let stepPos = Math.floor(command.rightRange[1] / rightStepSize) * rightStepSize;
-      let iterCount = 0;
-      while (iterCount++ < 100) {
-        let y = scaleValue(stepPos, command.rightRange, [graphTop + graphHeightOpen, graphTop]);
-        if (y > graphTop + graphHeightOpen) break;
-
-        context.globalAlpha = 1;
-        if (Math.abs(stepPos) < this.MAX_DECIMAL_VALUE || stepPos % 1 === 0) {
-          context.fillText(
-            this.getAxisValueText(stepPos, command.rightUnits, command.rightFilter),
-            graphLeft + graphWidth + 15,
-            y
-          );
-          context.beginPath();
-          context.moveTo(graphLeft + graphWidth, y);
-          context.lineTo(graphLeft + graphWidth + 5, y);
-          context.stroke();
-        }
-
-        if (command.priorityAxis === "right") {
-          context.globalAlpha = 0.1;
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft + graphWidth, y);
-          context.stroke();
-        }
-
-        stepPos -= rightStepSize;
+      context.stroke();
+    };
+    context.globalAlpha = 1;
+    if (command.showLeftAxis) drawYAxis("left", leftStepSize);
+    if (command.showRightAxis) drawYAxis("right", rightStepSize);
+    if (horizontalGuides.length) {
+      context.globalAlpha = 0.1;
+      context.beginPath();
+      for (const y of horizontalGuides) {
+        context.moveTo(graphLeft, y);
+        context.lineTo(graphLeft + graphWidth, y);
       }
+      context.stroke();
     }
 
     context.globalAlpha = 1;
@@ -1167,6 +1151,8 @@ export default class LineGraphRenderer implements TabRenderer {
     context.textAlign = "center";
     let stepPos = Math.ceil(cleanFloat(displayTimeRange[0] / timeStepSize)) * timeStepSize;
     let iterCount = 0;
+    const verticalGuides: number[] = [];
+    context.beginPath();
     while (iterCount++ < 100) {
       let x = scaleValue(stepPos, displayTimeRange, [graphLeft, graphLeft + graphWidth]);
 
@@ -1179,21 +1165,20 @@ export default class LineGraphRenderer implements TabRenderer {
 
       let text = cleanFloat(stepPos).toString() + (command.xUnit ?? "s");
 
-      context.globalAlpha = 1;
       context.fillText(text, x, graphTop + graphHeight + 15);
-      context.beginPath();
       context.moveTo(x, graphTop + graphHeight);
       context.lineTo(x, graphTop + graphHeight + 5);
-      context.stroke();
-
-      context.globalAlpha = 0.1;
-      context.beginPath();
-      context.moveTo(x, graphTop);
-      context.lineTo(x, graphTop + graphHeight);
-      context.stroke();
-
+      verticalGuides.push(x);
       stepPos += timeStepSize;
     }
+    context.stroke();
+    context.globalAlpha = 0.1;
+    context.beginPath();
+    for (const x of verticalGuides) {
+      context.moveTo(x, graphTop);
+      context.lineTo(x, graphTop + graphHeight);
+    }
+    context.stroke();
   }
 
   saveState(): unknown {

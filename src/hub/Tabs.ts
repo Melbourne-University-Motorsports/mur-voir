@@ -337,6 +337,10 @@ export default class Tabs {
       ScrollSensorMouseControl.None
     );
 
+    const updateShadows = () => this.updateTabBarShadows();
+    this.TAB_BAR.addEventListener("scroll", updateShadows, { passive: true });
+    new ResizeObserver(updateShadows).observe(this.TAB_BAR);
+
     // Add timeline
     this.timeline = new Timeline(this.TIMELINE_CONTAINER);
     this.setTimelineBandSupplier(() => lapService.bands());
@@ -356,13 +360,6 @@ export default class Tabs {
           lastAlerts = performance.now();
           updateTracksideAlerts(alertElement, this.getTracksideLimits(), this.getTracksideDbcSignals());
         }
-        // Update tab bar
-        setStyle(this.SHADOW_LEFT, "opacity", Math.floor(this.TAB_BAR.scrollLeft) <= 0 ? "0" : "1");
-        setStyle(
-          this.SHADOW_RIGHT,
-          "opacity",
-          Math.ceil(this.TAB_BAR.scrollLeft) >= this.TAB_BAR.scrollWidth - this.TAB_BAR.clientWidth ? "0" : "1"
-        );
         this.tabsScrollSensor.periodic();
 
         // Update timeline and controls
@@ -416,6 +413,12 @@ export default class Tabs {
       });
     };
     requestFrame(periodic);
+  }
+
+  private updateTabBarShadows() {
+    const bar = this.TAB_BAR;
+    setStyle(this.SHADOW_LEFT, "opacity", Math.floor(bar.scrollLeft) <= 0 ? "0" : "1");
+    setStyle(this.SHADOW_RIGHT, "opacity", Math.ceil(bar.scrollLeft) >= bar.scrollWidth - bar.clientWidth ? "0" : "1");
   }
 
   private controlsLayoutKey(): string {
@@ -1053,6 +1056,7 @@ export default class Tabs {
       }
     });
 
+    this.updateTabBarShadows();
     // Selection and topology can change the controls height and timeline.
     this.updateTimelineVisibility();
     this.updateControlsHeight();

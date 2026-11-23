@@ -124,6 +124,7 @@ export default class Timeline {
   }
 
   private static darkQuery: MediaQueryList | null = null;
+  private tickWidths = new Map<string, number>();
   private lastDraw: { key: string; range: [number, number] } | null = null;
 
   /** Opacity of the "Scroll timeline to zoom" hint, which fades out after the first zoom. */
@@ -143,7 +144,7 @@ export default class Timeline {
   }
 
   private isHidden() {
-    return clientSize(this.CONTAINER)[1] === 0;
+    return this.CONTAINER.hidden || clientSize(this.CONTAINER)[1] === 0;
   }
 
   periodic() {
@@ -158,8 +159,15 @@ export default class Timeline {
     const bands = this.bandSupplier();
     const helpTextOpacity = this.getHelpTextOpacity();
 
-    // Skip the redraw when nothing visible changed. The range counts as moved once either end
-    // shifts half a pixel, so a long live timeline redraws about once per pixel, not every frame.
+    const hoveredTime = window.selection.getHoveredTime();
+    const selectedTime = window.selection.getSelectedTime();
+    const marker = (time: number | null) => {
+      if (time === null) return null;
+      const x = scaleValue(time, timeRange, [0, width]);
+      return x > 1 && x < width - 1 ? Math.round(x * devicePixelRatio) : null;
+    };
+
+    // A timeline only needs a new frame when a visible marker or range moves by a device pixel.
     const key = JSON.stringify([
       width,
       height,
@@ -168,17 +176,17 @@ export default class Timeline {
       window.log.getTimestampDisplayOffset(),
       bands,
       window.selection.getGrabZoomRange(),
-      window.selection.getHoveredTime(),
-      window.selection.getSelectedTime(),
+      marker(hoveredTime),
+      marker(selectedTime),
       this.lastCursorX,
       helpTextOpacity
     ]);
     const last = this.lastDraw;
     if (last !== null && last.key === key) {
-      const pxPerSecond = width / (last.range[1] - last.range[0]);
+      const pxPerSecond = (width * devicePixelRatio) / (last.range[1] - last.range[0]);
       if (
-        Math.abs(timeRange[0] - last.range[0]) * pxPerSecond < 0.5 &&
-        Math.abs(timeRange[1] - last.range[1]) * pxPerSecond < 0.5
+        Math.abs(timeRange[0] - last.range[0]) * pxPerSecond < 1 &&
+        Math.abs(timeRange[1] - last.range[1]) * pxPerSecond < 1
       )
         return;
     }
@@ -292,9 +300,8 @@ export default class Timeline {
     };
 
     // Mark hovered and selected times
-    let hoveredTime = window.selection.getHoveredTime();
-    let selectedTime = window.selection.getSelectedTime();
-    if (hoveredTime !== null) markTime(hoveredTime, 0.5);
+    const markerHover = window.selection.getHoveredTime();
+    if (markerHover !== null) markTime(markerHover, 0.5);
     if (selectedTime !== null) markTime(selectedTime, 1);
 
     // Draw tick marks
@@ -308,6 +315,7 @@ export default class Timeline {
     context.textAlign = "center";
     context.textBaseline = "middle";
     let stepPos = Math.ceil(cleanFloat(displayTimeRange[0] / stepSize)) * stepSize;
+    const ticksByAlpha = new Map<number, number[]>();
     let iterCount = 0;
     while (iterCount++ < 100) {
       let x = scaleValue(stepPos, displayTimeRange, [0, width]);
@@ -317,7 +325,12 @@ export default class Timeline {
 
       let text = cleanFloat(stepPos).toString() + "s";
       context.font = labelFont;
-      let textWidth = context.measureText(text).width;
+      let textWidth = this.tickWidths.get(text);
+      if (textWidth === undefined) {
+        if (this.tickWidths.size >= 256) this.tickWidths.clear();
+        textWidth = context.measureText(text).width;
+        this.tickWidths.set(text, textWidth);
+      }
       let textX = clampValue(x, textWidth / 2 + 3, width - textWidth / 2 - 3);
       let textXRange = [textX - textWidth / 2, textX + textWidth / 2];
 
@@ -345,19 +358,27 @@ export default class Timeline {
       }
 
       let minDistance = Math.min(markDistance, adjustedHelpDistance);
-      context.globalAlpha = clampValue(scaleValue(minDistance, [0, 20], [0.2, 0.5]), 0, 1);
+      const alpha = clampValue(scaleValue(minDistance, [0, 20], [0.2, 0.5]), 0, 1);
+      context.globalAlpha = alpha;
       context.fillText(text, textX, tickLabelY);
-
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, 8);
-      if (!bandsLabelled) {
-        context.moveTo(x, height - 8);
-        context.lineTo(x, height);
-      }
-      context.stroke();
+      const ticks = ticksByAlpha.get(alpha);
+      if (ticks) ticks.push(x);
+      else ticksByAlpha.set(alpha, [x]);
 
       stepPos += stepSize;
+    }
+    for (const [alpha, ticks] of ticksByAlpha) {
+      context.globalAlpha = alpha;
+      context.beginPath();
+      for (const x of ticks) {
+        context.moveTo(x, 0);
+        context.lineTo(x, 8);
+        if (!bandsLabelled) {
+          context.moveTo(x, height - 8);
+          context.lineTo(x, height);
+        }
+      }
+      context.stroke();
     }
 
     // Draw help text in center
