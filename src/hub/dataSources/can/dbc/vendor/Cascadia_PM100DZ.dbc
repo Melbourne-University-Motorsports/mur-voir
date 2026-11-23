@@ -33,7 +33,7 @@ NS_ :
 
 BS_:
 
-BU_: INVERTER ECU
+BU_: INVERTER ECU TTCS
 
 BO_ 160 INV_Temperatures1: 8 INVERTER
  SG_ INV_ModuleATemp : 0|16@1- (0.1,0) [-3276.8|3276.7] "degC" ECU
@@ -181,6 +181,10 @@ BO_ 194 INV_ParamResponse: 8 INVERTER
  SG_ INV_PARAMRSP_WriteSuccess : 16|8@1+ (1,0) [0|1] "" ECU
  SG_ INV_PARAMRSP_Data : 32|16@1+ (1,0) [0|65535] "" ECU
 
+BO_ 514 BMS_CurrentLimit: 8 TTCS
+ SG_ BMS_MaxDischargeCurrent : 0|16@1+ (1,0) [0|65535] "A" INVERTER
+ SG_ BMS_MaxChargeCurrent : 16|16@1+ (1,0) [0|65535] "A" INVERTER
+
 CM_ BU_ INVERTER "Cascadia Motion PM100DZ motor controller. REBUILT 2026-09-17 directly from the vendor's own 'CAN Protocol' Revision 6.1 (2023-02-24), docs/Inverter/CAN Protocol (V6_1).pdf - this file is no longer a reconstruction. Every byte offset, scale, signedness and bit meaning below cites a page of that document. SUPERSEDES the previous MoTeC-derived reconstruction, which was discovered to be a systematic 64-bit MIRROR of the real layout: for every signal, old_start_bit == 64 - real_start_bit - width. That mirroring is why INV_CMD_TorqueLimit (old bits 0-15) was in fact the real INV_CMD_TorqueCommand (bytes 0,1), which is why setting 'torque_limit = 200' made the motor spin during the 2026-09-15 bench session. Message IDs assume the default CAN ID Offset EEPROM parameter of 0x0A0 (p17); if a second controller is ever put on the bus with a different offset, every ID here shifts.";
 CM_ BO_ 160 "p21. Temperatures #1. IGBT module temperatures per phase + gate driver board. All fields Temperature format (p15): signed int, degC x10. Broadcast 'Slow' rate, typically 10 Hz (p17).";
 CM_ BO_ 161 "p21. Temperatures #2. Control board + RTD inputs 1/2. Byte 6,7 is RTD #3 on Gen 2 and the Stall Burst Model power-module junction estimate on Gen 5/CM - same bytes, different meaning by inverter generation. Broadcast Slow/10 Hz.";
@@ -282,8 +286,11 @@ CM_ SG_ 192 INV_CMD_InverterEnable "p31, byte 5 bit 0. 0 = Inverter Off, 1 = Inv
 CM_ SG_ 192 INV_CMD_InverterDischarge "p31, byte 5 bit 1. 0 = disable discharge, 1 = enable discharge. See the vendor's 'Inverter Discharge Process' document before ever setting this.";
 CM_ SG_ 192 INV_CMD_SpeedModeEnable "p31, byte 5 bit 2. 1 = if the controller is in torque mode, switch it to speed mode. One-way override: it will NOT switch speed mode back to torque mode. MUR commands torque, so this must stay 0.";
 CM_ SG_ 192 INV_CMD_TorqueLimit "p31, bytes 6,7, Torque format, Nm x10. 0 = use the motor/regen torque limits configured in EEPROM. A positive value sets BOTH the motoring and regen torque limits to that value for this frame. Added in software version 1953; on older firmware these two bytes are ignored and should be sent as 0 (p32). This field DOES exist - an earlier note on this branch claiming otherwise was based on the mirrored layout - so a bench torque ceiling can be enforced on the wire here in addition to any software clamp.";
-CM_ BO_ 193 "p37-38. Read/Write Parameter Command, sent to the controller. Byte 2 selects read (0) or write (1); the controller answers on 0x0C2. Data occupies bytes 4,5 (a parameter needing fewer than 4 bytes is loaded from byte 4 upward). Bytes 3 and 6,7 are reserved. MUR uses exactly one parameter: address 20 = Fault Clear (p39), where writing 0 clears any active faults, in CAN or VSM mode - i.e. the fixed triple Address=20, RWCommand=1, Data=0.";
-CM_ BO_ 194 "p38. Read/Write Parameter Response, sent BY the controller in reply to 0x0C1. Byte 2 is Write Success (1 = written). An unrecognised parameter address comes back as 0 in bytes 0 and 1. Not currently subscribed by MUR firmware - subscribe it if fault-clear acknowledgement is ever needed.";
+CM_ BO_ 193 "p37-38. Read/Write Parameter Command, sent to the controller. Byte 2 selects read (0) or write (1); the controller answers on 0x0C2. Data occupies bytes 4,5 (a parameter needing fewer than 4 bytes is loaded from byte 4 upward). Bytes 3 and 6,7 are reserved. MUR uses exactly two: address 20 = Fault Clear (p39), where writing 0 clears any active faults, in CAN or VSM mode - i.e. the fixed triple Address=20, RWCommand=1, Data=0; and a read of address 178 = CAN BMS Limit Enable, done once at boot so the ECU log records whether the inverter will act on the BMS limit frame (CM_ BO_ 514).";
+CM_ BO_ 194 "p38. Read/Write Parameter Response, sent BY the controller in reply to 0x0C1. Byte 2 is Write Success (1 = written). An unrecognised parameter address comes back as 0 in bytes 0 and 1. Subscribed by MUR firmware since the boot-time read of address 178 (CM_ BO_ 193); only that answer is logged, so a fault-clear acknowledgement is still ignored.";
+CM_ BO_ 514 "CAN Protocol Rev 6.2 (2023-08-25) p57, section 2.5 'Orion BMS Support (available in 19B3 and after)'. The one frame the controller RECEIVES carrying pack current limits - the Orion BMS feature the ENNOID does not provide. The ID is FIXED: the doc says it cannot be changed. Bytes 0,1 = maximum discharge current, bytes 2,3 = maximum charge current, little-endian, whole amps with NO scale factor (vendor worked example 02 01 04 02 00 00 00 00 = 258 A discharge, 516 A charge). Sign is ignored - transmit magnitudes. Bytes 4-7 unused, send zeros, DLC 8. MUR's TTCS node is the sender, at 10 Hz; no node transmitted this before, and 0x202 is otherwise free on Control/Tractive CAN (the same ID on Telemetry CAN is Dashboard_Environment - different bus, do not confuse the two). While the TTCS has not yet computed a limit from live cell data it sends a fixed 175 A discharge / 30 A charge rather than zeros, so that enabling parameter 178 cannot leave the car with zero torque while the BMS data is still arriving; a refused calibration, and a computed 0 A, still go out as 0 A. The controller IGNORES this frame until EEPROM parameter 178 'CAN BMS Limit Enable' is 1, and the vendor document prints no default for that parameter (unlike its neighbours in the table), so read it from the unit rather than assuming one - a broadcast changes nothing on the car while it is 0. When enabled, the controller truncates the torque command so the resulting DC current approximates the limit: a torque derate, not a current regulator, and in VSM mode it also lowers the pedal floor. Rev 6.2 ADDS that it limits in speed mode too; Rev 5.9 (2023-02-24) explicitly said it did NOT, so read INV_SoftwareVersion before assuming either way. The derate is invisible in INV_CommandedTorque - it shows only as INV_BMSLimitingTorque (0x0AA byte 7 bit 2), with INV_BMSActive (bit 1) saying the message is still arriving. Both status bits fall to 0 about 1 s after this frame stops, and the doc does not say whether the limit is then released or held - an unanswered bench question, treat loss of this frame as unproven until tested. SENDER CAUTION: 0 A here is a hard zero-torque cap, not 'no limit' - with parameter 178 on, a refused calibration or a computed 0 A stops the car from producing torque, and because the derate never appears in INV_CommandedTorque it will look like an ECU or torque-request problem rather than a limit.";
+CM_ SG_ 514 BMS_MaxDischargeCurrent "Whole amps, unsigned magnitude; the controller ignores the sign. Not deciamps - TTCS converts from TTCS_Limits' 0.1 A/count by rounding to the nearest amp.";
+CM_ SG_ 514 BMS_MaxChargeCurrent "Whole amps, unsigned magnitude, same conversion and sign rule as BMS_MaxDischargeCurrent.";
 
 BA_DEF_ BO_ "GenMsgCycleTime" INT 0 100000;
 BA_DEF_ BO_ "GenMsgSendType" ENUM "Cyclic","OnChange","Event";
@@ -309,6 +316,7 @@ BA_ "GenMsgCycleTime" BO_ 173 10;
 BA_ "GenMsgCycleTime" BO_ 174 100;
 BA_ "GenMsgCycleTime" BO_ 176 3;
 BA_ "GenMsgCycleTime" BO_ 192 10;
+BA_ "GenMsgCycleTime" BO_ 514 100;
 BA_ "GenMsgSendType" BO_ 160 0;
 BA_ "GenMsgSendType" BO_ 161 0;
 BA_ "GenMsgSendType" BO_ 162 0;
@@ -328,6 +336,7 @@ BA_ "GenMsgSendType" BO_ 176 0;
 BA_ "GenMsgSendType" BO_ 192 0;
 BA_ "GenMsgSendType" BO_ 193 2;
 BA_ "GenMsgSendType" BO_ 194 2;
+BA_ "GenMsgSendType" BO_ 514 0;
 
 VAL_ 170 INV_VSMState 0 "VSM Start" 1 "Pre-charge Init" 2 "Pre-charge Active" 3 "Pre-charge Complete" 4 "VSM Wait" 5 "VSM Ready" 6 "Motor Running" 7 "Blink Fault Code" 14 "Shutdown In Process" 15 "Recycle Power";
 VAL_ 170 INV_InverterState 0 "Power On" 1 "Stop" 2 "Open Loop" 3 "Closed Loop" 4 "Wait" 5 "Internal" 6 "Internal" 7 "Internal" 8 "Idle Run" 9 "Idle Stop" 10 "Internal" 11 "Internal" 12 "Internal";

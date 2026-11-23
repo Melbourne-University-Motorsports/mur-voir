@@ -84,6 +84,27 @@ test("the bundled Cascadia and TTCS comments name and grade every documented bit
   assert.ok([...faultBits(ttcs.comment).values()].every((bit) => bit.grade !== null));
 });
 
+test("MUR_Fault names each node's bits under its own signal", () => {
+  for (const path of ["mur_control_can.dbc", "mur_telemetry_can.dbc"]) {
+    const message = parseDBC(BUNDLED_DBCS[path], path).messages.find((m) => m.name === "MUR_Fault")!;
+    assert.ok(message.signals.find((signal) => signal.name === "FAULT_Node")!.isMultiplexor);
+    const label = (name: string, value: number) => {
+      const signal = message.signals.find((s) => s.name === name)!;
+      return classifyDBCFault({ name, comment: signal.comment }, value);
+    };
+    // Bit 4 is a different fault on each node.
+    assert.deepEqual(
+      ["FAULT_Bitmask_TTCS", "FAULT_Bitmask_Pedalbox"].map((name) => label(name, 1 << 4)!.label),
+      ["ENNOID comms lost", "APPS A out of range"]
+    );
+    assert.deepEqual(
+      { ...label("FAULT_Bitmask_TTCS", 1 << 16), detail: undefined },
+      { severity: "warn", label: "Cell imbalance", detail: undefined }
+    );
+    assert.equal(label("FAULT_Bitmask_TTCS", 1 << 17)!.severity, "critical");
+  }
+});
+
 test("fault bytes and timeout flags are active when nonzero", () => {
   for (const name of ["INV_FaultByte0", "TELEM_TimeoutFlags", "FAULT_Bitmask", "HB_CHG_FaultBits"]) {
     assert.equal(classifyDBCFault({ name }, 1)?.severity, "critical");
