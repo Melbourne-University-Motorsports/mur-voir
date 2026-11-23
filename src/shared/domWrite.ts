@@ -36,7 +36,7 @@ export function setRootProperty(name: string, value: string) {
 }
 
 /** Sets an inline style property only when it changes. */
-export function setStyle(element: HTMLElement, property: "width" | "height", value: string) {
+export function setStyle(element: HTMLElement, property: "width" | "height" | "display", value: string) {
   if (element.style[property] !== value) element.style[property] = value;
 }
 
@@ -62,4 +62,55 @@ export function prepareCanvas(
     context.reset();
   }
   context.scale(devicePixelRatio, devicePixelRatio);
+}
+
+// Layout reads for per-frame drawing. Reading clientWidth after any DOM write in the same frame forces
+// a synchronous layout, so sizes come from a ResizeObserver, which reports right after layout.
+
+/** Fired on window when an observed element's size changes, so the hub can draw a frame. */
+export const LAYOUT_SIZE_EVENT = "layout-size-change";
+
+const clientSizes = new WeakMap<Element, [number, number]>();
+let sizeObserver: ResizeObserver | null | undefined;
+
+/**
+ * Returns `[clientWidth, clientHeight]`, kept up to date by a ResizeObserver. An element that was
+ * hidden (0 × 0) is measured directly, so a tab that has just been shown draws at its real size.
+ */
+export function clientSize(element: HTMLElement): [number, number] {
+  const known = clientSizes.get(element);
+  if (known !== undefined && (known[0] > 0 || known[1] > 0)) return known;
+  const size: [number, number] = [element.clientWidth, element.clientHeight];
+  if (sizeObserver === undefined) {
+    sizeObserver =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver((entries) => {
+            let changed = false;
+            for (const entry of entries) {
+              const target = entry.target as HTMLElement;
+              const old = clientSizes.get(target);
+              const width = target.clientWidth;
+              const height = target.clientHeight;
+              if (old === undefined || old[0] !== width || old[1] !== height) {
+                clientSizes.set(target, [width, height]);
+                changed = true;
+              }
+            }
+            if (changed) window.dispatchEvent(new Event(LAYOUT_SIZE_EVENT));
+          })
+        : null;
+  }
+  if (sizeObserver !== null) {
+    if (known === undefined) sizeObserver.observe(element);
+    clientSizes.set(element, size);
+  }
+  return size;
+}
+
+let darkQuery: MediaQueryList | undefined;
+
+/** Whether the dark theme is active, without creating a media query on every call. */
+export function isDarkMode(): boolean {
+  darkQuery ??= window.matchMedia("(prefers-color-scheme: dark)");
+  return darkQuery.matches;
 }

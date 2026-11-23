@@ -15,7 +15,7 @@ import { calcAxisStepSize, clampValue, cleanFloat, scaleValue, shiftColor, Value
 import TabRenderer from "./TabRenderer";
 
 import { prepareTrace, TraceGap } from "../TraceGaps";
-import { prepareCanvas } from "../domWrite";
+import { clientSize, isDarkMode, prepareCanvas, setStyle } from "../domWrite";
 import { niceTicks } from "../laps/LapAnalysis";
 import { interpolate } from "../laps/LapEngine";
 import { LapViewport } from "../laps/LapViewport";
@@ -203,11 +203,11 @@ export default class LineGraphRenderer implements TabRenderer {
       const hasScrolled =
         (window.preferences?.hasScrolledLineGraph ?? false) ||
         (this.hasController && this.scrollSensor.shouldHideHint());
-      this.HELP_OVERLAY.style.display = hasScrolled || command.message ? "none" : "flex";
+      setStyle(this.HELP_OVERLAY, "display", hasScrolled || command.message ? "none" : "flex");
       if (hasScrolled) {
         this.isFadingOut = false;
         this.zoomInAccumulator = 0;
-        this.HELP_OVERLAY.classList.remove("fading-out");
+        if (this.HELP_OVERLAY.classList.contains("fading-out")) this.HELP_OVERLAY.classList.remove("fading-out");
       }
     }
 
@@ -215,9 +215,8 @@ export default class LineGraphRenderer implements TabRenderer {
     const timeRange = command.timeRange;
     const devicePixelRatio = window.devicePixelRatio;
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    let width = this.CANVAS.clientWidth;
-    let height = this.CANVAS.clientHeight;
-    let light = !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    let [width, height] = clientSize(this.CANVAS);
+    let light = !isDarkMode();
 
     // Exit if render state unchanged
     let renderState: any[] = [

@@ -21,6 +21,8 @@
  * compositing entirely.
  */
 
+import { LAYOUT_SIZE_EVENT } from "../shared/domWrite";
+
 export type FramePace = "display" | "live" | "idle";
 
 const INTERACTIVE_MS = 1000;
@@ -38,6 +40,8 @@ let invalidated = true; // The first frame always runs
 let paceSupplier: () => FramePace = () => "idle";
 let listening = false;
 let textTimer: ReturnType<typeof setTimeout> | null = null;
+let textFrame = true;
+let lastTextFrame = -Infinity;
 const afterFrameCallbacks: (() => void)[] = [];
 
 /** Sets how the window paces frames when nobody is interacting with it. */
@@ -75,20 +79,11 @@ export function wakeFrames(durationMs = INTERACTIVE_MS) {
 /**
  * Whether live text (values next to fields, previews) should update in this frame. Numbers that change
  * 30 times a second cannot be read, and each text change costs a layout, so without recent input text
- * follows at most every TEXT_PERIOD_MS while graphs keep the full frame rate. `last` is the caller's
- * time of its previous text update.
+ * follows at most every TEXT_PERIOD_MS while graphs keep the full frame rate. Decided once per frame,
+ * so every text consumer updates in the same frames.
  */
-export function isTextFrame(last: number): boolean {
-  const wait = last + TEXT_PERIOD_MS - 4 - performance.now();
-  if (wait <= 0 || isInteractive()) return true;
-  // A skipped update still lands once the period passes, even if nothing else asks for a frame
-  if (textTimer === null) {
-    textTimer = setTimeout(() => {
-      textTimer = null;
-      invalidateFrames();
-    }, wait);
-  }
-  return false;
+export function isTextFrame(): boolean {
+  return textFrame;
 }
 
 /** Whether someone interacted with the window in the last second (or a message from main arrived). */
@@ -133,6 +128,17 @@ function run(time: number) {
   animationFrame = null;
   lastFrame = performance.now();
   invalidated = false;
+  const textWait = lastTextFrame + TEXT_PERIOD_MS - 4 - lastFrame;
+  textFrame = textWait <= 0 || isInteractive();
+  if (textFrame) {
+    lastTextFrame = lastFrame;
+  } else if (textTimer === null) {
+    // A skipped text update still lands once the period passes, even if nothing else asks for a frame
+    textTimer = setTimeout(() => {
+      textTimer = null;
+      invalidateFrames();
+    }, textWait);
+  }
   const callbacks = queue;
   queue = [];
   callbacks.forEach((callback) => callback(time));
@@ -161,6 +167,8 @@ function listen() {
     window.addEventListener(type, wake, { capture: true, passive: true });
   }
   document.addEventListener?.("visibilitychange", wake);
+  // A drawn element changed size without input (e.g. a layout change after new data)
+  window.addEventListener(LAYOUT_SIZE_EVENT, () => invalidateFrames());
   // Icon and canvas colours follow the theme
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", wake);
 }

@@ -13,6 +13,7 @@ import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
 import { axisDisplayUnit, formatChannelValue } from "../../shared/display/ChannelProfile";
 import { formatSignedSeconds, heldValueAt, sectorDeltaText } from "../../shared/laps/LapAnalysis";
 import { interpolate, lapSamples, sectorBlocks } from "../../shared/laps/LapEngine";
+import DecimatedSeries from "../../shared/log/DecimatedSeries";
 import { getLogValueText } from "../../shared/log/LogUtil";
 import { LogValueSetNumber } from "../../shared/log/LogValueSets";
 import { AKIT_TIMESTAMP_KEYS, getRobotStateRanges } from "../../shared/log/RobotState";
@@ -63,6 +64,10 @@ export default class LineGraphController implements TabController {
   private rightFilter = LineGraphFilter.None;
 
   private leftNumericCommandCache: { [key: string]: NumericCommandCacheValue } = {};
+  /** Reduced fields for wide views, kept between frames so live data is reduced only once. */
+  private decimated = new Map<string, DecimatedSeries>();
+  /** Unit conversions of reduced commands, whose previews read the exact sample from the log. */
+  private rawPreviews = new WeakMap<NumericCommandCacheValue, (value: number) => number>();
   private rightNumericCommandCache: { [key: string]: NumericCommandCacheValue } = {};
   private leftUnitCache: Units.UnitConfig | null = null;
   private rightUnitCache: Units.UnitConfig | null = null;
@@ -430,7 +435,22 @@ export default class LineGraphController implements TabController {
     filter: LineGraphFilter
   ): string | null {
     if (!(key in commandCache)) return null;
-    return previewNumberCommand(key, time, commandCache[key], unitCache, filter);
+    const command = commandCache[key];
+    const convert = this.rawPreviews.get(command);
+    if (convert !== undefined) {
+      // Reduced data holds bucket extremes, not the sample at `time`
+      const sample = window.log.getNumber(key, time, time);
+      if (sample === undefined || sample.timestamps.length === 0) return null;
+      const value = clampValue(convert(sample.values[0]), -this.MAX_VALUE, this.MAX_VALUE);
+      return previewNumberCommand(
+        key,
+        time,
+        { timestamps: [sample.timestamps[0]], values: [value], hasUnit: command.hasUnit },
+        unitCache,
+        filter
+      );
+    }
+    return previewNumberCommand(key, time, command, unitCache, filter);
   }
 
   /** Returns the auto target type for an axis, based on a manual override or field selection. */
@@ -541,13 +561,23 @@ export default class LineGraphController implements TabController {
 
       // Process fields
       source.forEach((fieldItem) => {
-        let data = window.log.getNumber(
-          fieldItem.logKey,
-          filter === LineGraphFilter.Integrate ? -Infinity : timeRange[0],
-          timeRange[1],
-          undefined,
-          filter === LineGraphFilter.Differentiate ? -1 : 0
-        );
+        // A wide view of a long field (a live graph spanning the session) draws from a reduced copy, so
+        // each frame costs the same however long the session runs
+        let decimated: LogValueSetNumber | null = null;
+        if (filter === LineGraphFilter.None && akitTimestamps === undefined && fieldItem.type !== "points") {
+          let series = this.decimated.get(fieldItem.logKey);
+          if (series === undefined) this.decimated.set(fieldItem.logKey, (series = new DecimatedSeries()));
+          decimated = series.get(window.log, fieldItem.logKey, timeRange[0], timeRange[1]);
+        }
+        let data =
+          decimated ??
+          window.log.getNumber(
+            fieldItem.logKey,
+            filter === LineGraphFilter.Integrate ? -Infinity : timeRange[0],
+            timeRange[1],
+            undefined,
+            filter === LineGraphFilter.Differentiate ? -1 : 0
+          );
         if (data === undefined) return;
 
         // Statistics always use the whole field, independent of viewport and lap selection.
@@ -642,7 +672,6 @@ export default class LineGraphController implements TabController {
             Units.GROUP_BY_UNIT[sourceUnit] === Units.GROUP_BY_UNIT[autoTargetResult.unit]
           ) {
             convertValue = (value) => Units.convert(value, sourceUnit, autoTargetResult.unit);
-            data.values = data.values.map(convertValue);
             hasUnit = true;
           }
         } else if (unitConversion.preset !== undefined) {
@@ -651,12 +680,20 @@ export default class LineGraphController implements TabController {
               value,
               unitConversion.preset === null ? Units.NoopUnitConversion : unitConversion.preset
             );
-          data.values = data.values.map(convertValue);
           hasUnit = true;
         }
 
-        // Clamp values
-        data.values = data.values.map((value) => clampValue(value, -this.MAX_VALUE, this.MAX_VALUE));
+        // Convert and clamp in one pass over the range's own copy of the values. Without a unit change
+        // the conversion is skipped, since live graphs repeat this for every sample on every frame.
+        {
+          const values = data.values;
+          const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
+          const max = this.MAX_VALUE;
+          for (let i = 0; i < values.length; i++) {
+            const value = identity ? values[i] : convertValue(values[i]);
+            values[i] = value < -max ? -max : value > max ? max : value;
+          }
+        }
 
         // Trim early point
         if (!gaps?.length && data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
@@ -740,6 +777,7 @@ export default class LineGraphController implements TabController {
         };
         if (fieldItem.visible) command.push(itemCommand);
         commandCache[fieldItem.logKey] = itemCommand;
+        if (decimated !== null) this.rawPreviews.set(itemCommand, convertValue);
       });
     };
     addNumeric(

@@ -81,6 +81,12 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   private receiptTimes = new Map<string, number>();
   /** Backend time of the newest sample per path, where a later history request resumes. */
   private lastSampleNs = new Map<string, string>();
+  /**
+   * Where history resumes for a path that stopped streaming (its tab was hidden, or the socket dropped):
+   * its newest sample at that moment. Kept until a backfill merges, so samples that arrive later (e.g.
+   * for the sidebar) cannot move it past the gap.
+   */
+  private resumeFrom = new Map<string, string>();
   private backend: BackendState = "connecting";
   private backendDetail = "";
 
@@ -180,6 +186,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       if (this.socket !== socket) return;
       this.socket = null;
       this.catalogue = null;
+      this.subscribedPaths.forEach((path) => this.rememberResume(path));
       this.subscribedPaths = [];
       this.lastSubscriptionCheck = -Infinity;
       if (this.backend === "connected") {
@@ -348,6 +355,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     this.log = new Log();
     this.receiptTimes.clear();
     this.lastSampleNs.clear();
+    this.resumeFrom.clear();
     // Keep availability from the snapshot that preceded this stream.
     this.descriptors.forEach((descriptor) => createField(this.log!, descriptor));
     console.log("[MUR] Starting segment " + this.segments.getSegmentIndex().toString());
@@ -402,7 +410,10 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
           this.send({ op: "unsubscribe", subscription_id: SUBSCRIPTION_ID });
         }
         this.subscribedPaths.forEach((path) => {
-          if (!activePaths.has(path)) this.historyRequested.delete(path);
+          if (!activePaths.has(path)) {
+            this.historyRequested.delete(path);
+            this.rememberResume(path);
+          }
         });
         this.subscribedPaths = paths;
       }
@@ -455,7 +466,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (this.historyAvailable === false) return;
     const segmentIndex = this.segments.getSegmentIndex();
     // A field seen before (its tab was hidden) resumes from its newest sample, so the whole gap fills in
-    const resumeNs = this.lastSampleNs.get(path);
+    const resumeNs = this.resumeFrom.get(path);
     const url =
       this.baseUrl +
       "/api/v1/history?path=" +
@@ -496,10 +507,16 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       if (time === null || time.seconds < 0) return;
       if (writeValue(this.log!, descriptor, time.seconds, sample.value)) wrote = true;
     });
+    if (resumeNs !== undefined && this.resumeFrom.get(path) === resumeNs) this.resumeFrom.delete(path);
     if (wrote) {
       this.changedFields?.add(path);
       this.shouldRunOutputCallback = true;
     }
+  }
+
+  private rememberResume(path: string) {
+    const newest = this.lastSampleNs.get(path);
+    if (newest !== undefined && !this.resumeFrom.has(path)) this.resumeFrom.set(path, newest);
   }
 
   // ------------------------------------------------------------------------------------------

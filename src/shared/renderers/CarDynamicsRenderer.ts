@@ -9,7 +9,7 @@
 // unchanged; the g circle and damper readouts are added at the end.
 
 import { NeonColors_RedStart } from "../Colors";
-import { prepareCanvas, setStyle } from "../domWrite";
+import { clientSize, isDarkMode, prepareCanvas, setStyle } from "../domWrite";
 import { RobotVelocities, Rotation2d } from "../geometry";
 import { transformPx, wrapRadians } from "../util";
 import TabRenderer from "./TabRenderer";
@@ -40,13 +40,7 @@ export default class CarDynamicsRenderer implements TabRenderer {
 
   render(command: CarDynamicsRendererCommand): void {
     // Exit if render state unchanged
-    let renderState: any[] = [
-      this.CONTAINER.clientWidth,
-      this.CONTAINER.clientHeight,
-      window.matchMedia("(prefers-color-scheme: dark)").matches,
-      window.devicePixelRatio,
-      command
-    ];
+    let renderState: any[] = [...clientSize(this.CONTAINER), isDarkMode(), window.devicePixelRatio, command];
     let renderStateString = JSON.stringify(renderState);
     if (renderStateString === this.lastRenderState) {
       return;
@@ -56,7 +50,7 @@ export default class CarDynamicsRenderer implements TabRenderer {
 
     // Update canvas size
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    let size = Math.min(this.CONTAINER.clientWidth, this.CONTAINER.clientHeight);
+    let size = Math.min(...clientSize(this.CONTAINER));
     setStyle(this.CANVAS, "width", size.toString() + "px");
     setStyle(this.CANVAS, "height", size.toString() + "px");
     prepareCanvas(this.CANVAS, context, size, size, window.devicePixelRatio);
@@ -64,7 +58,7 @@ export default class CarDynamicsRenderer implements TabRenderer {
     context.lineCap = "round";
     context.lineJoin = "round";
     let centerPx: [number, number] = [size / 2, size / 2];
-    let isLight = !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    let isLight = !isDarkMode();
     let strokeColor = isLight ? this.BLACK_COLOR : this.WHITE_COLOR;
 
     // Calculate component dimensions

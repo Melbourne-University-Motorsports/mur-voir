@@ -45,7 +45,8 @@ import { LiveStatusProvider } from "./dataSources/LiveStatus";
 // Constants
 const STATE_SAVE_PERIOD_MS = 250;
 const TYPE_MEMORY_SAVE_PERIOD_MS = 1000;
-const QUIET_SAVE_PERIOD_MS = 5000;
+// Saved state and type memory change only through input and messages from main
+const QUIET_SAVE_PERIOD_MS = Infinity;
 const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 
 // Global variables
@@ -148,7 +149,8 @@ function guardedInterval(action: () => void, period: number) {
  * messages or data (which all cause frames) is checked here instead of on a timer, so an idle window
  * wakes for none of it. A trailing run catches a change in the last frame before the window goes idle.
  * Without recent input, the check runs at most once per `quietPeriod`, so live data frames alone do
- * not keep rebuilding state that input changes.
+ * not keep rebuilding state that input changes. With an infinite `quietPeriod` it runs only within
+ * the second after input or a message from main, plus once after that.
  */
 function afterFrames(action: () => void, period: number, quietPeriod = period) {
   const guard = new RenderGuard();
@@ -159,7 +161,9 @@ function afterFrames(action: () => void, period: number, quietPeriod = period) {
     guard.run(action);
   };
   onAfterFrame(() => {
-    const wait = last + (isInteractive() ? period : quietPeriod) - performance.now();
+    const interactive = isInteractive();
+    if (!interactive && quietPeriod === Infinity) return;
+    const wait = last + (interactive ? period : quietPeriod) - performance.now();
     if (wait <= 0) {
       if (trailing !== null) clearTimeout(trailing);
       trailing = null;

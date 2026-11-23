@@ -92,7 +92,10 @@ export default class Tabs {
   private satelliteSends = new Map<string, { time: number; command: string }>();
   private satelliteRetry: ReturnType<typeof setTimeout> | null = null;
   /** Tabs that skipped a refresh while hidden. */
-  private staleTabs = new WeakSet<object>();
+  private dataRevision = 0;
+  private refreshedRevision = new WeakMap<object, number>();
+  private satelliteRevision = 0;
+  private readonly SATELLITE_SESSION = Math.random().toString(36).slice(2);
   private fieldDragHover: { index: number; timer: number } | null = null;
 
   constructor() {
@@ -359,11 +362,9 @@ export default class Tabs {
         this.updateControlsHeight();
         this.updateTimelineVisibility();
       });
-      // Render new frame
-      this.tabList.forEach((tab, index) => {
-        let activeLocal = index === this.selectedTab;
-        let activeSatellite = this.activeSatellites.includes(tab.controller.UUID);
-        if (activeLocal || activeSatellite) {
+      // Render new frame (only the tabs on screen here or in a satellite)
+      this.getShownTabs().forEach(({ tab, activeLocal, activeSatellite }) => {
+        {
           let guard = guards.get(tab);
           if (!guard) {
             guard = new RenderGuard();
@@ -371,8 +372,8 @@ export default class Tabs {
           }
           guard.run(
             () => {
-              if (this.staleTabs.has(tab)) {
-                this.staleTabs.delete(tab);
+              if (this.refreshedRevision.get(tab) !== this.dataRevision) {
+                this.refreshedRevision.set(tab, this.dataRevision);
                 tab.controller.refresh();
               }
               if (tab.type === TabType.Table) {
@@ -385,18 +386,22 @@ export default class Tabs {
               if (activeLocal) {
                 tab.renderer.render(command);
               }
-              if (activeSatellite && this.shouldSendSatellite(tab.controller.UUID, command)) {
+              if (activeSatellite) {
                 let title =
                   tab.type === TabType.Documentation
                     ? "Documentation"
                     : tab.title === ""
                     ? getDefaultTabTitle(tab.type)
                     : tab.title;
-                window.sendMainMessage("update-satellite", {
-                  uuid: tab.controller.UUID,
-                  command: command,
-                  title: title
-                });
+                const revision = this.nextSatelliteRevision(tab.controller.UUID, command, title);
+                if (revision !== null) {
+                  window.sendMainMessage("update-satellite", {
+                    uuid: tab.controller.UUID,
+                    command: command,
+                    title: title,
+                    revision: revision
+                  });
+                }
               }
             },
             () =>
@@ -498,6 +503,7 @@ export default class Tabs {
       this.CONTROLS_CONTENT.removeChild(tab.controlsElement);
     });
     this.tabList = [];
+    this.shownTabsCache = null;
     this.selectedTab = 0;
     const restored = filterRestorableTabs(state.tabs, state.selected);
     restored.tabs.forEach((tabState, index) => {
@@ -512,19 +518,36 @@ export default class Tabs {
   }
 
   /**
-   * Refresh based on new log data. Live data calls this many times a second, so tabs that are not on
-   * screen are only marked stale, and refresh just before they are next drawn.
+   * Refresh based on new log data. Live data calls this many times a second, so only the tabs on
+   * screen refresh now. Any other tab refreshes just before it is next drawn, when the revision it
+   * last refreshed at is behind.
    */
   refresh() {
-    this.tabList.forEach((tab, index) => {
-      const visible = index === this.selectedTab || this.activeSatellites.includes(tab.controller.UUID);
-      if (visible) {
-        this.staleTabs.delete(tab);
-        tab.controller.refresh();
-      } else {
-        this.staleTabs.add(tab);
-      }
+    this.dataRevision++;
+    this.getShownTabs().forEach(({ tab }) => {
+      this.refreshedRevision.set(tab, this.dataRevision);
+      tab.controller.refresh();
     });
+  }
+
+  private shownTabsCache: {
+    selected: number;
+    satellites: string[];
+    tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[];
+  } | null = null;
+
+  /** The selected tab and tabs open in satellites. Rebuilt only when tabs, selection or satellites change. */
+  private getShownTabs() {
+    const cache = this.shownTabsCache;
+    if (cache && cache.selected === this.selectedTab && cache.satellites === this.activeSatellites) return cache.tabs;
+    const tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[] = [];
+    this.tabList.forEach((tab, index) => {
+      const activeLocal = index === this.selectedTab;
+      const activeSatellite = this.activeSatellites.includes(tab.controller.UUID);
+      if (activeLocal || activeSatellite) tabs.push({ tab, activeLocal, activeSatellite });
+    });
+    this.shownTabsCache = { selected: this.selectedTab, satellites: this.activeSatellites, tabs };
+    return tabs;
   }
 
   /** Refresh based on a new set of assets. */
@@ -558,11 +581,14 @@ export default class Tabs {
     return keys;
   }
 
-  private shouldSendSatellite(uuid: string, command: unknown): boolean {
+  /**
+   * Returns a revision for a satellite update, or null when it should not be sent: the command and
+   * title are unchanged, or the last send was too recent (a held-back change goes out once the
+   * interval passes). Satellites skip a revision they already drew.
+   */
+  private nextSatelliteRevision(uuid: string, command: unknown, title: string): string | null {
     const now = performance.now();
     const last = this.satelliteSends.get(uuid);
-    const serialized = JSON.stringify(command);
-    if (last !== undefined && serialized === last.command) return false;
     const interval = isInteractive() ? this.SATELLITE_INTERACTIVE_INTERVAL_MS : this.SATELLITE_INTERVAL_MS;
     if (last !== undefined && now - last.time < interval - 4) {
       // Make sure a frame runs once the interval passes, so the latest command still goes out
@@ -574,10 +600,12 @@ export default class Tabs {
           },
           last.time + interval - now
         );
-      return false;
+      return null;
     }
+    const serialized = JSON.stringify([title, command]);
+    if (last !== undefined && serialized === last.command) return null;
     this.satelliteSends.set(uuid, { time: now, command: serialized });
-    return true;
+    return this.SATELLITE_SESSION + ":" + (++this.satelliteRevision).toString();
   }
 
   /** Whether a tab draws laps, so it needs the lap service's fields. */
@@ -785,6 +813,7 @@ export default class Tabs {
       this.selectedTab = -1;
     }
     let controlsHeightConfig = this.FIXED_CONTROL_HEIGHTS.get(type);
+    this.shownTabsCache = null;
     this.tabList.splice(this.selectedTab + 1, 0, {
       type: type,
       title: "",
@@ -820,6 +849,7 @@ export default class Tabs {
     this.RENDERER_CONTENT.removeChild(this.tabList[index].rendererElement);
     this.CONTROLS_CONTENT.removeChild(this.tabList[index].controlsElement);
     this.tabList.splice(index, 1);
+    this.shownTabsCache = null;
     if (this.selectedTab > index) this.selectedTab--;
     if (this.selectedTab > this.tabList.length - 1) this.selectedTab = this.tabList.length - 1;
     this.updateElements();
@@ -858,6 +888,7 @@ export default class Tabs {
 
     let tab = this.tabList.splice(index, 1)[0];
     this.tabList.splice(index + shift, 0, tab);
+    this.shownTabsCache = null;
     this.updateElements();
   }
 

@@ -37,10 +37,11 @@ export default class SourceList {
   static typePromptCallbacks: { [key: string]: (state: SourceListItemState) => void } = {};
   static clearPromptCallbacks: { [key: string]: () => void } = {};
 
-  // One animation-frame loop serves every source list. Lists on hidden tabs cost nothing per frame:
-  // visibility comes from an IntersectionObserver, so no list forces a layout to check it.
+  // One animation-frame loop serves the visible source lists. Lists on hidden tabs cost nothing per
+  // frame: an IntersectionObserver keeps the visible set, so no list is scanned or measured.
   private static instances = new Set<SourceList>();
-  private static visibleRoots = new WeakSet<Element>();
+  private static visible = new Set<SourceList>();
+  private static byRoot = new WeakMap<Element, SourceList>();
   private static observer: IntersectionObserver | null = null;
   private static frameRequested = false;
   private static darkQuery: MediaQueryList | null = null;
@@ -49,7 +50,7 @@ export default class SourceList {
     if (typeof IntersectionObserver === "undefined") {
       // No observer (tests): treat every list as visible
       SourceList.instances.add(list);
-      SourceList.visibleRoots.add(list.ROOT);
+      SourceList.visible.add(list);
       SourceList.schedule();
       return;
     }
@@ -57,11 +58,13 @@ export default class SourceList {
       SourceList.observer = new IntersectionObserver((entries) => {
         let anyVisible = false;
         for (const entry of entries) {
+          const list = SourceList.byRoot.get(entry.target);
+          if (list === undefined || !SourceList.instances.has(list)) continue;
           if (entry.isIntersecting) {
-            SourceList.visibleRoots.add(entry.target);
+            SourceList.visible.add(list);
             anyVisible = true;
           } else {
-            SourceList.visibleRoots.delete(entry.target);
+            SourceList.visible.delete(list);
           }
         }
         if (anyVisible) SourceList.schedule();
@@ -73,13 +76,14 @@ export default class SourceList {
       );
     }
     SourceList.instances.add(list);
+    SourceList.byRoot.set(list.ROOT, list);
     SourceList.observer.observe(list.ROOT);
   }
 
   private static unregister(list: SourceList) {
     SourceList.instances.delete(list);
     SourceList.observer?.unobserve(list.ROOT);
-    SourceList.visibleRoots.delete(list.ROOT);
+    SourceList.visible.delete(list);
   }
 
   private static schedule() {
@@ -88,20 +92,11 @@ export default class SourceList {
     requestFrame(SourceList.periodic);
   }
 
-  private static lastPreviews = -Infinity;
-
   private static periodic = () => {
     SourceList.frameRequested = false;
-    const updatePreviews = isTextFrame(SourceList.lastPreviews);
-    if (updatePreviews) SourceList.lastPreviews = performance.now();
-    let anyVisible = false;
-    for (const instance of SourceList.instances) {
-      if (!SourceList.visibleRoots.has(instance.ROOT)) continue;
-      anyVisible = true;
-      if (updatePreviews) instance.updateAllPreviews();
-    }
+    if (isTextFrame()) SourceList.visible.forEach((instance) => instance.updateAllPreviews());
     // With every list hidden the loop stops; the observer restarts it when one appears
-    if (anyVisible) SourceList.schedule();
+    if (SourceList.visible.size > 0) SourceList.schedule();
   };
 
   private UUID = createUUID();

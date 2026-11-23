@@ -213,16 +213,12 @@ export default class Sidebar {
     const liveFilterGuard = new RenderGuard();
     let lastTuningPublish = -Infinity;
     let lastLiveFilter = -Infinity;
-    let lastValues = -Infinity;
     let periodic = () => {
       requestFrame(periodic);
       guard.run(() => {
         this.updateLiveFilterControl();
         this.updateTitle();
-        if (isTextFrame(lastValues)) {
-          lastValues = performance.now();
-          this.updateValues();
-        }
+        if (isTextFrame()) this.updateValues();
         this.updateTuningButton();
       });
       const now = performance.now();
@@ -614,10 +610,10 @@ export default class Sidebar {
 
     // Active fields callback
     this.activeFieldCallbacks.push(() => {
-      // The observer knows which rows are on screen. Only array and structured rows also count while
-      // scrolled out of view, so only they measure whether their parent is expanded.
+      // The observer knows which rows are on screen. Array and structured rows also count while scrolled
+      // out of view if every parent is expanded, which the hidden attributes tell without layout.
       let onScreen = this.isRowOnScreen(fieldElement);
-      let isExpanded = () => onScreen || fieldElement.getBoundingClientRect().height > 0;
+      let isExpanded = () => onScreen || fieldElement.closest("[hidden]") === null;
 
       if (field.fullKey !== null) {
         let isActive = false;

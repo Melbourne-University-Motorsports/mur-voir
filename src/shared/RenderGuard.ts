@@ -5,6 +5,8 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
+import { setHidden, setText } from "./domWrite";
+
 /** Isolates independent periodic tasks, reporting a failure once until recovery. */
 export class RenderGuard {
   private failed = false;
@@ -32,7 +34,8 @@ export function inlineStatus(root: HTMLElement, message: string) {
     root.append(status);
   }
   if (status) {
-    status.textContent = message;
-    status.hidden = !message;
+    // Renderers call this every draw, so only write changes
+    setText(status, message);
+    setHidden(status, !message);
   }
 }

@@ -57,6 +57,7 @@ let title: string | null = null;
 let messagePort: MessagePort | null = null;
 let lastAspectRatio: number | null = null;
 let lastCommand: any = null;
+let lastRevision: string | undefined = undefined;
 
 /** Updates the current visualizer based on the type. */
 function updateVisualizer() {
@@ -145,18 +146,23 @@ window.addEventListener("message", (event) => {
 
         case "set-type":
           type = message.data;
+          lastRevision = undefined; // A new visualizer has drawn nothing yet
           updateVisualizer();
           scheduleSaveState();
           break;
 
         case "restore-state":
           type = message.data.type;
+          lastRevision = undefined;
           updateVisualizer();
           renderer?.restoreState(message.data.visualizer);
           scheduleSaveState();
           break;
 
         case "render":
+          // A replayed revision (window shown or restored) is already on screen
+          if (message.data.revision !== undefined && message.data.revision === lastRevision) break;
+          lastRevision = message.data.revision;
           // Update title
           let titleElement = document.getElementsByTagName("title")[0] as HTMLElement;
           let newTitle = message.data.title;
@@ -189,6 +195,7 @@ window.addEventListener("message", (event) => {
         case "set-2d-camera":
           if (type === TabType.Field2d) {
             (renderer as Field2dRenderer).set2DCamera(message.data);
+            scheduleSaveState(); // The camera mode is part of the saved state
           }
           break;
 

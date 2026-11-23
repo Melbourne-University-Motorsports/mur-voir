@@ -4,7 +4,7 @@
 // Use of this source code is governed by a BSD
 // license that can be found in the LICENSE file
 // at the root directory of this project.
-import { prepareCanvas } from "../shared/domWrite";
+import { clientSize, prepareCanvas } from "../shared/domWrite";
 import { calcAxisStepSize, clampValue, cleanFloat, scaleValue } from "../shared/util";
 import ScrollSensor from "./ScrollSensor";
 
@@ -143,7 +143,7 @@ export default class Timeline {
   }
 
   private isHidden() {
-    return this.CONTAINER.clientHeight === 0;
+    return clientSize(this.CONTAINER)[1] === 0;
   }
 
   periodic() {
@@ -151,8 +151,7 @@ export default class Timeline {
     this.scrollSensor.periodic();
 
     const devicePixelRatio = window.devicePixelRatio;
-    let width = this.CONTAINER.clientWidth;
-    let height = this.CONTAINER.clientHeight;
+    let [width, height] = clientSize(this.CONTAINER);
     Timeline.darkQuery ??= window.matchMedia("(prefers-color-scheme: dark)");
     let light = !Timeline.darkQuery.matches;
     let timeRange = window.selection.getTimelineRange();

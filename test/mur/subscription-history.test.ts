@@ -62,12 +62,13 @@ test("resubscribing requests history again and merges overlapping samples once",
   await pending!;
   periodic();
   assert.equal(requests, 1);
+  source.lastSampleNs.set(path, "2000000000"); // The newest sample before the tab was hidden
   active = new Set();
   periodic();
+  source.lastSampleNs.set(path, "3000000000"); // A later sample (e.g. for the sidebar) must not move the resume point
   assert.equal(source.historyRequested.has(path), false);
   history = [sample(1), sample(2), sample(3), sample(4)];
   active = new Set(["/" + path]);
-  source.lastSampleNs.set(path, "2000000000"); // The newest sample before the tab was hidden
   live(4);
   periodic();
   await pending!;

@@ -197,12 +197,54 @@ function watchUserAssets() {
       }, 500);
     });
   } catch {
-    assetPoll = setInterval(reloadAssets, 5000);
+    // No recursive watch here: compare file times every 5 s, read asynchronously so main never blocks.
+    // Assets load (synchronously) only after something changed.
+    let lastSignature: string | null = null;
+    let checking = false;
+    assetPoll = setInterval(async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const signature = await assetSignature(getUserAssetsPath());
+        if (lastSignature !== null && signature !== lastSignature) await reloadAssets();
+        lastSignature = signature;
+      } finally {
+        checking = false;
+      }
+    }, 5000);
   }
 }
 
+/** Path, modification time and size of every file under `folder`, read asynchronously. */
+async function assetSignature(folder: string): Promise<string> {
+  const parts: string[] = [];
+  const walk = async (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else {
+        try {
+          const stat = await fs.promises.stat(full);
+          parts.push(full + ":" + stat.mtimeMs.toString() + ":" + stat.size.toString());
+        } catch {
+          // Removed while walking; the next check sees it
+        }
+      }
+    }
+  };
+  await walk(folder);
+  return parts.sort().join("\n");
+}
+
 /** The last command each satellite tab was sent, replayed to satellite windows that load or show later. */
-const latestSatelliteRenders: { [uuid: string]: { command: unknown; title: string } } = {};
+const latestSatelliteRenders: { [uuid: string]: { command: unknown; title: string; revision?: string } } = {};
 
 function replaySatelliteRender(satellite: BrowserWindow, uuid: string) {
   const latest = latestSatelliteRenders[uuid];
@@ -1262,12 +1304,13 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       let satelliteUUID = message.data.uuid;
       let command = message.data.command;
       let title = message.data.title;
+      let revision = message.data.revision;
       // Hubs send only changed commands, so keep the latest for satellites that load or show later
-      latestSatelliteRenders[satelliteUUID] = { command: command, title: title };
+      latestSatelliteRenders[satelliteUUID] = { command: command, title: title, revision: revision };
       if (satelliteUUID in satelliteWindows) {
         satelliteWindows[satelliteUUID].forEach((satellite) => {
           if (satellite.isVisible()) {
-            sendMessage(satellite, "render", { command: command, title: title });
+            sendMessage(satellite, "render", latestSatelliteRenders[satelliteUUID]);
           }
         });
       }
