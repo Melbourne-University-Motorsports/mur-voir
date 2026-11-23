@@ -130,7 +130,8 @@ server.on("upgrade", (req, socket, head) => {
       reply.destroy();
       return abort();
     }
-    socket.write(`HTTP/1.1 ${reply.statusCode} ${reply.statusMessage ?? ""}\r\n${formatHeaders(reply.headers)}\r\n\r\n`);
+    const statusLine = `HTTP/1.1 ${reply.statusCode} ${reply.statusMessage ?? ""}`;
+    socket.write(`${statusLine}\r\n${formatHeaders(reply.headers)}\r\n\r\n`);
     reply.pipe(socket);
     reply.on("error", abort);
     reply.on("close", abort);

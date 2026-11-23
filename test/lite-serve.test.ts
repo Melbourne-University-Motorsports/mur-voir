@@ -6,7 +6,7 @@
 // at the root directory of this project.
 
 import assert from "node:assert/strict";
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -31,7 +31,8 @@ async function getFreePort(): Promise<number> {
 
 async function startLiteServe(backendUrl: string): Promise<{ child: ChildProcess; port: number }> {
   const port = await getFreePort();
-  const child = spawn(process.execPath, ["tools/lite-serve/main.mjs", "--port", String(port), "--backend", backendUrl], {
+  const args = ["tools/lite-serve/main.mjs", "--port", String(port), "--backend", backendUrl];
+  const child = spawn(process.execPath, args, {
     stdio: ["ignore", "pipe", "pipe"]
   });
   await new Promise<void>((resolve, reject) => {
