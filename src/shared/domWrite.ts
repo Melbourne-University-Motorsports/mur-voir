@@ -36,7 +36,11 @@ export function setRootProperty(name: string, value: string) {
 }
 
 /** Sets an inline style property only when it changes. */
-export function setStyle(element: HTMLElement, property: "width" | "height" | "display" | "opacity", value: string) {
+export function setStyle(
+  element: HTMLElement,
+  property: "width" | "height" | "display" | "opacity" | "top" | "left" | "right",
+  value: string
+) {
   if (element.style[property] !== value) element.style[property] = value;
 }
 

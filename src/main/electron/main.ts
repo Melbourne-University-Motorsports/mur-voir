@@ -256,6 +256,7 @@ function replaySatelliteRender(satellite: BrowserWindow, uuid: string) {
     latest !== undefined &&
     !satellite.isDestroyed() &&
     satellite.isVisible() &&
+    (latest.revision === undefined || deliveredSatelliteRevisions.get(satellite) !== latest.revision) &&
     sendMessage(satellite, "render", latest) &&
     latest.revision !== undefined
   ) {
@@ -2555,7 +2556,10 @@ function createSatellite(
   installRendererRecovery(satellite, false);
   satellite.setMenu(null);
   satellite.setMenuBarVisibility(false);
-  satellite.once("ready-to-show", satellite.show);
+  satellite.once("ready-to-show", () => {
+    satellite.show();
+    replaySatelliteRender(satellite, uuid);
+  });
   satellite.on("show", () => replaySatelliteRender(satellite, uuid!));
   satellite.on("restore", () => replaySatelliteRender(satellite, uuid!));
   satellite.loadFile(path.join(__dirname, "../www/satellite.html"));
@@ -2640,17 +2644,11 @@ function createSatellite(
     port2.start();
     sendMessage(satellite, "set-assets", advantageScopeAssets);
     sendMessage(satellite, "set-battery", powerMonitor.isOnBatteryPower());
-    if (firstLoad) {
-      if (configData !== undefined) {
-        sendMessage(satellite, "set-type", configData.type);
-      } else if (state !== undefined) {
-        sendMessage(satellite, "restore-state", state.state);
-      }
-    } else {
-      let cachedState = stateTracker.getRendererState(satellite);
-      if (cachedState !== undefined) {
-        sendMessage(satellite, "restore-state", stateTracker.getRendererState(satellite));
-      }
+    const rendererState = (firstLoad ? undefined : stateTracker.getRendererState(satellite)) ?? state?.state;
+    if (rendererState !== undefined) {
+      sendMessage(satellite, "restore-state", rendererState);
+    } else if (configData !== undefined) {
+      sendMessage(satellite, "set-type", configData.type);
     }
     sendAllPreferences();
     replaySatelliteRender(satellite, uuid);

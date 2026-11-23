@@ -20,6 +20,70 @@ import { niceTicks } from "../laps/LapAnalysis";
 import { interpolate } from "../laps/LapEngine";
 import { LapViewport } from "../laps/LapViewport";
 
+type SteppedChunk = {
+  times: number[];
+  values: number[];
+  path: Path2D;
+};
+
+/** Caches one-second spans in data coordinates so a scrolling plot reuses its settled history. */
+class SteppedPaths {
+  private chunks = new Map<number, SteppedChunk>();
+
+  project(
+    timestamps: number[],
+    values: number[],
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    xScale: number,
+    yScale: number
+  ): Path2D {
+    const path = new Path2D();
+    const transform = new DOMMatrix([xScale, 0, 0, yScale, 0, 0]);
+    const next = new Map<number, SteppedChunk>();
+    for (let start = 1; start < timestamps.length; ) {
+      const bucket = Math.floor(timestamps[start]);
+      let end = start + 1;
+      while (end < timestamps.length && timestamps[end] < bucket + 1) end++;
+      let chunk = this.chunks.get(bucket);
+      const first = start - 1;
+      if (chunk?.times.length === end - first) {
+        for (let i = first; i < end; i++) {
+          if (timestamps[i] !== chunk.times[i - first] || values[i] !== chunk.values[i - first]) {
+            chunk = undefined;
+            break;
+          }
+        }
+      } else {
+        chunk = undefined;
+      }
+      if (chunk === undefined) {
+        const baseTime = timestamps[first];
+        const baseValue = values[first];
+        const segment = new Path2D();
+        segment.moveTo(0, 0);
+        for (let i = start; i < end; i++) {
+          const x = timestamps[i] - baseTime;
+          segment.lineTo(x, values[i - 1] - baseValue);
+          segment.lineTo(x, values[i] - baseValue);
+        }
+        chunk = {
+          times: timestamps.slice(first, end),
+          values: values.slice(first, end),
+          path: segment
+        };
+      }
+      next.set(bucket, chunk);
+      transform.e = xScaler.calculate(chunk.times[0]);
+      transform.f = yScaler.calculate(chunk.values[0]);
+      path.addPath(chunk.path, transform);
+      start = end;
+    }
+    this.chunks = next;
+    return path;
+  }
+}
+
 export default class LineGraphRenderer implements TabRenderer {
   private events = new AbortController();
   dispose() {
@@ -40,6 +104,8 @@ export default class LineGraphRenderer implements TabRenderer {
   private zoomInAccumulator = 0;
   private scrollSensor: ScrollSensor;
   private lastRenderState = "";
+  private leftSteppedPaths: SteppedPaths[][] = [];
+  private rightSteppedPaths: SteppedPaths[][] = [];
   private lapViewport = new LapViewport();
   private mouseDownX = 0;
   private grabZoomActive = false;
@@ -272,7 +338,6 @@ export default class LineGraphRenderer implements TabRenderer {
     // Apply setup and scaling
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
-    context.clearRect(0, 0, width, height);
     const trackside = document.body.classList.contains("trackside-layout");
     context.font = `${trackside ? 14 : 12}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont`;
 
@@ -285,7 +350,7 @@ export default class LineGraphRenderer implements TabRenderer {
     const sectorBlocks = command.sectorBar?.blocks ?? [];
     const barTop = 32 + (legendRows ? legendRows * LEGEND_ROW + 4 : 0);
     let graphTop = barTop + (sectorBlocks.length ? SECTOR_BAR + 2 : 0);
-    this.SCROLL_OVERLAY.style.top = graphTop.toString() + "px";
+    setStyle(this.SCROLL_OVERLAY, "top", graphTop.toString() + "px");
     let graphHeight = height - graphTop - 35;
     if (graphHeight < 1) graphHeight = 1;
     let discreteRowCount = command.discreteFields.length + command.alerts.length;
@@ -340,8 +405,8 @@ export default class LineGraphRenderer implements TabRenderer {
     let timeStepSize = calcAxisStepSize(displayTimeRange, graphWidth, this.X_STEP_TARGET_PX + extraDigits * 12);
 
     // Update scroll layout
-    this.SCROLL_OVERLAY.style.left = graphLeft.toString() + "px";
-    this.SCROLL_OVERLAY.style.right = graphRight.toString() + "px";
+    setStyle(this.SCROLL_OVERLAY, "left", graphLeft.toString() + "px");
+    setStyle(this.SCROLL_OVERLAY, "right", graphRight.toString() + "px");
 
     // Keep any message over the plot, clear of the axes (the scroll overlay itself scrolls)
     const status = this.ROOT.querySelector<HTMLElement>(":scope > .telemetry-status");
@@ -489,9 +554,16 @@ export default class LineGraphRenderer implements TabRenderer {
 
     // Render continuous data
     const xScaler = new ValueScaler(timeRange, [graphLeft, graphLeft + graphWidth]);
-    let drawNumericFields = (fields: LineGraphRendererCommand_NumericField[], yRange: [number, number]) => {
+    let drawNumericFields = (
+      fields: LineGraphRendererCommand_NumericField[],
+      yRange: [number, number],
+      paths: SteppedPaths[][]
+    ) => {
       const yScaler = new ValueScaler(yRange, [graphTop + graphHeightOpen, graphTop]);
-      fields.forEach((original) => {
+      const xScale = graphWidth / (timeRange[1] - timeRange[0]);
+      const yScale = -graphHeightOpen / (yRange[1] - yRange[0]);
+      paths.length = fields.length;
+      fields.forEach((original, fieldIndex) => {
         const runs: { timestamps: number[]; values: number[]; hold: boolean }[] = [];
         if (
           // Points retain stock samples (including missing-value breaks).
@@ -515,7 +587,9 @@ export default class LineGraphRenderer implements TabRenderer {
             }
           }
         }
-        runs.forEach((run) => {
+        const fieldPaths = (paths[fieldIndex] ??= []);
+        fieldPaths.length = runs.length;
+        runs.forEach((run, runIndex) => {
           const field = { ...original, ...run };
           if (!field.timestamps.length) return;
           context.strokeStyle = field.color;
@@ -535,9 +609,28 @@ export default class LineGraphRenderer implements TabRenderer {
 
           switch (field.type) {
             case "stepped": {
-              context.beginPath();
               context.lineJoin = "round";
               const { timestamps, values } = field;
+              // Use the cached path for finite traces at typical live viewport sizes. Dense,
+              // fragmented and deeply zoomed views still group samples by device pixel.
+              if (
+                typeof Path2D === "function" &&
+                timestamps.length >= 50 &&
+                timestamps.length <= graphWidth * devicePixelRatio * 4 &&
+                xScale <= graphWidth &&
+                values.every((value) => Number.isFinite(value) && Math.abs((value - yRange[0]) * yScale) < 50_000)
+              ) {
+                const cache = (fieldPaths[runIndex] ??= new SteppedPaths());
+                const path = cache.project(timestamps, values, xScaler, yScaler, xScale, yScale);
+                if (field.hold) {
+                  const y = yScaler.calculate(values[values.length - 1]);
+                  path.moveTo(xScaler.calculate(timestamps[timestamps.length - 1]), y);
+                  path.lineTo(graphLeft + graphWidth, y);
+                }
+                context.stroke(path);
+                break;
+              }
+              context.beginPath();
               let x = xScaler.calculate(timestamps[0]);
               let y = yScaler.calculate(values[0]);
               context.moveTo(x, y);
@@ -652,11 +745,11 @@ export default class LineGraphRenderer implements TabRenderer {
     context.rect(graphLeft, graphTop, graphWidth, graphHeightOpen);
     context.clip();
     if (command.priorityAxis === "left") {
-      drawNumericFields(command.rightFields, command.rightRange);
-      drawNumericFields(command.leftFields, command.leftRange);
+      drawNumericFields(command.rightFields, command.rightRange, this.rightSteppedPaths);
+      drawNumericFields(command.leftFields, command.leftRange, this.leftSteppedPaths);
     } else {
-      drawNumericFields(command.leftFields, command.leftRange);
-      drawNumericFields(command.rightFields, command.rightRange);
+      drawNumericFields(command.leftFields, command.leftRange, this.leftSteppedPaths);
+      drawNumericFields(command.rightFields, command.rightRange, this.rightSteppedPaths);
     }
 
     context.restore();

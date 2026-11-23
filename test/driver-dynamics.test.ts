@@ -91,7 +91,7 @@ for (const steering of ["unassigned", "hidden"]) {
     const { root, calls } = canvas();
     new CarDynamicsRenderer(root).render(command);
     assert.equal(calls.filter((call) => call.name === "fill").length, 0);
-    assert.equal(calls.filter((call) => call.name === "stroke").length, 10);
+    assert.equal(calls.filter((call) => call.name === "stroke").length, 6);
     assert.ok(calls.some((call) => call.name === "lineTo" && call.args[0] === 210 && call.args[1] === 135));
   });
 }
@@ -126,7 +126,7 @@ test("a missing wheel speed draws its direction but no speed arrow", () => {
     dampers: []
   });
   assert.ok(calls.every((c) => c.args.every((v) => typeof v !== "number" || Number.isFinite(v))));
-  assert.equal(calls.filter((c) => c.name === "stroke").length, 9);
+  assert.equal(calls.filter((c) => c.name === "stroke").length, 5);
   assert.equal(calls.filter((c) => c.name === "fill").length, 1);
 });
 
@@ -244,7 +244,7 @@ test("angular wheel speeds produce proportional arrows through the controller an
   const command = c.getCommand();
   const { root, calls } = canvas();
   new CarDynamicsRenderer(root).render(command);
-  assert.equal(calls.filter((call) => call.name === "stroke").length, 11, "both wheels draw a speed arrow");
+  assert.equal(calls.filter((call) => call.name === "stroke").length, 7, "both wheels draw a speed arrow");
   assert.ok(Math.abs(command.moduleVelocities[0].values[0].velocity! - (12.64 * 3.6) / 120) < 1e-12);
   assert.ok(Math.abs(command.moduleVelocities[0].values[1].velocity! - (13.96 * 3.6) / 120) < 1e-12);
   const lines = calls.filter((call) => call.name === "lineTo");

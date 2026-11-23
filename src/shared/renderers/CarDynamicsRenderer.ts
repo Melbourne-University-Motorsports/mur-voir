@@ -67,33 +67,23 @@ export default class CarDynamicsRenderer implements TabRenderer {
     let moduleRadiusPx = size * 0.05;
     let fullVectorPx = size * 0.25;
 
-    // Draw frame
+    // Draw the frame and heading in one stroke.
     context.strokeStyle = strokeColor;
     context.lineWidth = 4;
     context.beginPath();
     context.moveTo(...transformPx(centerPx, command.rotation, [frameHeightPx / 2, frameWidthPx / 2 - moduleRadiusPx]));
     context.lineTo(...transformPx(centerPx, command.rotation, [frameHeightPx / 2, -frameWidthPx / 2 + moduleRadiusPx]));
-    context.stroke();
-    context.beginPath();
     context.moveTo(...transformPx(centerPx, command.rotation, [frameHeightPx / 2 - moduleRadiusPx, -frameWidthPx / 2]));
     context.lineTo(
       ...transformPx(centerPx, command.rotation, [-frameHeightPx / 2 + moduleRadiusPx, -frameWidthPx / 2])
     );
-    context.stroke();
-    context.beginPath();
     context.moveTo(...transformPx(centerPx, command.rotation, [frameHeightPx / 2 - moduleRadiusPx, frameWidthPx / 2]));
     context.lineTo(...transformPx(centerPx, command.rotation, [-frameHeightPx / 2 + moduleRadiusPx, frameWidthPx / 2]));
-    context.stroke();
-    context.beginPath();
     context.moveTo(...transformPx(centerPx, command.rotation, [-frameHeightPx / 2, frameWidthPx / 2 - moduleRadiusPx]));
     context.lineTo(
       ...transformPx(centerPx, command.rotation, [-frameHeightPx / 2, -frameWidthPx / 2 + moduleRadiusPx])
     );
-    context.stroke();
 
-    // Draw arrow on robot
-    context.strokeStyle = strokeColor;
-    context.lineWidth = 4;
     const hasSpeeds = command.robotVelocities.length > 0;
     let arrowBack = transformPx(
       centerPx,
@@ -115,7 +105,6 @@ export default class CarDynamicsRenderer implements TabRenderer {
       command.rotation,
       hasSpeeds ? [frameHeightPx * 0.65, frameWidthPx * -0.15] : [frameHeightPx * 0.15, frameWidthPx * -0.15]
     );
-    context.beginPath();
     context.moveTo(...arrowBack);
     context.lineTo(...arrowFront);
     context.moveTo(...arrowLeft);
