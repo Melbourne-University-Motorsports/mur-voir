@@ -1,8 +1,8 @@
 Bundled copy of the canonical MUR DBCs.
 
 Source:  git@github.com:Melbourne-University-Motorsports/mur-msgs.git, directory dbc/
-Tag:     none yet (branch feat/mur-fault-node-mux, PR #29; repin to v2.0.0 once released)
-Commit:  af1362c6a11ba608e856250c9a7620bf524891a6
+Tag:     v2.0.0
+Commit:  5158103bc1d17276328b6cda65654732f4ae1bb5
 Copied:  2026-11-22
 
 The candump importer uses these when no DBC folder is set in Preferences.
