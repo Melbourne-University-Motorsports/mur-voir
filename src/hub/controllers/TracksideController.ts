@@ -6,10 +6,21 @@
 // at the root directory of this project.
 
 import { GraphColors } from "../../shared/Colors";
-import { SourceListState } from "../../shared/SourceListConfig";
-import { dbcDefinition, isTracksideLive, Limits, limitUnit, tileLabel, tileState } from "../../shared/Trackside";
+import LogField from "../../shared/log/LogField";
 import { TracksideRendererCommand } from "../../shared/renderers/TracksideRenderer";
+import { SourceListItemState, SourceListState } from "../../shared/SourceListConfig";
+import {
+  dbcDefinition,
+  isTracksideLive,
+  Limits,
+  limitUnit,
+  sameTracksideTile,
+  tileLabel,
+  tileState,
+  TracksideTile
+} from "../../shared/Trackside";
 import { createUUID } from "../../shared/util";
+import { isTextFrame } from "../FrameScheduler";
 import SourceList from "../SourceList";
 import LineGraphController from "./LineGraphController";
 import TabController from "./TabController";
@@ -58,6 +69,27 @@ export default class TracksideController implements TabController {
   private sourceList: SourceList;
   private graphController: LineGraphController;
   private graphSources = "";
+  private hasGraph = false;
+  private lastCommand?: TracksideRendererCommand;
+  private tiles = new WeakMap<
+    SourceListItemState,
+    {
+      field: LogField | null;
+      version: number;
+      discard: number;
+      time: number;
+      logKey: string;
+      metadata: string;
+      dbcSignal: string | undefined;
+      label: string;
+      definition: ReturnType<typeof dbcDefinition>;
+      profile: ReturnType<typeof window.log.getChannelProfile>;
+      low: number | undefined;
+      high: number | undefined;
+      freshness: string;
+      tile: TracksideTile;
+    }
+  >();
 
   constructor(root: HTMLElement) {
     // Use the stock graph pipeline for units, gaps and axes.
@@ -126,40 +158,100 @@ export default class TracksideController implements TabController {
     const time = liveTime ?? window.log.getTimestampRange()[1];
     const summary = window.liveStatus?.getLiveStatus();
     const liveEdge = isTracksideLive(summary, liveTime, time);
-    const sources = tracksideGraphSources(this.sourceList.getState());
-    const serialized = JSON.stringify(sources);
-    if (serialized !== this.graphSources) {
-      this.graphSources = serialized;
-      this.graphController.restoreState(sources);
+    const sources = this.sourceList.getState();
+    const graphSources = JSON.stringify(sources.filter((source) => source.options.showInGraph === "true"));
+    if (graphSources !== this.graphSources) {
+      this.graphSources = graphSources;
+      const state = tracksideGraphSources(sources);
+      this.hasGraph = state.leftSources.length > 0 || state.discreteSources.length > 0;
+      this.graphController.restoreState(state);
     }
-    return {
-      graph:
-        sources.leftSources.length || sources.discreteSources.length ? this.graphController.getCommand(time) : null,
-      message:
-        liveEdge && summary.backend === "connected" && !summary.hasFreshData ? "Base connected, no car data" : "",
-      tiles: this.sourceList
-        .getState()
+    const graph = this.hasGraph ? this.graphController.getCommand(time) : null;
+    const message =
+      liveEdge && summary.backend === "connected" && !summary.hasFreshData ? "Base connected, no car data" : "";
+    const previous = this.lastCommand;
+    let tiles = previous?.tiles;
+    // Trackside readings are text. Use the shared text cadence while drawing an opted-in graph
+    // at the full frame rate. Historical seeks and layout edits still draw on input frames.
+    if (!previous || !liveEdge || isTextFrame() || (previous.message && !message)) {
+      tiles = sources
         .filter((source) => source.visible)
-        .map((source) => {
-          const range = window.log.getRange(source.logKey, time, time, this.UUID);
-          const index = range?.timestamps.findLastIndex((t) => t <= time) ?? -1;
-          const value = index < 0 ? undefined : range?.values[index];
-          return tileState(
-            source.logKey,
-            value,
-            window.log.getChannelProfile(source.logKey),
-            this.limits[source.logKey],
-            dbcDefinition(window.log.getMetadataString(source.logKey), source.logKey),
-            liveEdge
-              ? {
-                  summary,
-                  freshness: window.liveStatus!.getFieldFreshness(source.logKey),
-                  age: window.liveStatus!.getFieldAge(source.logKey)
-                }
-              : undefined,
-            tileLabel(window.log.getMetadataString(source.logKey), source.logKey, source.dbcSignal)
-          );
-        })
-    };
+        .map((source) => this.getTile(source, time, liveEdge ? summary : undefined));
+      if (previous && tiles.length === previous.tiles.length && tiles.every((tile, i) => tile === previous.tiles[i])) {
+        tiles = previous.tiles;
+      }
+    }
+    if (previous && tiles === previous.tiles && graph === previous.graph && message === previous.message)
+      return previous;
+    return (this.lastCommand = { tiles: tiles!, graph, message });
+  }
+
+  private getTile(
+    source: SourceListItemState,
+    time: number,
+    summary: ReturnType<NonNullable<typeof window.liveStatus>["getLiveStatus"]> | undefined
+  ) {
+    const { logKey, dbcSignal } = source;
+    const log = window.log;
+    const field = log.getField(logKey);
+    const version = field?.getDataVersion() ?? 0;
+    const discard = field?.getDiscardVersion() ?? 0;
+    const sampleTime = Math.min(time, field?.getTimestamp(field.getTimestampCount() - 1) ?? -Infinity);
+    const metadata = log.getMetadataString(logKey);
+    const profile = log.getChannelProfile(logKey);
+    const limits = this.limits[logKey];
+    const freshness = summary ? window.liveStatus!.getFieldFreshness(logKey) : null;
+    const age =
+      summary?.backend === "connected" && (freshness === "stale" || freshness === "offline")
+        ? window.liveStatus!.getFieldAge(logKey)
+        : null;
+    const freshnessKey = summary ? [summary.backend, summary.hasFreshData, freshness, age?.toFixed(1)].join("|") : "";
+    const previous = this.tiles.get(source);
+    const sameDescriptor =
+      previous?.logKey === logKey && previous.metadata === metadata && previous.dbcSignal === dbcSignal;
+    if (
+      sameDescriptor &&
+      previous.field === field &&
+      previous.version === version &&
+      previous.discard === discard &&
+      previous.time === sampleTime &&
+      previous.profile === profile &&
+      previous.low === limits?.low &&
+      previous.high === limits?.high &&
+      previous.freshness === freshnessKey
+    ) {
+      return previous.tile;
+    }
+    const range = field?.getRange(time, time, this.UUID);
+    const value = range && range.timestamps[0] <= time ? range.values[0] : undefined;
+    const label = sameDescriptor ? previous.label : tileLabel(metadata, logKey, dbcSignal);
+    const definition = sameDescriptor ? previous.definition : dbcDefinition(metadata, logKey);
+    let tile = tileState(
+      logKey,
+      value,
+      profile,
+      limits,
+      definition,
+      summary ? { summary, freshness, age } : undefined,
+      label
+    );
+    if (previous && sameTracksideTile(previous.tile, tile)) tile = previous.tile;
+    this.tiles.set(source, {
+      field,
+      version,
+      discard,
+      time: sampleTime,
+      logKey,
+      metadata,
+      dbcSignal,
+      label,
+      definition,
+      profile,
+      low: limits?.low,
+      high: limits?.high,
+      freshness: freshnessKey,
+      tile
+    });
+    return tile;
   }
 }

@@ -16,6 +16,8 @@ export type TraceGap = { t0: number; v0: number; t1: number; v1: number };
 
 const MIN_GAP_SECONDS = 2;
 const GAP_PERIOD_FACTOR = 10;
+const PERIOD_AT_GAP_FLOOR = MIN_GAP_SECONDS / GAP_PERIOD_FACTOR;
+const NO_GAPS: TraceGap[] = [];
 
 /**
  * Running median of a field's sample period over its whole log, updated incrementally as samples arrive.
@@ -27,6 +29,7 @@ export class PeriodStats {
   private lastTimestamp = NaN;
   private counts = new Map<number, number>();
   private total = 0;
+  private atGapFloor = 0;
   private cachedMedian: number | null = null;
 
   /** Consumes any samples not yet seen. Resets if the log was replaced or truncated. */
@@ -38,15 +41,14 @@ export class PeriodStats {
       this.seen = 0;
       this.counts.clear();
       this.total = 0;
+      this.atGapFloor = 0;
       this.cachedMedian = null;
     }
     if (this.seen === 0 && timestamps.length > 0) this.firstTimestamp = timestamps[0];
     for (let i = Math.max(1, this.seen); i < timestamps.length; i++) {
       const dt = timestamps[i] - timestamps[i - 1];
       if (!(dt > 0)) continue;
-      const bucket = dt;
-      this.counts.set(bucket, (this.counts.get(bucket) ?? 0) + 1);
-      this.total++;
+      this.changePeriod(dt, 1);
     }
     if (this.seen !== timestamps.length) this.cachedMedian = null;
     this.seen = timestamps.length;
@@ -60,7 +62,13 @@ export class PeriodStats {
     if (count === 0) this.counts.delete(dt);
     else this.counts.set(dt, count);
     this.total += delta;
+    if (dt <= PERIOD_AT_GAP_FLOOR) this.atGapFloor += delta;
     this.cachedMedian = null;
+  }
+
+  threshold(): number | null {
+    // If both middle periods are below the floor, their exact median cannot affect gaps.
+    return this.atGapFloor > this.total / 2 ? MIN_GAP_SECONDS : gapThreshold(this.median());
   }
 
   /** Median sample period in seconds, or null with fewer than two samples. */
@@ -270,13 +278,20 @@ export class TraceGapCache {
       }
       this.cursor.stamp = time;
     });
-    const threshold = gapThreshold(this.stats.median());
+    const threshold = this.stats.threshold();
+    const trailingGap =
+      this.last &&
+      threshold !== null &&
+      (this.sawNaN || edge - this.last.time > threshold || (streamDown && edge > this.last.time));
+    if (this.candidates.length === this.candidateHead && !trailingGap) {
+      return threshold === null ? undefined : NO_GAPS;
+    }
     if (threshold === null) return undefined;
     const gaps = this.candidates
       .slice(this.candidateHead)
       .filter((gap) => gap.nan || gap.t1 - gap.t0 > threshold)
       .map(({ t0, v0, t1, v1 }) => ({ t0, v0, t1, v1 }));
-    if (this.last && (this.sawNaN || edge - this.last.time > threshold || (streamDown && edge > this.last.time))) {
+    if (this.last && trailingGap) {
       gaps.push({ t0: this.last.time, v0: this.last.value, t1: Infinity, v1: NaN });
     }
     return gaps;

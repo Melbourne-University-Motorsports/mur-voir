@@ -19,6 +19,7 @@
 // - Reconnect: automatic with backoff; fresh snapshot, then the subscription is replayed by periodic().
 
 import Log from "../../../shared/log/Log";
+import LoggableType from "../../../shared/log/LoggableType";
 import type {
   AvailabilityState,
   CatalogueSnapshotOp,
@@ -103,7 +104,8 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
   private requests = new AbortController();
   private subscribedPaths: string[] = [];
-  private historyRequested = new Set<string>();
+  private historyRequested = new Map<string, number>();
+  private historyGeneration = 0;
   private historyAvailable: boolean | null = null;
 
   connect(
@@ -186,7 +188,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       if (this.socket !== socket) return;
       this.socket = null;
       this.catalogue = null;
-      this.subscribedPaths.forEach((path) => this.rememberResume(path));
+      this.subscribedPaths.forEach((path) => this.retireHistory(path));
       this.subscribedPaths = [];
       this.lastSubscriptionCheck = -Infinity;
       if (this.backend === "connected") {
@@ -321,6 +323,9 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (!this.dedup.accept(sample.path, sample.stream_id, sample.seq)) return;
     if (time.seconds < 0) return;
 
+    const key = pathToKey(sample.path);
+    const field = this.log.getField(key);
+    const previousVersion = field?.getDataVersion();
     if (!writeValue(this.log, descriptor, time.seconds, sample.value)) {
       console.warn('[MUR] Value does not match type "' + descriptor.type + '" for ' + sample.path, sample.value);
       return;
@@ -328,8 +333,10 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
     const now = Date.now();
     this.receiptTimes.set(sample.path, now);
-    this.lastSampleNs.set(sample.path, sample.t_ns);
-    if (!this.availability.has(sample.path)) {
+    const lastNs = this.lastSampleNs.get(sample.path);
+    if (lastNs === undefined || BigInt(sample.t_ns) > BigInt(lastNs)) this.lastSampleNs.set(sample.path, sample.t_ns);
+    const becameAvailable = !this.availability.has(sample.path);
+    if (becameAvailable) {
       this.availability.set(sample.path, { state: "online", lastSeenNs: sample.t_ns });
     }
     if (time.approximate) {
@@ -338,8 +345,11 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       this.unsynchronised.delete(sample.path);
     }
     this.clock.observe(time.seconds, now);
-    this.changedFields?.add(sample.path);
-    this.shouldRunOutputCallback = true;
+    const structured = field?.getType() === LoggableType.Empty;
+    if (becameAvailable || field === null || structured || field.getDataVersion() !== previousVersion) {
+      this.changedFields?.add(sample.path);
+      this.shouldRunOutputCallback = true;
+    }
   }
 
   /** Replaces the Log after a clock rewind and drops the previous run. */
@@ -411,18 +421,21 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
         }
         this.subscribedPaths.forEach((path) => {
           if (!activePaths.has(path)) {
-            this.historyRequested.delete(path);
-            this.rememberResume(path);
+            this.retireHistory(path);
           }
         });
         this.subscribedPaths = paths;
       }
 
       // Backfill history for fields that just became active in a tab
+      for (const path of this.historyRequested.keys()) {
+        if (!tabPaths.has(path)) this.retireHistory(path);
+      }
       tabPaths.forEach((path) => {
         if (!this.historyRequested.has(path)) {
-          this.historyRequested.add(path);
-          this.fetchHistory(path);
+          const generation = ++this.historyGeneration;
+          this.historyRequested.set(path, generation);
+          this.fetchHistory(path, generation);
         }
       });
     }
@@ -462,7 +475,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     });
   }
 
-  private async fetchHistory(path: string) {
+  private async fetchHistory(path: string, generation: number) {
     if (this.historyAvailable === false) return;
     const segmentIndex = this.segments.getSegmentIndex();
     // A field seen before (its tab was hidden) resumes from its newest sample, so the whole gap fills in
@@ -478,7 +491,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     try {
       response = await fetch(url, { signal: this.requests.signal });
     } catch {
-      this.historyRequested.delete(path); // Retry on the next periodic call after reconnecting
+      if (this.historyRequested.get(path) === generation) this.historyRequested.delete(path);
       return;
     }
     if (response.status === 501) {
@@ -492,7 +505,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       body = await response.json();
     } catch {
       // stop() aborted the request, or the connection dropped while the body was arriving
-      this.historyRequested.delete(path);
+      if (this.historyRequested.get(path) === generation) this.historyRequested.delete(path);
       return;
     }
 
@@ -507,11 +520,16 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       if (time === null || time.seconds < 0) return;
       if (writeValue(this.log!, descriptor, time.seconds, sample.value)) wrote = true;
     });
-    if (resumeNs !== undefined && this.resumeFrom.get(path) === resumeNs) this.resumeFrom.delete(path);
+    if (resumeNs !== undefined && this.historyRequested.get(path) === generation) this.resumeFrom.delete(path);
     if (wrote) {
       this.changedFields?.add(path);
       this.shouldRunOutputCallback = true;
     }
+  }
+
+  private retireHistory(path: string) {
+    this.historyRequested.delete(path);
+    this.rememberResume(path);
   }
 
   private rememberResume(path: string) {

@@ -10,9 +10,12 @@ import { test } from "node:test";
 import TracksideController, { reorderTiles, tracksideGraphSources } from "../src/hub/controllers/TracksideController";
 import SourceList from "../src/hub/SourceList";
 import { channelProfile } from "../src/shared/display/ChannelProfile";
+import Log from "../src/shared/log/Log";
 import {
   alertLine,
+  applyTracksidePatch,
   dbcDefinition,
+  diffTrackside,
   isTracksideLive,
   limitUnit,
   parseCriticalLimit,
@@ -29,6 +32,16 @@ test("Trackside reads the live edge and latest disconnected sample independently
   let liveTime: number | null = 100;
   const queriedTimes: number[] = [];
   const graphTimes: number[] = [];
+  const log = new Log();
+  log.putNumber("/temp", 99, 112);
+  log.getChannelProfile = () => profile;
+  const field = log.getField("/temp")!;
+  const getRange = field.getRange.bind(field);
+  field.getRange = (start, end) => {
+    assert.equal(start, end);
+    queriedTimes.push(start);
+    return getRange(start, end);
+  };
   const summary = { backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 };
   globals.window = {
     selection: {
@@ -37,28 +50,18 @@ test("Trackside reads the live edge and latest disconnected sample independently
         throw new Error("Trackside must not read the analysis cursor");
       }
     },
-    log: {
-      getTimestampRange: () => [0, 99],
-      getRange: (_key: string, start: number, end: number) => {
-        assert.equal(start, end);
-        queriedTimes.push(start);
-        return { timestamps: [99], values: [112] };
-      },
-      getChannelProfile: () => profile,
-      getMetadataString: () => ""
-    },
+    log,
     liveStatus: {
       getLiveStatus: () => summary,
       getFieldFreshness: () => "online",
       getFieldAge: () => 0.1
     }
   };
+  const sources = [
+    { type: "tile", logKey: "/temp", logType: "Number", visible: true, options: { showInGraph: "true" } }
+  ];
   const controller: TracksideController = Object.assign(Object.create(TracksideController.prototype), {
-    sourceList: {
-      getState: () => [
-        { type: "tile", logKey: "/temp", logType: "Number", visible: true, options: { showInGraph: "true" } }
-      ]
-    },
+    sourceList: { getState: () => sources },
     graphController: {
       restoreState: () => {},
       getCommand: (time: number) => {
@@ -66,7 +69,8 @@ test("Trackside reads the live edge and latest disconnected sample independently
         return null;
       }
     },
-    limits: { "/temp": { high: 110 } }
+    limits: { "/temp": { high: 110 } },
+    tiles: new WeakMap()
   });
   try {
     assert.equal(controller.showTimeline(), false);
@@ -78,8 +82,8 @@ test("Trackside reads the live edge and latest disconnected sample independently
     const disconnected = controller.getCommand().tiles[0];
     assert.equal(disconnected.severity, "ok");
     assert.equal(disconnected.state, "⊘ link lost");
-    assert.deepEqual(queriedTimes, [100, 101, 99]);
-    assert.deepEqual(graphTimes, queriedTimes);
+    assert.deepEqual(queriedTimes, [100, 99]);
+    assert.deepEqual(graphTimes, [100, 101, 99]);
   } finally {
     globals.window = previous;
   }
@@ -378,4 +382,23 @@ test("single critical edits drive tile alarms and clearing restores a healthy ti
       "ok"
     );
   }
+});
+
+test("trackside sends only changed cells and can replay the merged snapshot", () => {
+  const tile = (text: string) => ({
+    label: "Speed",
+    text,
+    unit: "km/h",
+    state: "",
+    severity: "ok" as const,
+    freshness: "online" as const
+  });
+  const previous = { tiles: [tile("30"), tile("45")], graph: null, message: "Offline" };
+  const next = { tiles: [tile("30"), tile("47")], graph: null, message: "" };
+  const patch = diffTrackside(previous, next);
+  assert.deepEqual(patch, { tiles: [[1, next.tiles[1]]], message: "" });
+  const cached = applyTracksidePatch(previous, patch);
+  assert.equal(cached.tiles[0], previous.tiles[0]);
+  assert.deepEqual(cached, next);
+  assert.deepEqual(diffTrackside(cached, next), { tiles: [] });
 });

@@ -35,10 +35,12 @@ test("resubscribing requests history again and merges overlapping samples once",
   const sample = (seq: number) => ({ stream_id: "test", seq, t_ns: String(seq * 1000000000), value: seq });
   let history = [sample(1), sample(2)];
   let requests = 0;
+  let respond: Promise<void> | undefined;
   const urls: string[] = [];
   t.mock.method(globalThis, "fetch", async (url: string) => {
     requests++;
     urls.push(url);
+    await respond;
     return { ok: true, status: 200, json: async () => ({ samples: history }) };
   });
   source.send = () => {};
@@ -50,7 +52,7 @@ test("resubscribing requests history again and merges overlapping samples once",
   };
   const fetchHistory = source.fetchHistory.bind(source);
   let pending: Promise<void>;
-  source.fetchHistory = (path: string) => (pending = fetchHistory(path));
+  source.fetchHistory = (path: string, generation: number) => (pending = fetchHistory(path, generation));
   const live = (seq: number) => {
     const s = sample(seq);
     if (source.dedup.accept(path, s.stream_id, seq)) {
@@ -79,4 +81,22 @@ test("resubscribing requests history again and merges overlapping samples once",
   assert.deepEqual(data.values, [1, 2, 3, 4]);
   assert.equal(new Set(data.timestamps).size, 4);
   assert.equal(writes.mock.callCount(), 4);
+  active = new Set();
+  source.lastSampleNs.set(path, "4000000000");
+  periodic();
+  let release!: () => void;
+  respond = new Promise<void>((resolve) => (release = resolve));
+  active = new Set(["/" + path]);
+  periodic();
+  live(6);
+  source.lastSampleNs.set(path, "6000000000");
+  active = new Set();
+  periodic();
+  release();
+  await pending!;
+  respond = undefined;
+  active = new Set(["/" + path]);
+  periodic();
+  await pending!;
+  assert.match(urls[3], /from_ns=/, "a retired request cannot erase the next resume cursor");
 });

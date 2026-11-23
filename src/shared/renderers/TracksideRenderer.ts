@@ -6,7 +6,7 @@
 // at the root directory of this project.
 
 import { setText } from "../domWrite";
-import { TracksideTile } from "../Trackside";
+import { sameTracksideTile, TracksidePatch, TracksideTile } from "../Trackside";
 import LineGraphRenderer, { LineGraphRendererCommand } from "./LineGraphRenderer";
 import TabRenderer from "./TabRenderer";
 
@@ -22,6 +22,7 @@ export default class TracksideRenderer implements TabRenderer {
   private grid: HTMLElement;
   private graphRoot: HTMLElement;
   private graph: LineGraphRenderer;
+  private renderedTiles: TracksideTile[] = [];
   constructor(root: HTMLElement, reorder?: (from: number, to: number) => void) {
     this.grid = root.firstElementChild as HTMLElement;
     this.graphRoot = document.createElement("div");
@@ -140,13 +141,13 @@ export default class TracksideRenderer implements TabRenderer {
   getAspectRatio() {
     return null;
   }
-  render(command: TracksideRendererCommand) {
+  render(command: TracksideRendererCommand, patch?: TracksidePatch) {
     // Runs every frame, so every DOM write below happens only when its value changed.
     // Rewriting unchanged text or attributes still invalidates style and layout.
     const showGraph = !!command.graph;
     if (this.graphRoot.hidden === showGraph) this.graphRoot.hidden = !showGraph;
     if (this.grid.classList.contains("with-graph") !== showGraph) this.grid.classList.toggle("with-graph", showGraph);
-    if (command.graph) this.graph.render(command.graph);
+    if (command.graph && (!patch || patch.graph !== undefined)) this.graph.render(command.graph);
     if (command.message || !command.tiles.length) {
       const text = command.message || "Drag fields into the tile list below.";
       const current = this.grid.firstElementChild;
@@ -160,12 +161,15 @@ export default class TracksideRenderer implements TabRenderer {
         message.textContent = text;
         this.grid.replaceChildren(message);
       }
+      this.renderedTiles = [];
       return;
     }
     if (
       this.grid.children.length !== command.tiles.length ||
       !this.grid.firstElementChild?.classList.contains("trackside-tile")
     ) {
+      patch = undefined;
+      this.renderedTiles = [];
       this.grid.replaceChildren(
         ...command.tiles.map(() => {
           const cell = document.createElement("div");
@@ -182,7 +186,10 @@ export default class TracksideRenderer implements TabRenderer {
         })
       );
     }
-    command.tiles.forEach((tile, index) => {
+    if (command.tiles === this.renderedTiles) return;
+    const updateTile = (tile: TracksideTile, index: number) => {
+      const previous = this.renderedTiles[index];
+      if (previous && sameTracksideTile(previous, tile)) return;
       const cell = this.grid.children[index] as HTMLElement;
       const freshness = tile.state.includes("link lost") ? "offline" : tile.freshness ?? "";
       if (cell.dataset.severity !== tile.severity) cell.dataset.severity = tile.severity;
@@ -193,6 +200,12 @@ export default class TracksideRenderer implements TabRenderer {
       setText(cell.children[2], tile.state);
       const title = `${tile.label}: ${tile.text} ${tile.unit} ${tile.state}` + (tile.detail ? "\n" + tile.detail : "");
       if (cell.title !== title) cell.title = title;
-    });
+    };
+    if (patch) {
+      for (const [index, tile] of patch.tiles) updateTile(tile, index);
+    } else {
+      command.tiles.forEach(updateTile);
+    }
+    this.renderedTiles = command.tiles;
   }
 }

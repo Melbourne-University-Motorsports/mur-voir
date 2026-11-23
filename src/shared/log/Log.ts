@@ -308,6 +308,7 @@ export default class Log {
   setStructuredType(key: string, type: string | null) {
     if (key in this.fields) {
       if (this.fields[key].structuredType !== type) {
+        this.metadataVersion++;
         this.profileCache.clear();
         this.fieldUnitCache = {};
       }

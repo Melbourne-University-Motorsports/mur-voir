@@ -436,15 +436,24 @@ export default class SourceList {
   /** Removes all items in the source list. */
   clear() {
     this.state = [];
+    this.refreshedCatalogue = undefined;
     while (this.LIST.firstChild) {
       this.LIST.removeChild(this.LIST.firstChild);
     }
     this.updateHandIcon();
   }
 
+  private refreshedCatalogue?: { log: typeof window.log; fields: number; metadata: number };
+
   /** Call when a new set of log fields may be available. */
   refresh() {
-    if (this.dbcLookup?.log !== window.log) this.dbcLookup = undefined;
+    const log = window.log;
+    const fields = log.getFieldKeysVersion();
+    const metadata = log.getMetadataVersion();
+    const previous = this.refreshedCatalogue;
+    if (previous?.log === log && previous.fields === fields && previous.metadata === metadata) return;
+    this.refreshedCatalogue = { log, fields, metadata };
+    if (this.dbcLookup?.log !== log) this.dbcLookup = undefined;
     this.state.forEach((item, index) => {
       if (this.isFieldAvailable(item) || !item.dbcSignal) return;
       if (
@@ -491,6 +500,7 @@ export default class SourceList {
         const previousKey = item.logKey;
         item.logKey = matches[0];
         this.onFieldRemapped?.(previousKey, item.logKey);
+        window.requestStateSave?.();
         let element = this.LIST.children[index] as HTMLElement;
         this.updateItem(element, item);
         this.updatePreview(element, item);
@@ -935,6 +945,7 @@ export default class SourceList {
 
   /** Make a list item element and inserts it into the list. */
   private addListItem(state: SourceListItemState, insertIndex?: number) {
+    this.refreshedCatalogue = undefined;
     if (this.config.types.find((type) => type.key === state.type)?.singleField) {
       for (let i = this.state.length - 1; i >= 0; i--) {
         if (this.state[i].type !== state.type) continue;
@@ -995,6 +1006,7 @@ export default class SourceList {
         delete SourceList.typePromptCallbacks[this.UUID];
         let index = Array.from(this.LIST.children).indexOf(item);
         this.state[index] = newState;
+        this.refreshedCatalogue = undefined;
         if (this.config.types.find((type) => type.key === newState.type)?.singleField) {
           const state = this.state.filter((entry, i) => i === index || entry.type !== newState.type);
           this.setState(state);

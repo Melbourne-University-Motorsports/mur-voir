@@ -94,7 +94,7 @@ test("clear forgets all streams", () => {
   assert.equal(dedup.accept(PATH, "s1", 0), true);
 });
 
-test("a throttled stream past the run limit still rejects duplicates and fills recent gaps", () => {
+test("a throttled stream past the history window still rejects duplicates and fills recent gaps", () => {
   const dedup = new SampleDeduplicator();
   // Every second seq, so each sample starts its own run
   for (let seq = 0; seq < 40000; seq += 2) assert.equal(dedup.accept(PATH, "s1", seq), true);
@@ -102,5 +102,21 @@ test("a throttled stream past the run limit still rejects duplicates and fills r
   assert.equal(dedup.accept(PATH, "s1", 30000), false);
   assert.equal(dedup.accept(PATH, "s1", 39997), true); // A recent skipped seq from history
   assert.equal(dedup.accept(PATH, "s1", 39997), false);
-  assert.equal(dedup.accept(PATH, "s1", 1), false); // Merged into the oldest run: treated as seen
+  assert.equal(dedup.accept(PATH, "s1", 1), false); // Outside the history window
+});
+
+test("backfill fills early gaps within the backend history window", () => {
+  const dedup = new SampleDeduplicator();
+  for (let seq = 0; seq <= 16384; seq += 2) dedup.accept(PATH, "s1", seq);
+  assert.equal(dedup.accept(PATH, "s1", 1), true);
+  assert.equal(dedup.accept(PATH, "s1", 1), false);
+});
+
+test("descending inserts expire outside the same window as appends", () => {
+  const dedup = new SampleDeduplicator();
+  let accepted = 0;
+  for (let seq = 100000; seq >= 0; seq -= 2) accepted += Number(dedup.accept(PATH, "s1", seq));
+  assert.ok(accepted < 50001);
+  assert.equal(dedup.accept(PATH, "s1", 1), false);
+  assert.equal(dedup.accept(PATH, "s1", 99999), true);
 });

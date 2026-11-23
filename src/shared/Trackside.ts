@@ -8,6 +8,7 @@
 import type { Freshness, LiveStatusSummary } from "../hub/dataSources/LiveStatus";
 import { classifyDBCFault, DBCFaultDefinition, Severity } from "./DBCFault";
 import { ChannelProfile, convertChannelValue, formatChannelValue } from "./display/ChannelProfile";
+import type { TracksideRendererCommand } from "./renderers/TracksideRenderer";
 
 export type Limits = { low?: number; high?: number };
 export type TracksideTile = {
@@ -20,6 +21,49 @@ export type TracksideTile = {
   /** Full names of the set fault bits, one per line, for the tooltip. */
   detail?: string;
 };
+
+export function sameTracksideTile(a: TracksideTile, b: TracksideTile): boolean {
+  return (
+    a === b ||
+    (a.label === b.label &&
+      a.text === b.text &&
+      a.unit === b.unit &&
+      a.state === b.state &&
+      a.severity === b.severity &&
+      a.freshness === b.freshness &&
+      a.detail === b.detail)
+  );
+}
+
+export type TracksidePatch = {
+  tiles: [index: number, tile: TracksideTile][];
+  message?: string;
+  graph?: TracksideRendererCommand["graph"];
+};
+
+/** The caller sends a full snapshot when the tile count changes. */
+export function diffTrackside(previous: TracksideRendererCommand, next: TracksideRendererCommand): TracksidePatch {
+  const patch: TracksidePatch = { tiles: [] };
+  next.tiles.forEach((tile, index) => {
+    if (!sameTracksideTile(tile, previous.tiles[index])) patch.tiles.push([index, tile]);
+  });
+  if (next.message !== previous.message) patch.message = next.message;
+  if (next.graph !== previous.graph) patch.graph = next.graph;
+  return patch;
+}
+
+export function applyTracksidePatch(
+  command: TracksideRendererCommand,
+  patch: TracksidePatch
+): TracksideRendererCommand {
+  const tiles = patch.tiles.length ? command.tiles.slice() : command.tiles;
+  for (const [index, tile] of patch.tiles) tiles[index] = tile;
+  return {
+    tiles,
+    message: patch.message ?? command.message,
+    graph: patch.graph === undefined ? command.graph : patch.graph
+  };
+}
 
 export function isTracksideLive(
   summary: LiveStatusSummary | undefined,
@@ -113,7 +157,8 @@ export function tileState(
     : fault?.severity ?? "ok";
   // The age shows only as text at 0.1 s steps, so the tile changes (and a satellite is sent it) only then
   const age = live?.age ?? null;
-  const ageText = age === null ? "" : ` ${age.toFixed(1)} s`;
+  const ageText =
+    age === null || (live?.freshness !== "stale" && live?.freshness !== "offline") ? "" : ` ${age.toFixed(1)} s`;
   let state = severity === "critical" ? "Alarm" : severity === "warn" ? "Warning" : "";
   if (live) {
     if (live.summary.backend !== "connected") state = "⊘ link lost";

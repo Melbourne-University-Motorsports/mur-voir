@@ -6,14 +6,13 @@
 // at the root directory of this project.
 
 import { ensureThemeContrast } from "../../shared/Colors";
-import LineGraphFilter from "../../shared/LineGraphFilter";
-import { SelectionMode } from "../../shared/Selection";
-import { SourceListState } from "../../shared/SourceListConfig";
-import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
 import { axisDisplayUnit, formatChannelValue } from "../../shared/display/ChannelProfile";
+import { isDarkMode } from "../../shared/domWrite";
 import { formatSignedSeconds, heldValueAt, sectorDeltaText } from "../../shared/laps/LapAnalysis";
 import { interpolate, lapSamples, sectorBlocks } from "../../shared/laps/LapEngine";
+import LineGraphFilter from "../../shared/LineGraphFilter";
 import DecimatedSeries from "../../shared/log/DecimatedSeries";
+import LogField from "../../shared/log/LogField";
 import { getLogValueText } from "../../shared/log/LogUtil";
 import { LogValueSetNumber } from "../../shared/log/LogValueSets";
 import { AKIT_TIMESTAMP_KEYS, getRobotStateRanges } from "../../shared/log/RobotState";
@@ -24,6 +23,9 @@ import {
   LineGraphRendererCommand_DiscreteField,
   LineGraphRendererCommand_NumericField
 } from "../../shared/renderers/LineGraphRenderer";
+import { SelectionMode } from "../../shared/Selection";
+import { SourceListState } from "../../shared/SourceListConfig";
+import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
 import { Units } from "../../shared/units";
 import { clampValue, createUUID, scaleValueClamped } from "../../shared/util";
 import { LAP_COLORS, lapService } from "../LapService";
@@ -33,6 +35,16 @@ import { previewNumberCommand } from "./NumberPreview";
 import TabController from "./TabController";
 
 type NumericCommandCacheValue = LineGraphRendererCommand_NumericField & { hasUnit: boolean };
+type ConvertedSamples = {
+  config: string;
+  history: number;
+  discard: number;
+  start: number;
+  timestamps: number[];
+  values: number[];
+};
+
+let graphDataRevision = 0;
 
 export default class LineGraphController implements TabController {
   private events = new AbortController();
@@ -45,7 +57,11 @@ export default class LineGraphController implements TabController {
 
   UUID = createUUID();
 
-  private periodStats = new WeakMap<object, Map<string, TraceGapCache>>();
+  private periodStats = new WeakMap<LogField, TraceGapCache>();
+  private convertedSamples = new WeakMap<LogField, ConvertedSamples>();
+  private fieldIds = new WeakMap<LogField, number>();
+  private nextFieldId = 0;
+  private lastGraph?: { log: typeof window.log; key: string; command: LineGraphRendererCommand };
 
   private RANGE_MARGIN = 0.05;
   private MIN_AXIS_RANGE = 1e-5;
@@ -73,6 +89,7 @@ export default class LineGraphController implements TabController {
   private rightUnitCache: Units.UnitConfig | null = null;
   private showRobotMode = false;
   private lapMode = "time";
+  onLapModeChanged?: () => void;
   private lapSelect: HTMLSelectElement;
 
   constructor(root: HTMLElement) {
@@ -87,6 +104,7 @@ export default class LineGraphController implements TabController {
     ].forEach(([value, label]) => mode.add(new Option(label, value)));
     mode.onchange = () => {
       this.lapMode = mode.value;
+      this.onLapModeChanged?.();
       this.updateAxisLabels();
     };
     const controls = document.createElement("div");
@@ -266,6 +284,7 @@ export default class LineGraphController implements TabController {
     }
     if ("lapMode" in state && ["time", "lapTime", "distance"].includes(String(state.lapMode))) {
       this.lapMode = String(state.lapMode);
+      this.onLapModeChanged?.();
       this.lapSelect.value = this.lapMode;
     }
     this.updateAxisLabels();
@@ -398,12 +417,6 @@ export default class LineGraphController implements TabController {
   }
 
   refresh(): void {
-    const active = new Set(this.getActiveFields());
-    const caches = this.periodStats.get(window.log);
-    if (caches)
-      for (const key of caches.keys()) {
-        if (!active.has(key) || window.log.getType(key) === null) caches.delete(key);
-      }
     this.leftSourceList.refresh();
     this.discreteSourceList.refresh();
     this.rightSourceList.refresh();
@@ -520,24 +533,102 @@ export default class LineGraphController implements TabController {
   }
 
   getCommand(liveTime?: number): LineGraphRendererCommand {
-    let leftDataRange: [number, number] = [Infinity, -Infinity];
-    let rightDataRange: [number, number] = [Infinity, -Infinity];
-    let leftFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
-    let rightFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
-    let discreteFieldsCommand: LineGraphRendererCommand_DiscreteField[] = [];
+    const log = window.log;
+    const logRange = log.getTimestampRange();
     const timeRange: [number, number] =
       liveTime === undefined
         ? this.lapMode === "time"
           ? window.selection.getTimelineRange()
-          : window.log.getTimestampRange()
-        : [Math.max(window.log.getTimestampRange()[0], liveTime - 30), liveTime];
+          : logRange
+        : [Math.max(logRange[0], liveTime - 30), liveTime];
+    const selectionMode = liveTime === undefined ? window.selection.getMode() : SelectionMode.Locked;
+    const selectedTime = liveTime === undefined ? window.selection.getSelectedTime() : liveTime;
+    const hoveredTime = liveTime === undefined ? window.selection.getHoveredTime() : null;
+    const grabZoomRange = liveTime === undefined ? window.selection.getGrabZoomRange() : null;
+    const leftSources = this.leftSourceList.getState();
+    const rightSources = this.rightSourceList.getState();
+    const discreteSources = this.discreteSourceList.getState();
+    const akitTimestampField = AKIT_TIMESTAMP_KEYS.find((key) => log.getField(key) !== null);
+    const dark = isDarkMode();
+    const edge = Math.max(timeRange[1], logRange[1]);
+    const gapsByKey = new Map<string, ReturnType<TraceGapCache["update"]>>();
+    const gapState = [...leftSources, ...rightSources].map(({ logKey, type }) => {
+      const field = log.getField(logKey);
+      if (type === "points" || field === null) return undefined;
+      let stats = this.periodStats.get(field);
+      if (!stats) this.periodStats.set(field, (stats = new TraceGapCache()));
+      const freshness = window.liveStatus?.getFieldFreshness(logKey);
+      const gaps = stats.update(log, logKey, edge, freshness === "stale" || freshness === "offline");
+      gapsByKey.set(logKey, gaps);
+      return gaps;
+    });
+    const loadingFields = window.getLoadingFields();
+    // Lap overlays and robot mode also depend on their own timeline inputs.
+    let cacheKey: string | undefined;
+    if (this.lapMode === "time" && !this.showRobotMode) {
+      const keys = [
+        ...leftSources.map(({ logKey }) => logKey),
+        ...rightSources.map(({ logKey }) => logKey),
+        ...discreteSources.flatMap(({ logKey, type, visible }) =>
+          !visible
+            ? []
+            : type === "alerts"
+            ? ["errors", "warnings", "infos"].map((level) => logKey + "/" + level)
+            : [logKey]
+        ),
+        ...(akitTimestampField === undefined ? [] : [akitTimestampField])
+      ];
+      const revisions = keys.map((key) => {
+        const field = log.getField(key);
+        if (!field) return null;
+        let id = this.fieldIds.get(field);
+        if (id === undefined) this.fieldIds.set(field, (id = ++this.nextFieldId));
+        return [id, field.getDataVersion(), field.getDiscardVersion()];
+      });
+      cacheKey = JSON.stringify([
+        timeRange,
+        log.getTimestampDisplayOffset(),
+        dark,
+        log.getMetadataVersion(),
+        revisions,
+        gapState,
+        leftSources,
+        rightSources,
+        discreteSources,
+        this.leftFilter,
+        this.rightFilter,
+        this.leftUnitConversion,
+        this.rightUnitConversion,
+        this.leftLockedRange,
+        this.rightLockedRange,
+        keys.some((key) => loadingFields.has(key))
+      ]);
+      const cached = this.lastGraph;
+      if (cached?.log === log && cached.key === cacheKey) {
+        const command = cached.command;
+        if (
+          command.selectionMode === selectionMode &&
+          command.selectedTime === selectedTime &&
+          command.hoveredTime === hoveredTime &&
+          command.grabZoomRange?.[0] === grabZoomRange?.[0] &&
+          command.grabZoomRange?.[1] === grabZoomRange?.[1]
+        )
+          return command;
+        return (cached.command = { ...command, selectionMode, selectedTime, hoveredTime, grabZoomRange });
+      }
+    }
+
+    const leftDataRange: [number, number] = [Infinity, -Infinity];
+    const rightDataRange: [number, number] = [Infinity, -Infinity];
+    const leftFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
+    const rightFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
+    let discreteFieldsCommand: LineGraphRendererCommand_DiscreteField[] = [];
 
     // Add numeric fields
     this.leftNumericCommandCache = {};
     this.rightNumericCommandCache = {};
     this.leftUnitCache = null;
     this.rightUnitCache = null;
-    const akitTimestampField = window.log.getFieldKeys().find((key) => AKIT_TIMESTAMP_KEYS.includes(key));
     const akitTimestamps =
       akitTimestampField === undefined
         ? undefined
@@ -580,21 +671,7 @@ export default class LineGraphController implements TabController {
           );
         if (data === undefined) return;
 
-        // Statistics always use the whole field, independent of viewport and lap selection.
-        let statsByKey = this.periodStats.get(window.log);
-        if (!statsByKey) this.periodStats.set(window.log, (statsByKey = new Map()));
-        let stats = statsByKey.get(fieldItem.logKey);
-        if (!stats) statsByKey.set(fieldItem.logKey, (stats = new TraceGapCache()));
-        const freshness = window.liveStatus?.getFieldFreshness(fieldItem.logKey);
-        const gaps =
-          fieldItem.type === "points"
-            ? undefined
-            : stats.update(
-                window.log,
-                fieldItem.logKey,
-                Math.max(timeRange[1], window.log.getTimestampRange()[1]),
-                freshness === "stale" || freshness === "offline"
-              );
+        const gaps = fieldItem.type === "points" ? undefined : gapsByKey.get(fieldItem.logKey);
         let convertValue = (value: number) => value;
 
         // Add AdvantageKit samples
@@ -683,65 +760,95 @@ export default class LineGraphController implements TabController {
           hasUnit = true;
         }
 
-        // Convert and clamp in one pass over the range's own copy of the values. Without a unit change
-        // the conversion is skipped, since live graphs repeat this for every sample on every frame.
-        {
-          const values = data.values;
-          const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
-          const max = this.MAX_VALUE;
-          for (let i = 0; i < values.length; i++) {
-            const value = identity ? values[i] : convertValue(values[i]);
-            values[i] = value < -max ? -max : value > max ? max : value;
-          }
+        // Reuse the converted overlap when a live viewport slides or grows. The raw timestamps
+        // stay separate because clipping below can change the two boundary samples.
+        const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
+        const field = log.getField(fieldItem.logKey)!;
+        const reusable = filter === LineGraphFilter.None && akitTimestamps === undefined && decimated === null;
+        const config = JSON.stringify([autoTargetResult, unitConversion]);
+        const history = reusable ? log.getHistoryVersion(fieldItem.logKey) : -1;
+        const discard = field.getDiscardVersion();
+        const previous = reusable ? this.convertedSamples.get(field) : undefined;
+        const timestamps = data.timestamps;
+        let offset = -1;
+        if (previous?.config === config && previous.history === history && previous.discard === discard) {
+          offset = previous.start === timeRange[0] ? 0 : previous.timestamps.indexOf(timestamps[0]);
+        }
+        const overlap = offset < 0 ? 0 : Math.min(timestamps.length, previous!.timestamps.length - offset);
+        let values = overlap > 0 ? previous!.values.slice(offset, offset + overlap) : [];
+        const max = this.MAX_VALUE;
+        for (let i = overlap; i < timestamps.length; i++) {
+          const value = identity ? data.values[i] : convertValue(data.values[i]);
+          values.push(value < -max ? -max : value > max ? max : value);
+        }
+        if (reusable) {
+          this.convertedSamples.set(field, { config, history, discard, start: timeRange[0], timestamps, values });
+          data = { timestamps: timestamps.slice(), values: values.slice() };
+        } else {
+          data.values = values;
         }
 
         // Trim early point
-        if (!gaps?.length && data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
-          switch (fieldItem.type) {
-            case "stepped":
-              // Keep, adjust timestamp
-              data.timestamps[0] = timeRange[0];
-              break;
-            case "smooth":
-              // Interpolate to displayed value
-              if (data.timestamps.length >= 2) {
-                data.values[0] = scaleValueClamped(
-                  timeRange[0],
-                  [data.timestamps[0], data.timestamps[1]],
-                  [data.values[0], data.values[1]]
-                );
+        if (data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
+          if (gaps?.some(({ t0, t1 }) => t0 < timeRange[0] && timeRange[0] < t1)) {
+            data.timestamps.shift();
+            data.values.shift();
+          } else
+            switch (fieldItem.type) {
+              case "stepped":
+                // Keep, adjust timestamp
                 data.timestamps[0] = timeRange[0];
-              }
-              break;
-            case "points":
-              // Remove, no effect on displayed range
-              data.timestamps.shift();
-              data.values.shift();
-              break;
-          }
+                break;
+              case "smooth":
+                // Interpolate to displayed value
+                if (data.timestamps.length >= 2) {
+                  data.values[0] = scaleValueClamped(
+                    timeRange[0],
+                    [data.timestamps[0], data.timestamps[1]],
+                    [data.values[0], data.values[1]]
+                  );
+                }
+                data.timestamps[0] = timeRange[0];
+                break;
+              case "points":
+                // Remove, no effect on displayed range
+                data.timestamps.shift();
+                data.values.shift();
+                break;
+            }
         }
 
         // Trim late point
-        if (!gaps?.length && data.timestamps.length > 0 && data.timestamps[data.timestamps.length - 1] > timeRange[1]) {
-          switch (fieldItem.type) {
-            case "stepped":
-            case "points":
-              // Remove, no effect on displayed range
-              data.timestamps.pop();
-              data.values.pop();
-              break;
-            case "smooth":
-              // Interpolate to displayed value
-              if (data.timestamps.length >= 2) {
-                data.values[data.values.length - 1] = scaleValueClamped(
-                  timeRange[1],
-                  [data.timestamps[data.timestamps.length - 2], data.timestamps[data.timestamps.length - 1]],
-                  [data.values[data.values.length - 2], data.values[data.values.length - 1]]
-                );
-                data.timestamps[data.timestamps.length - 1] = timeRange[1];
-              }
-              break;
-          }
+        if (data.timestamps.length > 0 && data.timestamps[data.timestamps.length - 1] > timeRange[1]) {
+          if (
+            data.timestamps.at(-2) === timeRange[1] ||
+            gaps?.some(({ t0, t1 }) => t0 < timeRange[1] && timeRange[1] < t1)
+          ) {
+            data.timestamps.pop();
+            data.values.pop();
+          } else
+            switch (fieldItem.type) {
+              case "stepped":
+              case "points":
+                // Remove, no effect on displayed range
+                data.timestamps.pop();
+                data.values.pop();
+                break;
+              case "smooth":
+                // Interpolate to displayed value
+                if (data.timestamps.length >= 2) {
+                  data.values[data.values.length - 1] = scaleValueClamped(
+                    timeRange[1],
+                    [data.timestamps[data.timestamps.length - 2], data.timestamps[data.timestamps.length - 1]],
+                    [data.values[data.values.length - 2], data.values[data.values.length - 1]]
+                  );
+                  data.timestamps[data.timestamps.length - 1] = timeRange[1];
+                } else {
+                  data.timestamps.pop();
+                  data.values.pop();
+                }
+                break;
+            }
         } else if (
           !gaps?.some((gap) => gap.t1 === Infinity) &&
           fieldItem.type === "smooth" &&
@@ -763,14 +870,16 @@ export default class LineGraphController implements TabController {
 
         // Add field command
         let itemCommand: NumericCommandCacheValue = {
-          gaps: gaps?.map((gap) => ({
-            ...gap,
-            v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
-            v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
-          })),
+          gaps:
+            gaps &&
+            clipGaps(gaps, timeRange[0], timeRange[1], (t) => t + timeRange[0]).map((gap) => ({
+              ...gap,
+              v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
+              v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
+            })),
           timestamps: data.timestamps,
           values: data.values,
-          color: ensureThemeContrast(fieldItem.options.color),
+          color: ensureThemeContrast(fieldItem.options.color, dark),
           type: fieldItem.type as "smooth" | "stepped" | "points",
           size: (fieldItem.options.size ?? "normal") as "normal" | "bold" | "verybold",
           hasUnit: hasUnit
@@ -884,7 +993,7 @@ export default class LineGraphController implements TabController {
       discreteFieldsCommand.push({
         timestamps: data.timestamps,
         values: data.values,
-        color: ensureThemeContrast(fieldItem.options.color),
+        color: ensureThemeContrast(fieldItem.options.color, dark),
         type: fieldItem.type as "stripes" | "graph",
         toggleReference: toggleReference
       });
@@ -989,10 +1098,11 @@ export default class LineGraphController implements TabController {
       rightTitle: this.axisTitle(this.rightSourceList, this.rightUnitCache, this.rightFilter),
       timeRange: timeRange,
       displayOffset: window.log.getTimestampDisplayOffset(),
-      selectionMode: liveTime === undefined ? window.selection.getMode() : SelectionMode.Locked,
-      selectedTime: liveTime === undefined ? window.selection.getSelectedTime() : liveTime,
-      hoveredTime: liveTime === undefined ? window.selection.getHoveredTime() : null,
-      grabZoomRange: liveTime === undefined ? window.selection.getGrabZoomRange() : null,
+      selectionMode,
+      selectedTime,
+      hoveredTime,
+      grabZoomRange,
+      dataRevision: ++graphDataRevision,
 
       leftRange: leftRange,
       rightRange: rightRange,
@@ -1018,7 +1128,6 @@ export default class LineGraphController implements TabController {
     const selectedKeys = [...this.leftSourceList.getState(), ...this.rightSourceList.getState()]
       .filter((source) => source.visible)
       .map((source) => source.logKey);
-    const loadingFields = window.getLoadingFields();
     const stillLoading = selectedKeys.some((key) => loadingFields.has(key));
     if (selectedKeys.length && !hasNumericSamples && !stillLoading && !result.discreteFields.length) {
       result.message = "The selected fields have no numeric samples in this log.";
@@ -1164,6 +1273,7 @@ export default class LineGraphController implements TabController {
       result.discreteFields = [];
       result.alerts = [];
     }
+    if (cacheKey !== undefined) this.lastGraph = { log, key: cacheKey, command: result };
     return result;
   }
 

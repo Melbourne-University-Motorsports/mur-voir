@@ -70,7 +70,13 @@ export default class LogField {
     return this.data.timestamps.length - this.dataStart;
   }
 
+  private dataVersion = 0;
   private discardVersion = 0;
+
+  /** Changes when a stored value or timestamp changes. Retention has a separate revision. */
+  getDataVersion(): number {
+    return this.dataVersion;
+  }
   private firstSampleTimestamp: number | undefined;
 
   getDiscardVersion(): number {
@@ -322,6 +328,7 @@ export default class LogField {
       insertIndex = this.findTimestampIndex(timestamp, true);
       if (insertIndex === -1) insertIndex = this.data.timestamps.length;
       if (this.data.timestamps[insertIndex] === timestamp) {
+        if (!Object.is(this.data.values[insertIndex], value)) this.dataVersion++;
         this.data.values[insertIndex] = value;
         return;
       }
@@ -342,10 +349,12 @@ export default class LogField {
     ) {
       // Same as the next value
       this.data.timestamps[insertIndex] = timestamp;
+      this.dataVersion++;
     } else {
       // New value
       this.data.timestamps.splice(insertIndex, 0, timestamp);
       this.data.values.splice(insertIndex, 0, value);
+      this.dataVersion++;
     }
   }
 

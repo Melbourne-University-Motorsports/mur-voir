@@ -11,6 +11,8 @@ import Preferences from "./shared/Preferences";
 import { RenderGuard, inlineStatus } from "./shared/RenderGuard";
 import Selection, { SelectionMode } from "./shared/Selection";
 import TabType, { getAllTabTypes, getTabIcon } from "./shared/TabType";
+import { applyTracksidePatch } from "./shared/Trackside";
+import { LAYOUT_SIZE_EVENT } from "./shared/domWrite";
 import CarDynamicsRenderer from "./shared/renderers/CarDynamicsRenderer";
 import ConsoleRenderer from "./shared/renderers/ConsoleRenderer";
 import DocumentationRenderer from "./shared/renderers/DocumentationRenderer";
@@ -146,6 +148,7 @@ window.addEventListener("message", (event) => {
 
         case "set-type":
           type = message.data;
+          lastCommand = null;
           lastRevision = undefined; // A new visualizer has drawn nothing yet
           updateVisualizer();
           scheduleSaveState();
@@ -153,6 +156,7 @@ window.addEventListener("message", (event) => {
 
         case "restore-state":
           type = message.data.type;
+          lastCommand = null;
           lastRevision = undefined;
           updateVisualizer();
           renderer?.restoreState(message.data.visualizer);
@@ -162,6 +166,8 @@ window.addEventListener("message", (event) => {
         case "render":
           // A replayed revision (window shown or restored) is already on screen
           if (message.data.revision !== undefined && message.data.revision === lastRevision) break;
+          const patch = message.data.patch;
+          if (patch && (lastCommand === null || lastRevision !== message.data.baseRevision)) break;
           lastRevision = message.data.revision;
           // Update title
           let titleElement = document.getElementsByTagName("title")[0] as HTMLElement;
@@ -175,9 +181,12 @@ window.addEventListener("message", (event) => {
           // Render frame
           // Commands change a visualizer's saved state only when it first draws; input covers the rest
           if (lastCommand === null) scheduleSaveState();
-          lastCommand = message.data.command;
+          lastCommand = patch ? applyTracksidePatch(lastCommand, patch) : message.data.command;
           if (renderer) {
-            guardedRender(() => renderer!.render(message.data.command));
+            guardedRender(() => {
+              if (patch && renderer instanceof TracksideRenderer) renderer.render(lastCommand, patch);
+              else renderer!.render(lastCommand);
+            });
             let aspectRatio = renderer.getAspectRatio();
             processAspectRatio(aspectRatio);
 
@@ -207,14 +216,16 @@ window.addEventListener("message", (event) => {
   }
 });
 
-window.addEventListener("resize", () => {
+function redrawLastCommand() {
   if (renderer === null || lastCommand === null) {
     return;
   }
   guardedRender(() => renderer!.render(lastCommand));
   let aspectRatio = renderer.getAspectRatio();
   if (aspectRatio) processAspectRatio(aspectRatio);
-});
+}
+window.addEventListener("resize", redrawLastCommand);
+window.addEventListener(LAYOUT_SIZE_EVENT, redrawLastCommand);
 
 function processAspectRatio(aspectRatio: number | null) {
   if (aspectRatio !== lastAspectRatio) {

@@ -8,6 +8,31 @@
 import { alertLine, dbcDefinition, isTracksideLive, Limits, tileLabel, tileState } from "../shared/Trackside";
 import { setHidden, setText } from "../shared/domWrite";
 
+let catalogue:
+  | {
+      log: typeof window.log;
+      fields: number;
+      metadata: number;
+      definitions: Map<string, NonNullable<ReturnType<typeof dbcDefinition>>>;
+    }
+  | undefined;
+
+function faultDefinitions() {
+  const log = window.log;
+  const fields = log.getFieldKeysVersion();
+  const metadata = log.getMetadataVersion();
+  if (catalogue?.log === log && catalogue.fields === fields && catalogue.metadata === metadata) {
+    return catalogue.definitions;
+  }
+  const definitions = new Map<string, NonNullable<ReturnType<typeof dbcDefinition>>>();
+  for (const key of log.getFieldKeys()) {
+    const definition = dbcDefinition(log.getMetadataString(key), key);
+    if (definition) definitions.set(key, definition);
+  }
+  catalogue = { log, fields, metadata, definitions };
+  return definitions;
+}
+
 export function updateTracksideAlerts(
   element: HTMLElement,
   allLimits: { [key: string]: Limits }[],
@@ -16,12 +41,7 @@ export function updateTracksideAlerts(
   const liveTime = window.selection.getCurrentLiveTime();
   const time = liveTime ?? window.selection.getRenderTime() ?? window.log.getTimestampRange()[1];
   const summary = window.liveStatus?.getLiveStatus();
-  const definitions = new Map(
-    window.log.getFieldKeys().flatMap((key) => {
-      const definition = dbcDefinition(window.log.getMetadataString(key), key);
-      return definition ? [[key, definition] as const] : [];
-    })
-  );
+  const definitions = faultDefinitions();
   const entries = [...definitions.keys()].map((key) => ({ key, limits: {} as Limits, fault: true }));
   allLimits.forEach((limits) =>
     Object.entries(limits).forEach(([key, limit]) => entries.push({ key, limits: limit, fault: false }))
@@ -50,6 +70,9 @@ export function updateTracksideAlerts(
   setText(element, result.text);
   const title = result.detail ? result.text + "\n" + result.detail : result.text;
   if (element.title !== title) element.title = title;
-  element.dataset.severity = result.severity;
-  document.body.classList.toggle("has-trackside-alerts", !!result.text);
+  if (element.dataset.severity !== result.severity) element.dataset.severity = result.severity;
+  const active = !!result.text;
+  if (document.body.classList.contains("has-trackside-alerts") !== active) {
+    document.body.classList.toggle("has-trackside-alerts", active);
+  }
 }

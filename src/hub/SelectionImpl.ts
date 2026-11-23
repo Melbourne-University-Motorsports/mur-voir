@@ -286,8 +286,6 @@ export default class SelectionImpl implements Selection {
     this.liveTimeSupplier = timeSupplier;
     if (newConnection) {
       this.setMode(SelectionMode.Locked);
-    } else {
-      this.setMode(this.mode); // Just update buttons
     }
   }
 

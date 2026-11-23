@@ -214,7 +214,6 @@ export default class LineGraphRenderer implements TabRenderer {
     // Initial setup and scaling
     const timeRange = command.timeRange;
     const devicePixelRatio = window.devicePixelRatio;
-    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     let [width, height] = clientSize(this.CANVAS);
     let light = !isDarkMode();
 
@@ -249,15 +248,19 @@ export default class LineGraphRenderer implements TabRenderer {
       command.sectorBar,
       command.deltaStrip?.range,
       command.deltaStrip?.fields.map((f) => [f.values.length, f.color, f.size]),
-      command.leftFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
-      command.discreteFields.map((field) => [
-        field.values.length,
-        field.color,
-        field.type,
-        field.toggleReference,
-        field.colorMap ? field.values : null // Specific values affect color-mapped fields so serialize full state
-      ]),
-      command.rightFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
+      command.dataRevision,
+      command.dataRevision === undefined &&
+        command.leftFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
+      command.dataRevision === undefined &&
+        command.discreteFields.map((field) => [
+          field.values.length,
+          field.color,
+          field.type,
+          field.toggleReference,
+          field.colorMap ? field.values : null // Specific values affect color-mapped fields so serialize full state
+        ]),
+      command.dataRevision === undefined &&
+        command.rightFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
       command.alerts.map((row) => row.map((alert) => [alert.type, alert.text, alert.range]))
     ];
     let renderStateString = JSON.stringify(renderState);
@@ -267,6 +270,7 @@ export default class LineGraphRenderer implements TabRenderer {
     this.lastRenderState = renderStateString;
 
     // Apply setup and scaling
+    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
     prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
     context.clearRect(0, 0, width, height);
     const trackside = document.body.classList.contains("trackside-layout");
@@ -530,42 +534,43 @@ export default class LineGraphRenderer implements TabRenderer {
           }
 
           switch (field.type) {
-            case "stepped":
+            case "stepped": {
               context.beginPath();
-              context.moveTo(
-                field.hold ? graphLeft + graphWidth : xScaler.calculate(field.timestamps[field.timestamps.length - 1]),
-                yScaler.calculate(field.values[field.values.length - 1])
-              );
-              let i = field.values.length - 1;
-              while (true) {
-                let x = xScaler.calculate(field.timestamps[i]);
-
-                // Render start of current data point
-                let value = field.values[i];
-                context.lineTo(x, yScaler.calculate(value));
-
-                // Find previous data point and vertical range
-                let currentX = Math.floor(x * devicePixelRatio);
-                let newX = currentX;
-                let vertRange = [value, value];
-                do {
-                  i--;
-                  let value = field.values[i];
-                  if (value < vertRange[0]) vertRange[0] = value;
-                  if (value > vertRange[1]) vertRange[1] = value;
-                  newX = Math.floor(xScaler.calculate(field.timestamps[i]) * devicePixelRatio);
-                } while (i >= 0 && newX >= currentX); // Compile values to vertical range until the pixel changes
-                if (i < 0) break;
-
-                // Render vertical range
-                context.moveTo(x, yScaler.calculate(vertRange[0]));
-                context.lineTo(x, yScaler.calculate(vertRange[1]));
-
-                // Move to end of previous data point
-                context.moveTo(x, yScaler.calculate(field.values[i]));
+              context.lineJoin = "round";
+              const { timestamps, values } = field;
+              let x = xScaler.calculate(timestamps[0]);
+              let y = yScaler.calculate(values[0]);
+              context.moveTo(x, y);
+              for (let i = 1; i < timestamps.length; ) {
+                x = xScaler.calculate(timestamps[i]);
+                const column = Math.floor(x * devicePixelRatio);
+                let min = values[i];
+                let max = min;
+                let last = min;
+                i++;
+                while (
+                  i < timestamps.length &&
+                  Math.floor(xScaler.calculate(timestamps[i]) * devicePixelRatio) === column
+                ) {
+                  last = values[i++];
+                  if (last < min) min = last;
+                  if (last > max) max = last;
+                }
+                context.lineTo(x, y);
+                const minY = yScaler.calculate(min);
+                const maxY = yScaler.calculate(max);
+                const nextY = yScaler.calculate(last);
+                if (minY !== nextY && minY !== y) context.lineTo(x, minY);
+                if (maxY !== nextY && maxY !== y) context.lineTo(x, maxY);
+                context.lineTo(x, nextY);
+                y = nextY;
               }
+              // Keep the last sample through the viewport edge unless the trace ends in a gap.
+              const endX = field.hold ? graphLeft + graphWidth : xScaler.calculate(timestamps[timestamps.length - 1]);
+              if (endX > x) context.lineTo(endX, y);
               context.stroke();
               break;
+            }
 
             case "smooth": {
               // Samples that land in the same device pixel column draw as one vertical span (lowest,
@@ -1106,6 +1111,8 @@ export default class LineGraphRenderer implements TabRenderer {
 }
 
 export type LineGraphRendererCommand = {
+  /** Changes when the controller rebuilds graph data, even if the sample counts stay the same. */
+  dataRevision?: number;
   message?: string;
   lapMode?: string;
   leftTitle?: string;

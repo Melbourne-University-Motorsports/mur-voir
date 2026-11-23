@@ -25,8 +25,7 @@ type Point = { t: number; v: number };
  * or a new bucket size (the visible span doubled or halved) rebuild it.
  */
 export default class DecimatedSeries {
-  private log: Log | null = null;
-  private key = "";
+  private field: LogField | null = null;
   private historyVersion = -1;
   private discardVersion = -1;
   private bucketSize = 0;
@@ -55,8 +54,7 @@ export default class DecimatedSeries {
 
     const bucketSize = 2 ** Math.ceil(Math.log2(span / TARGET_BUCKETS));
     if (
-      log !== this.log ||
-      key !== this.key ||
+      field !== this.field ||
       bucketSize !== this.bucketSize ||
       log.getHistoryVersion(key) !== this.historyVersion ||
       field.getDiscardVersion() !== this.discardVersion ||
@@ -65,12 +63,11 @@ export default class DecimatedSeries {
       this.reset(log, key, field, bucketSize);
     }
     this.consume(log, key, count);
-    return this.read(start, end);
+    return this.read(field, start, end);
   }
 
   private reset(log: Log, key: string, field: LogField, bucketSize: number) {
-    this.log = log;
-    this.key = key;
+    this.field = field;
     this.historyVersion = log.getHistoryVersion(key);
     this.discardVersion = field.getDiscardVersion();
     this.bucketSize = bucketSize;
@@ -128,23 +125,40 @@ export default class DecimatedSeries {
     }
   }
 
-  private read(start: number, end: number): { timestamps: number[]; values: number[] } {
-    // Completed buckets, from the point before `start` to the first point after `end`
+  private read(field: LogField, start: number, end: number): { timestamps: number[]; values: number[] } {
+    // Only complete buckets can use the reduction. The raw boundary ranges also provide the
+    // immediate neighbours for interpolation, including at an exact bucket boundary.
+    const firstFull = (Math.floor(start / this.bucketSize) + 1) * this.bucketSize;
+    const lastFullEnd = Math.floor(end / this.bucketSize) * this.bucketSize;
+    if (firstFull >= lastFullEnd) return field.getNumber(start, end)!;
+    const left = field.getNumber(start, firstFull)!;
+    const right = field.getNumber(lastFullEnd, end)!;
+    const timestamps: number[] = [];
+    const values: number[] = [];
+    for (let i = 0; i < left.timestamps.length && left.timestamps[i] < firstFull; i++) {
+      timestamps.push(left.timestamps[i]);
+      values.push(left.values[i]);
+    }
+
     let lo = 0;
     let hi = this.times.length;
     while (lo < hi) {
       const mid = (lo + hi) >> 1;
-      if (this.times[mid] < start) lo = mid + 1;
+      if (this.times[mid] < firstFull) lo = mid + 1;
       else hi = mid;
     }
-    let from = Math.max(0, lo - 1);
-    let to = from;
-    while (to < this.times.length && this.times[to] <= end) to++;
-    if (to < this.times.length) to++;
-    const timestamps = this.times.slice(from, to);
-    const values = this.values.slice(from, to);
-    // The open bucket, which is the newest data
-    if (to === this.times.length) this.flush(timestamps, values);
+    for (let i = lo; i < this.times.length && this.times[i] < lastFullEnd; i++) {
+      timestamps.push(this.times[i]);
+      values.push(this.values[i]);
+    }
+    if (this.openIndex * this.bucketSize >= firstFull && this.openIndex * this.bucketSize < lastFullEnd) {
+      this.flush(timestamps, values);
+    }
+    for (let i = 0; i < right.timestamps.length; i++) {
+      if (right.timestamps[i] < lastFullEnd) continue;
+      timestamps.push(right.timestamps[i]);
+      values.push(right.values[i]);
+    }
     return { timestamps, values };
   }
 }

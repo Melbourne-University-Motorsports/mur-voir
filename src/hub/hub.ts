@@ -71,6 +71,7 @@ declare global {
     tuner: LiveDataTuner | null;
     liveStatus: LiveStatusProvider | null;
     getLoadingFields(): Set<string>;
+    requestStateSave(): void;
 
     messagePort: MessagePort | null;
     sendMainMessage: (name: string, data?: any) => void;
@@ -283,19 +284,23 @@ function restoreState(state: HubState) {
   window.tabs.restoreState(state.tabs);
 }
 
-// Checked after frames so nothing is lost on quit, but only sent when it changed
+// Input and catalogue remaps can both change the saved layout.
 let lastSavedState = "";
-afterFrames(
-  () => {
-    const state = saveState();
-    const serialized = JSON.stringify(state);
-    if (serialized === lastSavedState) return;
-    lastSavedState = serialized;
-    window.sendMainMessage("save-state", state);
-  },
-  STATE_SAVE_PERIOD_MS,
-  QUIET_SAVE_PERIOD_MS
-);
+const saveChangedState = () => {
+  const state = saveState();
+  const serialized = JSON.stringify(state);
+  if (serialized === lastSavedState) return;
+  lastSavedState = serialized;
+  window.sendMainMessage("save-state", state);
+};
+afterFrames(saveChangedState, STATE_SAVE_PERIOD_MS, QUIET_SAVE_PERIOD_MS);
+let pendingStateSave: ReturnType<typeof setTimeout> | null = null;
+window.requestStateSave = () => {
+  pendingStateSave ??= setTimeout(() => {
+    pendingStateSave = null;
+    saveChangedState();
+  }, STATE_SAVE_PERIOD_MS);
+};
 
 // Main reads and merges the type memory file for each message, so only send changes
 let lastSavedTypeMemory = "";
@@ -640,11 +645,13 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
       liveConnected = true;
       window.log = log;
       window.selection.setLiveConnected(timeSupplier);
-      window.sidebar.refresh();
-      window.tabs.refresh();
+      const changed = source.takeChangedFields();
+      // Incremental batches have the same catalogue. The sidebar reads current values on text frames.
+      if (changed === null) window.sidebar.refresh();
+      window.tabs.refresh(changed);
       // Frames follow data that is on screen, up to the live frame cap. The live clock frames move
       // the timeline and age the freshness marks in between.
-      if (showsAnyField(source.takeChangedFields())) invalidateFrames();
+      if (showsAnyField(changed)) invalidateFrames();
     },
     (detail) => {
       if (liveConnection !== connection) return;

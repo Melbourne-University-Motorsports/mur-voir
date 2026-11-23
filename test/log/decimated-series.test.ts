@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import DecimatedSeries from "../../src/shared/log/DecimatedSeries";
 import Log from "../../src/shared/log/Log";
+import LogField from "../../src/shared/log/LogField";
+import LoggableType from "../../src/shared/log/LoggableType";
 
 const KEY = "/speed";
 const value = (i: number) => (i % 97 === 0 ? NaN : Math.sin(i / 50) * 100 + (i % 7));
@@ -81,4 +83,30 @@ test("inserted history rebuilds the reduction", () => {
   fill(whole, 0, 12000);
   assert.ok(after.timestamps.length > before.timestamps.length);
   assert.deepEqual(after, new DecimatedSeries().get(whole, KEY, 0, 250));
+});
+
+test("reduction returns the raw samples bracketing both viewport edges", () => {
+  const log = new Log();
+  for (let i = 0; i <= 5020; i++) log.putNumber(KEY, i / 100, i % 11);
+  const start = 0.105;
+  const end = 50.135;
+  const result = new DecimatedSeries().get(log, KEY, start, end)!;
+  const raw = log.getNumber(KEY, start, end)!;
+  assert.deepEqual(result.timestamps.slice(0, 2), raw.timestamps.slice(0, 2));
+  assert.deepEqual(result.values.slice(0, 2), raw.values.slice(0, 2));
+  assert.deepEqual(result.timestamps.slice(-2), raw.timestamps.slice(-2));
+  assert.deepEqual(result.values.slice(-2), raw.values.slice(-2));
+  assert.ok(result.timestamps.slice(1, -1).every((t) => t > start && t < end));
+});
+
+test("recreating a field with the same sample count invalidates the reduction", () => {
+  const log = new Log();
+  fill(log, 0, 5000);
+  const series = new DecimatedSeries();
+  assert.ok(series.get(log, KEY, 0, 99)?.values.some((v) => v < 1000));
+  log.deleteField(KEY);
+  const field = new LogField(LoggableType.Number);
+  for (let i = 0; i < 5000; i++) field.putNumber(i / 50, 1000 + i);
+  log.setField(KEY, field);
+  assert.ok(series.get(log, KEY, 0, 99)?.values.every((v) => v >= 1000));
 });

@@ -49,7 +49,9 @@ import TabType, {
   getTabIcon,
   NEW_TAB_TYPES
 } from "../../shared/TabType";
+import { applyTracksidePatch } from "../../shared/Trackside";
 import { BUILD_DATE, COPYRIGHT } from "../../shared/buildConstants";
+import type { TracksideRendererCommand } from "../../shared/renderers/TracksideRenderer";
 import { Units } from "../../shared/units";
 import { createUUID, formatDate } from "../../shared/util";
 import { GITHUB_REPOSITORY } from "../github";
@@ -246,10 +248,19 @@ async function assetSignature(folder: string): Promise<string> {
 /** The last command each satellite tab was sent, replayed to satellite windows that load or show later. */
 const latestSatelliteRenders: { [uuid: string]: { command: unknown; title: string; revision?: string } } = {};
 
+const deliveredSatelliteRevisions = new WeakMap<BrowserWindow, string>();
+
 function replaySatelliteRender(satellite: BrowserWindow, uuid: string) {
   const latest = latestSatelliteRenders[uuid];
-  if (latest !== undefined && !satellite.isDestroyed() && satellite.isVisible())
-    sendMessage(satellite, "render", latest);
+  if (
+    latest !== undefined &&
+    !satellite.isDestroyed() &&
+    satellite.isVisible() &&
+    sendMessage(satellite, "render", latest) &&
+    latest.revision !== undefined
+  ) {
+    deliveredSatelliteRevisions.set(satellite, latest.revision);
+  }
 }
 
 /** Sends the list of active satellites to all hub windows. */
@@ -1300,21 +1311,27 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       createSatellite({ parentWindow: window, uuid: message.data.uuid, type: message.data.type });
       break;
 
-    case "update-satellite":
-      let satelliteUUID = message.data.uuid;
-      let command = message.data.command;
-      let title = message.data.title;
-      let revision = message.data.revision;
-      // Hubs send only changed commands, so keep the latest for satellites that load or show later
-      latestSatelliteRenders[satelliteUUID] = { command: command, title: title, revision: revision };
-      if (satelliteUUID in satelliteWindows) {
-        satelliteWindows[satelliteUUID].forEach((satellite) => {
-          if (satellite.isVisible()) {
-            sendMessage(satellite, "render", latestSatelliteRenders[satelliteUUID]);
-          }
-        });
-      }
+    case "update-satellite": {
+      const { uuid, command, patch, baseRevision, title, revision } = message.data;
+      const previous = latestSatelliteRenders[uuid];
+      if (patch && (previous === undefined || previous.revision !== baseRevision)) break;
+      const latest = {
+        command: patch ? applyTracksidePatch(previous.command as TracksideRendererCommand, patch) : command,
+        title,
+        revision
+      };
+      // Keep a complete latest snapshot for newly loaded or newly visible windows.
+      latestSatelliteRenders[uuid] = latest;
+      satelliteWindows[uuid]?.forEach((satellite) => {
+        if (!satellite.isVisible()) return;
+        const update =
+          patch && deliveredSatelliteRevisions.get(satellite) === baseRevision
+            ? { patch, baseRevision, title, revision }
+            : latest;
+        if (sendMessage(satellite, "render", update)) deliveredSatelliteRevisions.set(satellite, revision);
+      });
       break;
+    }
 
     case "ask-2d-camera":
       select2DCameraPopup(window, message.data.position, message.data.selectedIndex);
@@ -2544,6 +2561,7 @@ function createSatellite(
   satellite.loadFile(path.join(__dirname, "../www/satellite.html"));
   let firstLoad = true;
   satellite.webContents.on("dom-ready", () => {
+    deliveredSatelliteRevisions.delete(satellite);
     // Create ports on reload
     const { port1, port2 } = new MessageChannelMain();
     satellite.webContents.postMessage("port", null, [port1]);

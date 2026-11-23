@@ -9,11 +9,11 @@
 //
 // Each (path, stream_id) keeps the exact set of seqs seen, stored as sorted runs of consecutive seqs. A
 // stream that arrives in order extends its last run, so memory follows the number of gaps, not samples.
-// Because the set is exact, history can fill a gap anywhere: before live data started, or while a tab
-// was hidden and its fields were not streamed.
+// Keep the set exact over the backend's backfill window. Once a sequence falls out of the window,
+// reject it on both live and history paths.
 
-/** Past this many runs per stream, the two oldest merge, so ancient gaps can no longer be backfilled. */
-const MAX_RUNS = 8192;
+/** The mock retains 360 seconds at up to 100 Hz per signal. */
+const SEQUENCE_WINDOW = 36_000;
 
 interface Runs {
   // Flat [start0, end0, start1, end1, ...] from index `base`, inclusive ends, ascending and non-adjacent
@@ -34,19 +34,19 @@ export class SampleDeduplicator {
     }
     const runs = stream.list;
 
-    // Common case: newer than everything seen (a throttled stream skips seqs, so it may start a run)
     const last = runs.length - 1;
+    const floor = Math.max(seq, runs[last]) - SEQUENCE_WINDOW + 1;
+    if (seq < floor) return false;
+
+    // Common case: a new maximum. Drop entire expired runs and trim any run crossing the floor.
     if (seq > runs[last]) {
       if (seq === runs[last] + 1) runs[last] = seq;
       else runs.push(seq, seq);
-      if (runs.length - stream.base > MAX_RUNS * 2) {
-        // Merge the two oldest runs, then drop the consumed prefix now and then
-        runs[stream.base + 2] = runs[stream.base];
-        stream.base += 2;
-        if (stream.base >= MAX_RUNS) {
-          runs.splice(0, stream.base);
-          stream.base = 0;
-        }
+      while (runs[stream.base + 1] < floor) stream.base += 2;
+      runs[stream.base] = Math.max(runs[stream.base], floor);
+      if (stream.base > 0 && stream.base * 2 >= runs.length) {
+        runs.splice(0, stream.base);
+        stream.base = 0;
       }
       return true;
     }
