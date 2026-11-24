@@ -351,7 +351,7 @@ export default class LineGraphRenderer implements TabRenderer {
     context.stroke();
   }
 
-  private drawDenseSteppedWindow(
+  private strokeDenseSteppedWindow(
     context: CanvasRenderingContext2D,
     samples: SteppedWindow,
     xScaler: ValueScaler,
@@ -364,9 +364,7 @@ export default class LineGraphRenderer implements TabRenderer {
     let y = yScaler.calculate(held);
     context.lineJoin = "round";
     context.beginPath();
-    let previousX = xScaler.calculate(first.timestamps[0]);
-    const thin = context.lineWidth === 1;
-    if (!thin) context.moveTo(previousX, y);
+    context.moveTo(xScaler.calculate(first.timestamps[0]), y);
     let column = NaN;
     let columnX = 0;
     let min = 0;
@@ -375,20 +373,10 @@ export default class LineGraphRenderer implements TabRenderer {
     const flush = () => {
       if (Number.isNaN(column)) return;
       const nextY = yScaler.calculate(last);
-      if (thin) {
-        // The union of the held horizontal and the column's vertical extent is enough
-        // for a thin trace. This avoids stroking a path that doubles back over each peak.
-        const minY = yScaler.calculate(Math.min(min, held));
-        const maxY = yScaler.calculate(Math.max(max, held));
-        context.rect(previousX - 0.5, y - 0.5, columnX - previousX + 1, 1);
-        context.rect(columnX - 0.5, Math.min(minY, maxY) - 0.5, 1, Math.abs(maxY - minY) + 1);
-        previousX = columnX;
-      } else {
-        context.lineTo(columnX, y);
-        if (min !== last && min !== held) context.lineTo(columnX, yScaler.calculate(min));
-        if (max !== last && max !== held) context.lineTo(columnX, yScaler.calculate(max));
-        context.lineTo(columnX, nextY);
-      }
+      context.lineTo(columnX, y);
+      if (min !== last && min !== held) context.lineTo(columnX, yScaler.calculate(min));
+      if (max !== last && max !== held) context.lineTo(columnX, yScaler.calculate(max));
+      context.lineTo(columnX, nextY);
       y = nextY;
       held = last;
     };
@@ -410,13 +398,8 @@ export default class LineGraphRenderer implements TabRenderer {
       }
     }
     flush();
-    if (thin) {
-      context.rect(previousX - 0.5, y - 0.5, right - previousX + 1, 1);
-      context.fill();
-    } else {
-      context.lineTo(right, y);
-      context.stroke();
-    }
+    context.lineTo(right, y);
+    context.stroke();
   }
 
   private appendSteppedChunk(
@@ -777,7 +760,7 @@ export default class LineGraphRenderer implements TabRenderer {
               devicePixelRatio
             );
           } else {
-            this.drawDenseSteppedWindow(context, samples, xScaler, yScaler, graphLeft + graphWidth, devicePixelRatio);
+            this.strokeDenseSteppedWindow(context, samples, xScaler, yScaler, graphLeft + graphWidth, devicePixelRatio);
           }
           return;
         }
