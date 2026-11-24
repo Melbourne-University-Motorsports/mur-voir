@@ -285,19 +285,17 @@ test("dense stepped paths retain both extremes and the held value in a device pi
   }
   const range: [number, number] = [0, 1];
   const samples = new SteppedSeries().get(log.getField("v")!, 0, "", range, (v) => v);
-  const points: number[][] = [];
+  const rects: number[][] = [];
   const context = {
+    lineWidth: 1,
     beginPath() {},
-    moveTo(x: number, y: number) {
-      points.push([x, y]);
+    rect(...rectangle: number[]) {
+      rects.push(rectangle);
     },
-    lineTo(x: number, y: number) {
-      points.push([x, y]);
-    },
-    stroke() {}
+    fill() {}
   };
   const renderer = Object.create(LineGraphRenderer.prototype);
-  renderer.strokeDenseSteppedWindow(
+  renderer.drawDenseSteppedWindow(
     context,
     samples,
     new ValueScaler(range, [0, 4]),
@@ -305,12 +303,6 @@ test("dense stepped paths retain both extremes and the held value in a device pi
     4,
     1
   );
-  assert.deepEqual(points.slice(0, 5), [
-    [0, 0],
-    [0.64, 0],
-    [0.64, -4],
-    [0.64, 7],
-    [0.64, 3]
-  ]);
-  assert.deepEqual(points.at(-1), [4, 2]);
+  assert.deepEqual(rects[1], [0.14, -4.5, 1, 12]);
+  assert.deepEqual(rects.at(-1), [3.2 - 0.5, 1.5, 4 - 3.2 + 1, 1]);
 });
