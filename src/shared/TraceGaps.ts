@@ -14,7 +14,7 @@ import Log from "./log/Log";
 /** A missing stretch. `t1` is Infinity (and `v1` NaN) when the stream has not resumed. */
 export type TraceGap = { t0: number; v0: number; t1: number; v1: number };
 
-const MIN_GAP_SECONDS = 1;
+const MIN_GAP_SECONDS = 2;
 const GAP_PERIOD_FACTOR = 10;
 
 /**
@@ -81,7 +81,7 @@ export class PeriodStats {
 
 /**
  * Time step above which a field counts as having a gap, or null if the field must not be bridged
- * (logged only on change: median period over 1 s). Until a period is known, use the 1 s floor.
+ * (logged only on change: median period over 2 s). Until a period is known, use the 2 s floor.
  */
 export function gapThreshold(medianPeriod: number | null): number | null {
   if (medianPeriod === null || !(medianPeriod > 0)) return MIN_GAP_SECONDS;

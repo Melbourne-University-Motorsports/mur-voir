@@ -10,12 +10,12 @@ import test from "node:test";
 import { clipGaps, findGaps, gapThreshold, isUnresumed, PeriodStats, prepareTrace } from "../src/shared/TraceGaps";
 
 const resumed = { t0: 0.2, v0: 2, t1: 5, v1: 5 };
-test("threshold is strictly greater than max(1 second, ten median periods)", () => {
-  assert.equal(gapThreshold(0.02), 1);
+test("threshold is strictly greater than max(2 seconds, ten median periods)", () => {
+  assert.equal(gapThreshold(0.02), 2);
   assert.equal(gapThreshold(0.2), 2);
   assert.equal(gapThreshold(1), 10);
-  assert.deepEqual(findGaps([0, 1], [1, 2], 1, 1), []);
-  assert.equal(findGaps([0, 1.01], [1, 2], 1, 1.01).length, 1);
+  assert.deepEqual(findGaps([0, 2], [1, 2], 2, 2), []);
+  assert.equal(findGaps([0, 2.01], [1, 2], 2, 2.01).length, 1);
 });
 test("exact whole-log median is cached and updates for appended samples", () => {
   const stats = new PeriodStats();
@@ -28,8 +28,8 @@ test("exact whole-log median is cached and updates for appended samples", () => 
 });
 test("even median averages the middle periods; cutoff is exact", () => {
   const stats = new PeriodStats();
-  stats.update([0, 1, 2.002]);
-  assert.ok(stats.median()! > 1);
+  stats.update([0, 2, 4.002]);
+  assert.ok(stats.median()! > 2);
   assert.equal(gapThreshold(stats.median()), null);
 });
 test("period cache resets after truncation, replacement and inserted history", () => {
@@ -43,8 +43,8 @@ test("period cache resets after truncation, replacement and inserted history", (
   assert.equal(stats.median(), null);
 });
 test("on-change fields opt out; a new field uses the minimum threshold", () => {
-  assert.equal(gapThreshold(2), null);
-  assert.equal(gapThreshold(null), 1);
+  assert.equal(gapThreshold(2.1), null);
+  assert.equal(gapThreshold(null), 2);
   assert.ok(isUnresumed(findGaps([0], [2], gapThreshold(null)!, 0.1, true)));
 });
 test("zoom inside a gap keeps whole-log threshold and real bridge endpoints", () => {
