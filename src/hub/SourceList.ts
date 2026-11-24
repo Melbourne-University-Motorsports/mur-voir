@@ -16,6 +16,7 @@ import {
   SourceListTypeMemoryEntry
 } from "../shared/SourceListConfig";
 import { formatChannelValue, rawChannelValue } from "../shared/display/ChannelProfile";
+import { clientSize } from "../shared/domWrite";
 import {
   grabModuleVelocities,
   grabPosesAuto,
@@ -28,7 +29,7 @@ import { getLogValueText, getOrDefault } from "../shared/log/LogUtil";
 import LoggableType from "../shared/log/LoggableType";
 import { Units } from "../shared/units";
 import { createUUID, jsonCopy } from "../shared/util";
-import { isTextFrame, requestFrame } from "./FrameScheduler";
+import { invalidateFrames, isTextFrame, requestFrame } from "./FrameScheduler";
 
 export default class SourceList {
   private events = new AbortController();
@@ -107,6 +108,7 @@ export default class SourceList {
   private CLEAR_BUTTON: HTMLButtonElement;
   private HELP_BUTTON: HTMLButtonElement;
   private LIST: HTMLElement;
+  private listScrollTop = 0;
   private HAND_ICON: HTMLImageElement;
   private DRAG_HIGHLIGHT: HTMLElement;
   private DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
@@ -195,6 +197,14 @@ export default class SourceList {
     this.HELP_BUTTON.hidden = editButtonCallback !== undefined;
 
     this.LIST = document.createElement("div");
+    this.LIST.addEventListener(
+      "scroll",
+      () => {
+        this.listScrollTop = this.LIST.scrollTop;
+        invalidateFrames();
+      },
+      { passive: true, signal: this.events.signal }
+    );
     this.ROOT.appendChild(this.LIST);
     this.LIST.classList.add("list");
 
@@ -935,11 +945,18 @@ export default class SourceList {
     }
   }
 
-  /** Update the preview values of all items. */
+  /** Refresh previews only for rows inside the scroll area. */
   private updateAllPreviews() {
-    let count = Math.min(this.state.length, this.LIST.childElementCount);
-    for (let i = 0; i < count; i++) {
-      this.updatePreview(this.LIST.children[i] as HTMLElement, this.state[i]);
+    const count = Math.min(this.state.length, this.LIST.childElementCount);
+    const time = window.selection.getRenderTime();
+    const bottom = this.listScrollTop + clientSize(this.LIST)[1];
+    let top = 0;
+    for (let i = 0; i < count && top < bottom; i++) {
+      const item = this.LIST.children[i] as HTMLElement;
+      if (top + (parseFloat(item.style.height) || 30) > this.listScrollTop) {
+        this.updatePreview(item, this.state[i], time);
+      }
+      top += parseFloat(item.style.height) || 30;
     }
   }
 
@@ -1267,8 +1284,7 @@ export default class SourceList {
    * @param item The HTML element to update
    * @param state The associated item state
    */
-  private updatePreview(item: HTMLElement, state: SourceListItemState) {
-    let time = window.selection.getRenderTime();
+  private updatePreview(item: HTMLElement, state: SourceListItemState, time = window.selection.getRenderTime()) {
     let valueSymbol = item.getElementsByClassName("value-symbol")[0] as HTMLElement;
     let valueText = item.getElementsByClassName("value")[0] as HTMLElement;
     let typeConfig = this.config.types.find((typeConfig) => typeConfig.key === state.type);
@@ -1514,6 +1530,8 @@ export default class SourceList {
     if (text !== null && text !== this.previewTexts.get(valueText)) {
       this.previewTexts.set(valueText, text);
       if (text.includes("\n") || text.includes("\r")) valueText.innerText = text;
+      else if (valueText.firstChild?.nodeType === Node.TEXT_NODE && valueText.firstChild === valueText.lastChild)
+        valueText.firstChild.nodeValue = text;
       else valueText.textContent = text;
     }
   }

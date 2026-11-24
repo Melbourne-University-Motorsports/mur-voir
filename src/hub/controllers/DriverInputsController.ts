@@ -90,10 +90,10 @@ export default class DriverInputsController implements TabController {
 
     let sources = this.sourceList.getState();
     return {
-      steering: sourceNumberAt(sources, "steering", time, "degrees", this.UUID),
-      throttle: sourceNumberAt(sources, "throttle", time, "percent", this.UUID),
-      brakeFront: sourceNumberAt(sources, "brakeFront", time, "psi", this.UUID),
-      brakeRear: sourceNumberAt(sources, "brakeRear", time, "psi", this.UUID),
+      steering: sourceNumberAt(sources, "steering", time, "degrees"),
+      throttle: sourceNumberAt(sources, "throttle", time, "percent"),
+      brakeFront: sourceNumberAt(sources, "brakeFront", time, "psi"),
+      brakeRear: sourceNumberAt(sources, "brakeRear", time, "psi"),
       brakeScale: this.brakeScale
     };
   }

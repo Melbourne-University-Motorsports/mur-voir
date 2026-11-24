@@ -360,7 +360,8 @@ export default class LineGraphRenderer implements TabRenderer {
     ratio: number
   ) {
     const first = samples.chunks[0];
-    let y = yScaler.calculate(first.values[0]);
+    let held = first.values[0];
+    let y = yScaler.calculate(held);
     context.lineJoin = "round";
     context.beginPath();
     context.moveTo(xScaler.calculate(first.timestamps[0]), y);
@@ -371,14 +372,13 @@ export default class LineGraphRenderer implements TabRenderer {
     let last = 0;
     const flush = () => {
       if (Number.isNaN(column)) return;
-      const minY = yScaler.calculate(min);
-      const maxY = yScaler.calculate(max);
       const nextY = yScaler.calculate(last);
       context.lineTo(columnX, y);
-      if (minY !== nextY && minY !== y) context.lineTo(columnX, minY);
-      if (maxY !== nextY && maxY !== y) context.lineTo(columnX, maxY);
+      if (min !== last && min !== held) context.lineTo(columnX, yScaler.calculate(min));
+      if (max !== last && max !== held) context.lineTo(columnX, yScaler.calculate(max));
       context.lineTo(columnX, nextY);
       y = nextY;
+      held = last;
     };
     for (const chunk of samples.chunks) {
       for (let i = chunk === first ? 1 : 0; i < chunk.timestamps.length; i++) {

@@ -125,6 +125,7 @@ export default class Timeline {
 
   private static darkQuery: MediaQueryList | null = null;
   private tickWidths = new Map<string, number>();
+  private helpTextWidth?: number;
   private lastDraw: { key: string; range: [number, number] } | null = null;
 
   /** Opacity of the "Scroll timeline to zoom" hint, which fades out after the first zoom. */
@@ -307,7 +308,7 @@ export default class Timeline {
     // Draw tick marks
     let helpText = "Scroll timeline to zoom";
     context.font = helpFont;
-    let helpTextWidth = context.measureText(helpText).width;
+    const helpTextWidth = (this.helpTextWidth ??= context.measureText(helpText).width);
 
     context.lineWidth = 0.5;
     context.strokeStyle = light ? "#222" : "#eee";

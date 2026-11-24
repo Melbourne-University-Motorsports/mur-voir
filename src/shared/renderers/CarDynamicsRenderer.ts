@@ -40,7 +40,9 @@ export default class CarDynamicsRenderer implements TabRenderer {
 
   render(command: CarDynamicsRendererCommand): void {
     // Exit if render state unchanged
-    let renderState: any[] = [...clientSize(this.CONTAINER), isDarkMode(), window.devicePixelRatio, command];
+    const dimensions = clientSize(this.CONTAINER);
+    const isLight = !isDarkMode();
+    let renderState: any[] = [...dimensions, isLight, window.devicePixelRatio, command];
     let renderStateString = JSON.stringify(renderState);
     if (renderStateString === this.lastRenderState) {
       return;
@@ -50,14 +52,13 @@ export default class CarDynamicsRenderer implements TabRenderer {
 
     // Update canvas size
     let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    let size = Math.min(...clientSize(this.CONTAINER));
+    let size = Math.min(...dimensions);
     setStyle(this.CANVAS, "width", size.toString() + "px");
     setStyle(this.CANVAS, "height", size.toString() + "px");
     prepareCanvas(this.CANVAS, context, size, size, window.devicePixelRatio);
     context.lineCap = "round";
     context.lineJoin = "round";
     let centerPx: [number, number] = [size / 2, size / 2];
-    let isLight = !isDarkMode();
     let strokeColor = isLight ? this.BLACK_COLOR : this.WHITE_COLOR;
 
     // Calculate component dimensions
@@ -252,9 +253,12 @@ export default class CarDynamicsRenderer implements TabRenderer {
 
     // Draw damper positions beside each wheel
     context.fillStyle = strokeColor;
-    context.font = (size * 0.035).toString() + "px sans-serif";
+    context.font =
+      (size * (command.dampers.some((value) => value !== null) ? 0.025 : 0.035)).toString() + "px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
+    context.strokeStyle = strokeColor;
+    context.lineWidth = 5;
     command.dampers.forEach((value, index) => {
       if (value === null) return;
       let corner = [
@@ -272,11 +276,8 @@ export default class CarDynamicsRenderer implements TabRenderer {
       const x = textPx[0] - axisWidth / 2;
       const y = textPx[1] - axisHeight / 2;
       const scaledValue = Math.max(Math.min(value / (command.damperRange ?? 50), 1), 0);
-      context.strokeStyle = strokeColor;
-      context.lineWidth = 5;
       context.strokeRect(x, y, axisWidth, axisHeight);
       context.fillRect(x, y + axisHeight - axisHeight * scaledValue, axisWidth, axisHeight * scaledValue);
-      context.font = (size * 0.025).toString() + "px sans-serif";
       context.fillText(
         value.toFixed(1) + " / " + (command.damperRange ?? 50) + " mm",
         textPx[0],

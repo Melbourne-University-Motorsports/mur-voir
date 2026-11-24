@@ -28,18 +28,18 @@ function makeLog() {
 
 test("values convert from the field's unit to the DBC unit", () => {
   makeLog();
-  assert.equal(numberAt("/CAN/Dashboard_Dynamics/DASH_SteeringAngle", 2, "degrees", "t"), 90);
-  assert.ok(Math.abs(numberAt("/live/driver/steering_angle", 2, "degrees", "t")! - 90) < 1e-9);
-  assert.ok(Math.abs(numberAt("/live/driver/throttle", 2, "percent", "t")! - 25) < 1e-9);
-  assert.ok(Math.abs(numberAt("/live/driver/brake_pressure_front", 2, "psi", "t")! - 1) < 1e-9);
+  assert.equal(numberAt("/CAN/Dashboard_Dynamics/DASH_SteeringAngle", 2, "degrees"), 90);
+  assert.ok(Math.abs(numberAt("/live/driver/steering_angle", 2, "degrees")! - 90) < 1e-9);
+  assert.ok(Math.abs(numberAt("/live/driver/throttle", 2, "percent")! - 25) < 1e-9);
+  assert.ok(Math.abs(numberAt("/live/driver/brake_pressure_front", 2, "psi")! - 1) < 1e-9);
 });
 
 test("missing fields, samples before the first one and NaN sentinels read as no data", () => {
   makeLog();
-  assert.equal(numberAt(undefined, 2, "degrees", "t"), null);
-  assert.equal(numberAt("/missing", 2, "degrees", "t"), null);
-  assert.equal(numberAt("/CAN/Dashboard_Dynamics/DASH_SteeringAngle", 0, "degrees", "t"), null);
-  assert.equal(numberAt("/CAN/ECU_DashData2/ECU_BrakePressFront", 2, "psi", "t"), null);
+  assert.equal(numberAt(undefined, 2, "degrees"), null);
+  assert.equal(numberAt("/missing", 2, "degrees"), null);
+  assert.equal(numberAt("/CAN/Dashboard_Dynamics/DASH_SteeringAngle", 0, "degrees"), null);
+  assert.equal(numberAt("/CAN/ECU_DashData2/ECU_BrakePressFront", 2, "psi"), null);
 });
 
 test("known incompatible units are no data, while unknown units keep the raw value", () => {
@@ -47,15 +47,15 @@ test("known incompatible units are no data, while unknown units keep the raw val
   log.putNumber("/voltage", 1, 12);
   log.setMetadataString("/voltage", JSON.stringify({ unit: "V" }));
   log.putNumber("/raw", 1, 12);
-  assert.equal(numberAt("/voltage", 2, "psi", "t"), null);
-  assert.equal(numberAt("/raw", 2, "psi", "t"), 12);
+  assert.equal(numberAt("/voltage", 2, "psi"), null);
+  assert.equal(numberAt("/raw", 2, "psi"), 12);
 });
 
 for (const operation of ["setField", "mergeWith", "metadata"]) {
   test(`a unit change through ${operation} discards the cached unit`, () => {
     const log = makeLog();
     const key = "/live/driver/steering_angle";
-    assert.equal(numberAt(key, 2, "degrees", "t"), 90);
+    assert.equal(numberAt(key, 2, "degrees"), 90);
     const metadata = JSON.stringify({ unit: "V" });
     const replacement = new Log();
     replacement.putNumber(key, 1, 12);
@@ -64,7 +64,7 @@ for (const operation of ["setField", "mergeWith", "metadata"]) {
     else if (operation === "mergeWith") log.mergeWith(replacement);
     else log.setMetadataString(key, metadata);
     assert.equal(log.getUnit(key), "volts");
-    assert.equal(numberAt(key, 2, "degrees", "t"), null);
+    assert.equal(numberAt(key, 2, "degrees"), null);
   });
 }
 

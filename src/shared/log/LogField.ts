@@ -284,6 +284,15 @@ export default class LogField {
     if (this.type === LoggableType.Boolean) return this.getRange(start, end, uuid, startOffset);
   }
 
+  /** Reads the held number without copying the neighbouring samples. */
+  getNumberAt(timestamp: number): number | undefined {
+    const { timestamps, values } = this.data;
+    if (this.type !== LoggableType.Number || !(timestamp >= timestamps[this.dataStart])) return undefined;
+    const last = timestamps.length - 1;
+    if (timestamp >= timestamps[last]) return values[last];
+    return values[this.findTimestampIndex(timestamp, false) - 1];
+  }
+
   /** Reads a set of Number values from the field. */
   getNumber(start: number, end: number, uuid?: string, startOffset?: number): LogValueSetNumber | undefined {
     if (this.type === LoggableType.Number) return this.getRange(start, end, uuid, startOffset);
