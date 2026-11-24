@@ -25,18 +25,29 @@ const types = {
   ".png": "image/png"
 };
 
+const agent = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
+
 function proxy(req, res) {
   const upstream = http.request(
     new URL(req.url, backend),
-    { method: req.method, headers: { ...req.headers, host: backend.host } },
+    { agent, method: req.method, headers: { ...req.headers, host: backend.host } },
     (reply) => {
       res.writeHead(reply.statusCode, reply.headers);
       reply.pipe(res);
+      reply.on("error", () => res.destroy());
     }
   );
+  res.on("close", () => {
+    if (!res.writableEnded) upstream.destroy();
+  });
+  req.on("error", () => upstream.destroy());
   upstream.on("error", () => {
-    res.writeHead(502);
-    res.end("Backend unavailable");
+    if (!res.headersSent) {
+      res.writeHead(502);
+      res.end("Backend unavailable");
+    } else {
+      res.destroy();
+    }
   });
   req.pipe(upstream);
 }
@@ -86,23 +97,59 @@ const server = http.createServer(async (req, res) => {
     res.end("Not found");
   }
 });
+function formatHeaders(headers) {
+  return Object.entries(headers)
+    .flatMap(([key, value]) => (Array.isArray(value) ? value.map((v) => `${key}: ${v}`) : `${key}: ${value}`))
+    .join("\r\n");
+}
+
 server.on("upgrade", (req, socket, head) => {
   if (!req.url.startsWith("/api/")) return socket.destroy();
-  const upstream = http.request(new URL(req.url, backend), { headers: { ...req.headers, host: backend.host } });
-  upstream.on("upgrade", (reply, peer, peerHead) => {
-    socket.write(
-      `HTTP/1.1 101 Switching Protocols\r\n${Object.entries(reply.headers)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("\r\n")}\r\n\r\n`
-    );
+  const upstream = http.request(new URL(req.url, backend), {
+    agent: false,
+    headers: { ...req.headers, host: backend.host }
+  });
+  let peer = null;
+  let closed = false;
+  const abort = () => {
+    if (closed) return;
+    closed = true;
+    peer?.destroy();
+    socket.destroy();
+    upstream.destroy();
+  };
+  const onReadable = () => {};
+  socket.on("readable", onReadable);
+  socket.on("end", abort);
+  socket.on("close", abort);
+  socket.on("error", abort);
+  upstream.on("error", abort);
+  upstream.on("response", (reply) => {
+    socket.off("readable", onReadable);
+    if (closed || socket.destroyed) {
+      reply.destroy();
+      return abort();
+    }
+    const statusLine = `HTTP/1.1 ${reply.statusCode} ${reply.statusMessage ?? ""}`;
+    socket.write(`${statusLine}\r\n${formatHeaders(reply.headers)}\r\n\r\n`);
+    reply.pipe(socket);
+    reply.on("error", abort);
+    reply.on("close", abort);
+  });
+  upstream.on("upgrade", (reply, peerSocket, peerHead) => {
+    socket.off("readable", onReadable);
+    if (closed || socket.destroyed) {
+      peerSocket.destroy();
+      return abort();
+    }
+    peer = peerSocket;
+    peer.on("error", abort);
+    peer.on("close", abort);
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\n${formatHeaders(reply.headers)}\r\n\r\n`);
     if (peerHead.length) socket.write(peerHead);
     if (head.length) peer.write(head);
     socket.pipe(peer).pipe(socket);
-    socket.on("error", () => peer.destroy());
-    peer.on("error", () => socket.destroy());
-    socket.on("close", () => peer.destroy());
   });
-  upstream.on("error", () => socket.destroy());
   upstream.end();
 });
 server.listen(port, "0.0.0.0", () => console.log(`mur-voir Lite: http://localhost:${port} (MUR backend ${backend})`));
