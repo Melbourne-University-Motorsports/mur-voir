@@ -1513,7 +1513,8 @@ export default class SourceList {
     if (item.style.height !== height) item.style.height = height;
     if (text !== null && text !== this.previewTexts.get(valueText)) {
       this.previewTexts.set(valueText, text);
-      valueText.innerText = text;
+      if (text.includes("\n") || text.includes("\r")) valueText.innerText = text;
+      else valueText.textContent = text;
     }
   }
 }

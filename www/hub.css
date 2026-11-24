@@ -1196,6 +1196,7 @@ div.source-list div.item.child img.value-symbol {
 }
 
 div.source-list div.value {
+  contain: strict;
   position: absolute;
   top: 30px;
   height: 15px;

@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
+import Tabs from "../src/hub/Tabs";
 import TabType, { filterRestorableTabs, getAllTabTypes, NEW_TAB_TYPES } from "../src/shared/TabType";
 
 const tabs = (types: number[]) => types.map((type) => ({ type: type as TabType }));
@@ -42,4 +43,24 @@ test("Driver Inputs and Car Dynamics restore under new ids while 8 and 9 stay re
     filterRestorableTabs(tabs([8, 16, 9, 17]), 3).tabs.map((tab) => tab.type),
     [TabType.DriverInputs, TabType.CarDynamics]
   );
+});
+
+test("renaming a tab refreshes the overflow shadows with the new title width", () => {
+  const titleElement = { innerText: "" };
+  const tabs = Object.assign(Object.create(Tabs.prototype), {
+    tabList: [{ type: TabType.LineGraph, titleElement, title: "" }],
+    TAB_BAR: {
+      scrollLeft: 0,
+      clientWidth: 780,
+      get scrollWidth() {
+        return titleElement.innerText.length > 30 ? 2632 : 780;
+      }
+    },
+    SHADOW_LEFT: { style: { opacity: "0" } },
+    SHADOW_RIGHT: { style: { opacity: "0" } }
+  });
+  tabs.renameTab(0, "A long title ".repeat(20));
+  assert.equal(tabs.SHADOW_RIGHT.style.opacity, "1");
+  tabs.renameTab(0, "Short");
+  assert.equal(tabs.SHADOW_RIGHT.style.opacity, "0");
 });

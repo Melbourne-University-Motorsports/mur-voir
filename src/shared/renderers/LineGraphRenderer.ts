@@ -19,8 +19,9 @@ import { clientSize, isDarkMode, prepareCanvas, setStyle } from "../domWrite";
 import { niceTicks } from "../laps/LapAnalysis";
 import { interpolate } from "../laps/LapEngine";
 import { LapViewport } from "../laps/LapViewport";
+import { SteppedChunk, SteppedSeries, SteppedWindow, steppedWindows } from "../log/SteppedSeries";
 
-type SteppedChunk = {
+type DataPath = {
   times: number[];
   values: number[];
   path: Path2D;
@@ -28,7 +29,7 @@ type SteppedChunk = {
 
 /** Caches one-second spans in data coordinates so a scrolling plot reuses its settled history. */
 class SteppedPaths {
-  private chunks = new Map<number, SteppedChunk>();
+  private chunks = new Map<number, DataPath>();
 
   project(
     timestamps: number[],
@@ -40,7 +41,7 @@ class SteppedPaths {
   ): Path2D {
     const path = new Path2D();
     const transform = new DOMMatrix([xScale, 0, 0, yScale, 0, 0]);
-    const next = new Map<number, SteppedChunk>();
+    const next = new Map<number, DataPath>();
     for (let start = 1; start < timestamps.length; ) {
       const bucket = Math.floor(timestamps[start]);
       let end = start + 1;
@@ -107,6 +108,10 @@ export default class LineGraphRenderer implements TabRenderer {
   private axisTextWidths = new Map<string, number>();
   private leftSteppedPaths: SteppedPaths[][] = [];
   private rightSteppedPaths: SteppedPaths[][] = [];
+  private steppedInteriors = new WeakMap<
+    SteppedSeries,
+    { chunks: SteppedChunk[]; raw: Path2D; projected?: { x: number; y: number; path: Path2D } }
+  >();
   private lapViewport = new LapViewport();
   private mouseDownX = 0;
   private grabZoomActive = false;
@@ -257,6 +262,111 @@ export default class LineGraphRenderer implements TabRenderer {
     let valueClean = Math.abs(value) < this.MAX_DECIMAL_VALUE ? cleanFloat(value) : Math.round(value);
     let output = valueClean.toString();
     return output;
+  }
+
+  private strokeSteppedWindow(
+    context: CanvasRenderingContext2D,
+    samples: SteppedWindow,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    xScale: number,
+    yScale: number,
+    right: number,
+    ratio: number
+  ) {
+    const { chunks, series } = samples;
+    const leading = samples.clippedStart ? 1 : 0;
+    const tail = chunks.length - 1;
+    context.lineJoin = "round";
+    context.beginPath();
+
+    let boundaryStart = 0;
+    if (leading < tail) {
+      const first = chunks[leading];
+      const last = chunks[tail - 1];
+      const firstTime = first.timestamps[0];
+      const firstValue = first.values[0];
+      let interior = this.steppedInteriors.get(series);
+      if (
+        interior === undefined ||
+        interior.chunks.length > tail - leading ||
+        interior.chunks.some((chunk, i) => chunk !== chunks[leading + i])
+      ) {
+        const raw = new Path2D();
+        raw.moveTo(0, 0);
+        interior = { chunks: [], raw };
+        this.steppedInteriors.set(series, interior);
+      }
+      if (interior.chunks.length < tail - leading) {
+        // Only a newly settled chunk needs to add segments to the path.
+        const previous = interior.chunks.at(-1);
+        let held = previous?.values.at(-1) ?? firstValue;
+        for (let i = leading + interior.chunks.length; i < tail; i++) {
+          const chunk = chunks[i];
+          for (let j = i === leading ? 1 : 0; j < chunk.timestamps.length; j++) {
+            const x = chunk.timestamps[j] - firstTime;
+            interior.raw.lineTo(x, held - firstValue);
+            interior.raw.lineTo(x, chunk.values[j] - firstValue);
+            held = chunk.values[j];
+          }
+          interior.chunks.push(chunk);
+        }
+        interior.projected = undefined;
+      }
+      if (interior.projected?.x !== xScale || interior.projected.y !== yScale) {
+        const path = new Path2D();
+        path.addPath(interior.raw, new DOMMatrix([xScale, 0, 0, yScale, 0, 0]));
+        interior.projected = { x: xScale, y: yScale, path };
+      }
+      context.setTransform(
+        ratio,
+        0,
+        0,
+        ratio,
+        xScaler.calculate(firstTime) * ratio,
+        yScaler.calculate(firstValue) * ratio
+      );
+      context.stroke(interior.projected.path);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      if (leading > 0) {
+        const left = chunks[0];
+        context.moveTo(xScaler.calculate(left.timestamps[0]), yScaler.calculate(left.values[0]));
+        const y = this.appendSteppedChunk(context, left, 1, xScaler, yScaler, yScaler.calculate(left.values[0]));
+        const x = xScaler.calculate(firstTime);
+        context.lineTo(x, y);
+        context.lineTo(x, yScaler.calculate(firstValue));
+      }
+      boundaryStart = tail;
+      context.moveTo(xScaler.calculate(last.timestamps.at(-1)!), yScaler.calculate(last.values.at(-1)!));
+    } else {
+      context.moveTo(xScaler.calculate(chunks[0].timestamps[0]), yScaler.calculate(chunks[0].values[0]));
+    }
+
+    let y = yScaler.calculate(boundaryStart === 0 ? chunks[0].values[0] : chunks[boundaryStart - 1].values.at(-1)!);
+    for (let i = boundaryStart; i <= tail; i++) {
+      y = this.appendSteppedChunk(context, chunks[i], i === 0 ? 1 : 0, xScaler, yScaler, y);
+    }
+    context.lineTo(right, y);
+    context.stroke();
+  }
+
+  private appendSteppedChunk(
+    context: CanvasRenderingContext2D,
+    chunk: SteppedChunk,
+    start: number,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    y: number
+  ): number {
+    const { timestamps, values } = chunk;
+    for (let i = start; i < timestamps.length; i++) {
+      const x = xScaler.calculate(timestamps[i]);
+      context.lineTo(x, y);
+      y = yScaler.calculate(values[i]);
+      context.lineTo(x, y);
+    }
+    return y;
   }
 
   render(command: LineGraphRendererCommand): void {
@@ -573,6 +683,34 @@ export default class LineGraphRenderer implements TabRenderer {
       const yScale = -graphHeightOpen / (yRange[1] - yRange[0]);
       paths.length = fields.length;
       fields.forEach((original, fieldIndex) => {
+        context.strokeStyle = original.color;
+        context.fillStyle = original.color;
+        context.lineCap = "round";
+        context.lineWidth = original.size === "verybold" ? 6 : original.size === "bold" ? 3 : 1;
+
+        const samples = steppedWindows.get(original);
+        if (samples?.count === 0) return;
+        if (
+          samples?.finite &&
+          typeof Path2D === "function" &&
+          samples.count >= 50 &&
+          samples.count <= graphWidth * devicePixelRatio * 4 &&
+          xScale <= graphWidth &&
+          Math.max(Math.abs(samples.min - yRange[0]), Math.abs(samples.max - yRange[0])) * -yScale < 50_000
+        ) {
+          this.strokeSteppedWindow(
+            context,
+            samples,
+            xScaler,
+            yScaler,
+            xScale,
+            yScale,
+            graphLeft + graphWidth,
+            devicePixelRatio
+          );
+          return;
+        }
+
         const runs: { timestamps: number[]; values: number[]; hold: boolean }[] = [];
         if (
           // Points retain stock samples (including missing-value breaks).
@@ -601,21 +739,6 @@ export default class LineGraphRenderer implements TabRenderer {
         runs.forEach((run, runIndex) => {
           const field = { ...original, ...run };
           if (!field.timestamps.length) return;
-          context.strokeStyle = field.color;
-          context.fillStyle = field.color;
-          context.lineCap = "round";
-          switch (field.size) {
-            case "normal":
-              context.lineWidth = 1;
-              break;
-            case "bold":
-              context.lineWidth = 3;
-              break;
-            case "verybold":
-              context.lineWidth = 6;
-              break;
-          }
-
           switch (field.type) {
             case "stepped": {
               context.lineJoin = "round";

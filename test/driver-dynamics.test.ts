@@ -154,13 +154,15 @@ for (const Renderer of [CarDynamicsRenderer, DriverInputsRenderer]) {
   test(`${Renderer.name} retries a frame after a canvas error`, () => {
     const { root } = canvas();
     const canvasElement = root.firstElementChild.firstElementChild;
+    const clear = Renderer === CarDynamicsRenderer ? "reset" : "clearRect";
+    if (Renderer === CarDynamicsRenderer) canvasElement.width = canvasElement.height = 600;
     let attempts = 0;
     const original = canvasElement.getContext;
     const context = original();
     canvasElement.getContext = () =>
       new Proxy(context, {
         get: (target, name) =>
-          name === "clearRect"
+          name === clear
             ? () => {
                 attempts++;
                 if (attempts === 1) throw new Error("canvas failed once");
@@ -193,10 +195,12 @@ for (const Renderer of [CarDynamicsRenderer, DriverInputsRenderer]) {
     let attempts = 0;
     let fail = false;
     const canvasElement = root.firstElementChild.firstElementChild;
+    const clear = Renderer === CarDynamicsRenderer ? "reset" : "clearRect";
+    if (Renderer === CarDynamicsRenderer) canvasElement.width = canvasElement.height = 600;
     canvasElement.getContext = () =>
       new Proxy(context, {
         get: (target, name) =>
-          name === "clearRect"
+          name === clear
             ? () => {
                 attempts++;
                 if (fail) throw new Error("draw failed");

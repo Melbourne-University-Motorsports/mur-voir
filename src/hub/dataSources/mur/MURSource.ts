@@ -320,8 +320,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       time = this.timeBase.sampleTime(sample)!;
       this.segments.observe(sample.path, sample.stream_id, sample.seq, time.seconds, !time.approximate);
     }
-    if (!this.dedup.accept(sample.path, sample.stream_id, sample.seq)) return;
-    if (time.seconds < 0) return;
+    if (time.seconds < 0 || !this.dedup.accept(sample.path, sample.stream_id, sample.seq, time.seconds)) return;
 
     const key = pathToKey(sample.path);
     const field = this.log.getField(key);
@@ -446,7 +445,10 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (discardS !== undefined && discardS !== -1 && liveEdge !== null && Date.now() - this.lastDiscard >= 1000) {
       this.lastDiscard = Date.now();
       const minTime = liveEdge - discardS;
-      if (minTime > this.log.getTimestampRange()[0]) this.log.clearBeforeTime(minTime, false);
+      if (minTime > this.log.getTimestampRange()[0]) {
+        this.log.clearBeforeTime(minTime, false);
+        this.dedup.discardBefore(minTime);
+      }
     }
 
     if (this.shouldRunOutputCallback) {
@@ -513,13 +515,14 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (this.requests.signal.aborted || !this.log || segmentIndex !== this.segments.getSegmentIndex()) return;
     const descriptor = this.descriptors.get(path);
     if (descriptor === undefined) return;
-    const samples = body.samples.filter((sample) => this.segments.acceptHistory(sample.stream_id));
     let wrote = false;
-    this.dedup.filterHistory(path, samples).forEach((sample) => {
+    for (const sample of body.samples.sort((a, b) => a.seq - b.seq)) {
+      if (!this.segments.acceptHistory(sample.stream_id)) continue;
       const time = this.timeBase.sampleTime(sample);
-      if (time === null || time.seconds < 0) return;
-      if (writeValue(this.log!, descriptor, time.seconds, sample.value)) wrote = true;
-    });
+      if (time === null || time.seconds < 0 || !this.dedup.accept(path, sample.stream_id, sample.seq, time.seconds))
+        continue;
+      if (writeValue(this.log, descriptor, time.seconds, sample.value)) wrote = true;
+    }
     if (resumeNs !== undefined && this.historyRequested.get(path) === generation) this.resumeFrom.delete(path);
     if (wrote) {
       this.changedFields?.add(path);

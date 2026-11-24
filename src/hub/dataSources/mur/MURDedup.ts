@@ -5,93 +5,51 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-// Sample deduplication on (path, stream_id, seq) (spec 01 §4.1, §6). Pure, so it can be unit tested.
-//
-// Each (path, stream_id) keeps the exact set of seqs seen, stored as sorted runs of consecutive seqs. A
-// stream that arrives in order extends its last run, so memory follows the number of gaps, not samples.
-// Keep the set exact over the backend's backfill window. Once a sequence falls out of the window,
-// reject it on both live and history paths.
-
-/** The mock retains 360 seconds at up to 100 Hz per signal. */
-const SEQUENCE_WINDOW = 36_000;
-
-interface Runs {
-  // Flat [start0, end0, start1, end1, ...] from index `base`, inclusive ends, ascending and non-adjacent
-  list: number[];
-  base: number;
-}
+// Deduplicate by (path, stream_id, seq) for as long as the log can admit the sample.
+const BLOCK_SIZE = 256;
+type SequenceBlock = { latestTime: number; seen: Uint32Array };
 
 export class SampleDeduplicator {
-  private streams = new Map<string, Runs>();
+  private streams = new Map<string, Map<number, SequenceBlock>>();
+  private floor = -Infinity;
 
-  /** Returns true if the sample is new (and records it), false if it is a duplicate. */
-  accept(path: string, streamId: string, seq: number): boolean {
-    const streamKey = path + "\u0000" + streamId;
-    const stream = this.streams.get(streamKey);
-    if (stream === undefined) {
-      this.streams.set(streamKey, { list: [seq, seq], base: 0 });
-      return true;
+  /** Records an unseen sample if its timestamp is still retained. */
+  accept(path: string, streamId: string, seq: number, time: number): boolean {
+    if (time < this.floor) return false;
+    const key = path + "\u0000" + streamId;
+    let stream = this.streams.get(key);
+    if (stream === undefined) this.streams.set(key, (stream = new Map()));
+
+    const index = Math.floor(seq / BLOCK_SIZE);
+    let block = stream.get(index);
+    if (block === undefined) {
+      block = { latestTime: time, seen: new Uint32Array(BLOCK_SIZE / 32) };
+      stream.set(index, block);
     }
-    const runs = stream.list;
-
-    const last = runs.length - 1;
-    const floor = Math.max(seq, runs[last]) - SEQUENCE_WINDOW + 1;
-    if (seq < floor) return false;
-
-    // Common case: a new maximum. Drop entire expired runs and trim any run crossing the floor.
-    if (seq > runs[last]) {
-      if (seq === runs[last] + 1) runs[last] = seq;
-      else runs.push(seq, seq);
-      while (runs[stream.base + 1] < floor) stream.base += 2;
-      runs[stream.base] = Math.max(runs[stream.base], floor);
-      if (stream.base > 0 && stream.base * 2 >= runs.length) {
-        runs.splice(0, stream.base);
-        stream.base = 0;
-      }
-      return true;
-    }
-
-    // Find the last run starting at or before seq
-    const base = stream.base / 2;
-    let lo = base;
-    let hi = runs.length / 2 - 1;
-    let index = base - 1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (runs[mid * 2] <= seq) {
-        index = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    if (index >= base && seq <= runs[index * 2 + 1]) return false;
-
-    // New: extend a neighbouring run or insert one, merging runs that now touch
-    const joinsPrevious = index >= base && runs[index * 2 + 1] === seq - 1;
-    const next = index + 1;
-    const joinsNext = next * 2 < runs.length && runs[next * 2] === seq + 1;
-    if (joinsPrevious && joinsNext) {
-      runs[index * 2 + 1] = runs[next * 2 + 1];
-      runs.splice(next * 2, 2);
-    } else if (joinsPrevious) {
-      runs[index * 2 + 1] = seq;
-    } else if (joinsNext) {
-      runs[next * 2] = seq;
-    } else {
-      runs.splice(next * 2, 0, seq, seq);
-    }
+    const offset = seq - index * BLOCK_SIZE;
+    const word = offset >>> 5;
+    const bit = 1 << (offset & 31);
+    if (block.seen[word] & bit) return false;
+    block.seen[word] |= bit;
+    if (time > block.latestTime) block.latestTime = time;
     return true;
   }
 
-  /** Filters a batch of history samples for one path, returning the new ones in ascending seq order. */
-  filterHistory<T extends { stream_id: string; seq: number }>(path: string, samples: T[]): T[] {
-    const sorted = [...samples].sort((a, b) => a.seq - b.seq);
-    return sorted.filter((sample) => this.accept(path, sample.stream_id, sample.seq));
+  /** Drops blocks whose samples all predate the log's discard boundary. */
+  discardBefore(time: number) {
+    if (time <= this.floor) return;
+    this.floor = time;
+    for (const [key, stream] of this.streams) {
+      for (const [index, block] of stream) {
+        if (block.latestTime < time) stream.delete(index);
+      }
+      if (stream.size === 0) this.streams.delete(key);
+    }
   }
 
   /** Forgets everything (new segment). */
   clear() {
     this.streams.clear();
+    this.floor = -Infinity;
   }
 }

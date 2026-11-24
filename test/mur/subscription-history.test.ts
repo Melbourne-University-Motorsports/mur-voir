@@ -55,8 +55,9 @@ test("resubscribing requests history again and merges overlapping samples once",
   source.fetchHistory = (path: string, generation: number) => (pending = fetchHistory(path, generation));
   const live = (seq: number) => {
     const s = sample(seq);
-    if (source.dedup.accept(path, s.stream_id, seq)) {
-      writeValue(source.log, descriptor, source.timeBase.sampleTime(s).seconds, s.value);
+    const time = source.timeBase.sampleTime(s).seconds;
+    if (source.dedup.accept(path, s.stream_id, seq, time)) {
+      writeValue(source.log, descriptor, time, s.value);
     }
   };
   live(2);

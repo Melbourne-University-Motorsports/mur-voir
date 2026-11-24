@@ -54,7 +54,6 @@ export default class CarDynamicsRenderer implements TabRenderer {
     setStyle(this.CANVAS, "width", size.toString() + "px");
     setStyle(this.CANVAS, "height", size.toString() + "px");
     prepareCanvas(this.CANVAS, context, size, size, window.devicePixelRatio);
-    context.clearRect(0, 0, size, size);
     context.lineCap = "round";
     context.lineJoin = "round";
     let centerPx: [number, number] = [size / 2, size / 2];

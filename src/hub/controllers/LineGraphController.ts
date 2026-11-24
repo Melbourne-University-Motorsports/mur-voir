@@ -13,9 +13,11 @@ import { interpolate, lapSamples, sectorBlocks } from "../../shared/laps/LapEngi
 import LineGraphFilter from "../../shared/LineGraphFilter";
 import DecimatedSeries from "../../shared/log/DecimatedSeries";
 import LogField from "../../shared/log/LogField";
+import LoggableType from "../../shared/log/LoggableType";
 import { getLogValueText } from "../../shared/log/LogUtil";
 import { LogValueSetNumber } from "../../shared/log/LogValueSets";
 import { AKIT_TIMESTAMP_KEYS, getRobotStateRanges } from "../../shared/log/RobotState";
+import { SteppedSeries, steppedWindows } from "../../shared/log/SteppedSeries";
 import {
   LineGraphRendererCommand,
   LineGraphRendererCommand_Alert,
@@ -60,6 +62,7 @@ export default class LineGraphController implements TabController {
 
   private periodStats = new WeakMap<LogField, TraceGapCache>();
   private convertedSamples = new WeakMap<LogField, ConvertedSamples>();
+  private steppedSeries = new WeakMap<LogField, SteppedSeries>();
   private fieldIds = new WeakMap<LogField, number>();
   private nextFieldId = 0;
   private lastGraph?: { log: typeof window.log; key: string; command: LineGraphRendererCommand };
@@ -464,6 +467,23 @@ export default class LineGraphController implements TabController {
         filter
       );
     }
+    const samples = steppedWindows.get(command);
+    if (samples) {
+      for (let i = samples.chunks.length - 1; i >= 0; i--) {
+        const { timestamps, values } = samples.chunks[i];
+        if (timestamps[0] <= time) {
+          const index = timestamps.findLastIndex((timestamp) => timestamp <= time);
+          return previewNumberCommand(
+            key,
+            time,
+            { timestamps: [timestamps[index]], values: [values[index]], hasUnit: command.hasUnit },
+            unitCache,
+            filter
+          );
+        }
+      }
+      return null;
+    }
     return previewNumberCommand(key, time, command, unitCache, filter);
   }
 
@@ -542,6 +562,7 @@ export default class LineGraphController implements TabController {
           ? window.selection.getTimelineRange()
           : logRange
         : [Math.max(logRange[0], liveTime - 30), liveTime];
+    const timeSpan = timeRange[1] - timeRange[0];
     const selectionMode = liveTime === undefined ? window.selection.getMode() : SelectionMode.Locked;
     const selectedTime = liveTime === undefined ? window.selection.getSelectedTime() : liveTime;
     const hoveredTime = liveTime === undefined ? window.selection.getHoveredTime() : null;
@@ -564,6 +585,8 @@ export default class LineGraphController implements TabController {
       return gaps;
     });
     const loadingFields = window.getLoadingFields();
+    const visibleNumericSources = [...leftSources, ...rightSources].filter((source) => source.visible);
+    const stillLoading = visibleNumericSources.some(({ logKey }) => loadingFields.has(logKey));
     // Lap overlays and robot mode also depend on their own timeline inputs.
     let cacheKey: string | undefined;
     if (this.lapMode === "time" && !this.showRobotMode) {
@@ -602,7 +625,7 @@ export default class LineGraphController implements TabController {
         this.rightUnitConversion,
         this.leftLockedRange,
         this.rightLockedRange,
-        keys.some((key) => loadingFields.has(key))
+        stillLoading
       ]);
       const cached = this.lastGraph;
       if (cached?.log === log && cached.key === cacheKey) {
@@ -661,6 +684,86 @@ export default class LineGraphController implements TabController {
           if (series === undefined) this.decimated.set(fieldItem.logKey, (series = new DecimatedSeries()));
           decimated = series.get(window.log, fieldItem.logKey, timeRange[0], timeRange[1]);
         }
+        const field = log.getField(fieldItem.logKey);
+        if (field?.getType() !== LoggableType.Number) return;
+        const gaps = fieldItem.type === "points" ? undefined : gapsByKey.get(fieldItem.logKey);
+        let convertValue = (value: number) => value;
+
+        // Convert units
+        let hasUnit = false;
+        const sourceUnit = autoTargetResult.status === "success" ? log.getUnit(fieldItem.logKey) : null;
+        if (autoTargetResult.status === "success") {
+          if (
+            sourceUnit !== null &&
+            sourceUnit in Units.GROUP_BY_UNIT &&
+            autoTargetResult.unit in Units.GROUP_BY_UNIT &&
+            Units.GROUP_BY_UNIT[sourceUnit] === Units.GROUP_BY_UNIT[autoTargetResult.unit]
+          ) {
+            convertValue = (value) => Units.convert(value, sourceUnit, autoTargetResult.unit);
+            hasUnit = true;
+          }
+        } else if (unitConversion.preset !== undefined) {
+          convertValue = (value) =>
+            Units.convertWithPreset(
+              value,
+              unitConversion.preset === null ? Units.NoopUnitConversion : unitConversion.preset
+            );
+          hasUnit = true;
+        }
+
+        // Reuse the converted overlap when a live viewport slides or grows. The raw timestamps
+        // stay separate because clipping below can change the two boundary samples.
+        const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
+
+        const reusable = filter === LineGraphFilter.None && akitTimestamps === undefined && decimated === null;
+        const config = JSON.stringify([autoTargetResult, unitConversion, sourceUnit]);
+        const history = reusable ? log.getHistoryVersion(fieldItem.logKey) : -1;
+        const discard = field.getDiscardVersion();
+
+        const max = this.MAX_VALUE;
+        const convertSample = (value: number) => {
+          value = identity ? value : convertValue(value);
+          return value < -max ? -max : value > max ? max : value;
+        };
+        const fieldStyle = {
+          color: ensureThemeContrast(fieldItem.options.color, dark),
+          type: fieldItem.type as LineGraphRendererCommand_NumericField["type"],
+          size: (fieldItem.options.size ?? "normal") as LineGraphRendererCommand_NumericField["size"],
+          hasUnit
+        };
+        if (
+          fieldStyle.type === "stepped" &&
+          this.lapMode === "time" &&
+          reusable &&
+          !gaps?.some(({ t0, t1 }) => t0 < timeRange[1] && t1 > timeRange[0]) &&
+          timeSpan > 0 &&
+          timeSpan <= 120 &&
+          Number.isSafeInteger(Math.floor(timeRange[1]))
+        ) {
+          let series = this.steppedSeries.get(field);
+          if (series === undefined) this.steppedSeries.set(field, (series = new SteppedSeries()));
+          const samples = series.get(field, history, config, timeRange, convertSample);
+          let times: number[] | undefined;
+          let values: number[] | undefined;
+          const item: NumericCommandCacheValue = {
+            ...fieldStyle,
+            gaps: gaps && [],
+            get timestamps() {
+              return (times ??= samples.chunks.flatMap((chunk) => chunk.timestamps));
+            },
+            get values() {
+              return (values ??= samples.chunks.flatMap((chunk) => chunk.values));
+            }
+          };
+          steppedWindows.set(item, samples);
+          commandCache[fieldItem.logKey] = item;
+          if (fieldItem.visible) {
+            dataRange[0] = Math.min(dataRange[0], samples.min);
+            dataRange[1] = Math.max(dataRange[1], samples.max);
+            command.push(item);
+          }
+          return;
+        }
         let data =
           decimated ??
           window.log.getNumber(
@@ -671,9 +774,6 @@ export default class LineGraphController implements TabController {
             filter === LineGraphFilter.Differentiate ? -1 : 0
           );
         if (data === undefined) return;
-
-        const gaps = fieldItem.type === "points" ? undefined : gapsByKey.get(fieldItem.logKey);
-        let convertValue = (value: number) => value;
 
         // Add AdvantageKit samples
         if (akitTimestamps !== undefined) {
@@ -739,36 +839,6 @@ export default class LineGraphController implements TabController {
             break;
         }
 
-        // Convert units
-        let hasUnit = false;
-        const sourceUnit = autoTargetResult.status === "success" ? log.getUnit(fieldItem.logKey) : null;
-        if (autoTargetResult.status === "success") {
-          if (
-            sourceUnit !== null &&
-            sourceUnit in Units.GROUP_BY_UNIT &&
-            autoTargetResult.unit in Units.GROUP_BY_UNIT &&
-            Units.GROUP_BY_UNIT[sourceUnit] === Units.GROUP_BY_UNIT[autoTargetResult.unit]
-          ) {
-            convertValue = (value) => Units.convert(value, sourceUnit, autoTargetResult.unit);
-            hasUnit = true;
-          }
-        } else if (unitConversion.preset !== undefined) {
-          convertValue = (value) =>
-            Units.convertWithPreset(
-              value,
-              unitConversion.preset === null ? Units.NoopUnitConversion : unitConversion.preset
-            );
-          hasUnit = true;
-        }
-
-        // Reuse the converted overlap when a live viewport slides or grows. The raw timestamps
-        // stay separate because clipping below can change the two boundary samples.
-        const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
-        const field = log.getField(fieldItem.logKey)!;
-        const reusable = filter === LineGraphFilter.None && akitTimestamps === undefined && decimated === null;
-        const config = JSON.stringify([autoTargetResult, unitConversion, sourceUnit]);
-        const history = reusable ? log.getHistoryVersion(fieldItem.logKey) : -1;
-        const discard = field.getDiscardVersion();
         const previous = reusable ? this.convertedSamples.get(field) : undefined;
         const timestamps = data.timestamps;
         let offset = -1;
@@ -777,11 +847,7 @@ export default class LineGraphController implements TabController {
         }
         const overlap = offset < 0 ? 0 : Math.min(timestamps.length, previous!.timestamps.length - offset);
         let values = overlap > 0 ? previous!.values.slice(offset, offset + overlap) : [];
-        const max = this.MAX_VALUE;
-        for (let i = overlap; i < timestamps.length; i++) {
-          const value = identity ? data.values[i] : convertValue(data.values[i]);
-          values.push(value < -max ? -max : value > max ? max : value);
-        }
+        for (let i = overlap; i < timestamps.length; i++) values.push(convertSample(data.values[i]));
         if (reusable) {
           this.convertedSamples.set(field, { config, history, discard, start: timeRange[0], timestamps, values });
           data = { timestamps: timestamps.slice(), values: values.slice() };
@@ -880,10 +946,7 @@ export default class LineGraphController implements TabController {
             })),
           timestamps: data.timestamps,
           values: data.values,
-          color: ensureThemeContrast(fieldItem.options.color, dark),
-          type: fieldItem.type as "smooth" | "stepped" | "points",
-          size: (fieldItem.options.size ?? "normal") as "normal" | "bold" | "verybold",
-          hasUnit: hasUnit
+          ...fieldStyle
         };
         if (fieldItem.visible) command.push(itemCommand);
         commandCache[fieldItem.logKey] = itemCommand;
@@ -1123,15 +1186,12 @@ export default class LineGraphController implements TabController {
       discreteFields: discreteFieldsCommand,
       alerts: alerts
     };
-    const hasNumericSamples = [...result.leftFields, ...result.rightFields].some(
-      (f) => f.timestamps.length && f.values.some(Number.isFinite)
-    );
-    const selectedKeys = [...this.leftSourceList.getState(), ...this.rightSourceList.getState()]
-      .filter((source) => source.visible)
-      .map((source) => source.logKey);
-    const stillLoading = selectedKeys.some((key) => loadingFields.has(key));
-    if (selectedKeys.length && !hasNumericSamples && !stillLoading && !result.discreteFields.length) {
-      result.message = "The selected fields have no numeric samples in this log.";
+    if (visibleNumericSources.length && !stillLoading && !result.discreteFields.length) {
+      const hasNumericSamples = [...result.leftFields, ...result.rightFields].some((field) => {
+        const samples = steppedWindows.get(field);
+        return samples ? Number.isFinite(samples.min) : field.values.some(Number.isFinite);
+      });
+      if (!hasNumericSamples) result.message = "The selected fields have no numeric samples in this log.";
     }
     if (this.lapMode !== "time") {
       lapService.update();

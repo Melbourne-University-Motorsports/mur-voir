@@ -966,6 +966,7 @@ export default class Tabs {
     }
     tab.title = name;
     tab.titleElement.innerText = getTabIcon(tab.type) + " " + (name === "" ? getDefaultTabTitle(tab.type) : name);
+    this.updateTabBarShadows();
   }
 
   /** Adjusts the locked range and unit conversion for an axis on the selected line graph. */
