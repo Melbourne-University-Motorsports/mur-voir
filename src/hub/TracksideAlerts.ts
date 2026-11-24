@@ -8,64 +8,120 @@
 import { alertLine, dbcDefinition, isTracksideLive, Limits, tileLabel, tileState } from "../shared/Trackside";
 import { setHidden, setText } from "../shared/domWrite";
 
-let catalogue:
+export type TracksideAlertSource = { key: string; dbcSignal?: string; low?: number; high?: number };
+
+type AlertItem = Parameters<typeof alertLine>[0][number];
+type Entry = {
+  key: string;
+  label: string;
+  profile: AlertItem["profile"];
+  limits?: Limits;
+  definition: ReturnType<typeof dbcDefinition>;
+  field: ReturnType<typeof window.log.getField>;
+  time?: number;
+  version?: number;
+  discard?: number;
+  value?: unknown;
+  item?: AlertItem;
+};
+
+let cache:
   | {
       log: typeof window.log;
       fields: number;
       metadata: number;
-      definitions: Map<string, NonNullable<ReturnType<typeof dbcDefinition>>>;
+      configs: TracksideAlertSource[][];
+      entries: Entry[];
+      result?: ReturnType<typeof alertLine>;
     }
   | undefined;
 
-function faultDefinitions() {
+function alertEntries(configs: TracksideAlertSource[][]) {
   const log = window.log;
   const fields = log.getFieldKeysVersion();
   const metadata = log.getMetadataVersion();
-  if (catalogue?.log === log && catalogue.fields === fields && catalogue.metadata === metadata) {
-    return catalogue.definitions;
+  if (
+    cache?.log === log &&
+    cache.fields === fields &&
+    cache.metadata === metadata &&
+    cache.configs.length === configs.length &&
+    cache.configs.every((config, i) => config === configs[i])
+  ) {
+    return cache;
   }
-  const definitions = new Map<string, NonNullable<ReturnType<typeof dbcDefinition>>>();
+  const signals = new Map<string, string>();
+  const limits: (TracksideAlertSource & Limits)[] = [];
+  for (const config of configs) {
+    for (const source of config) {
+      if (source.dbcSignal) signals.set(source.key, source.dbcSignal);
+      if (source.low !== undefined || source.high !== undefined) limits.push(source);
+    }
+  }
+  const entries: Entry[] = [];
+  const add = (key: string, definition: Entry["definition"], limits?: Limits) => {
+    entries.push({
+      key,
+      label: tileLabel(log.getMetadataString(key), key, signals.get(key)),
+      profile: log.getChannelProfile(key),
+      definition,
+      limits,
+      field: log.getField(key)
+    });
+  };
   for (const key of log.getFieldKeys()) {
     const definition = dbcDefinition(log.getMetadataString(key), key);
-    if (definition) definitions.set(key, definition);
+    if (definition) add(key, definition);
   }
-  catalogue = { log, fields, metadata, definitions };
-  return definitions;
+  for (const { key, low, high } of limits) add(key, null, { low, high });
+  return (cache = { log, fields, metadata, configs, entries });
 }
 
-export function updateTracksideAlerts(
-  element: HTMLElement,
-  allLimits: { [key: string]: Limits }[],
-  savedDbcSignals: { [key: string]: string } = {}
-) {
+export function updateTracksideAlerts(element: HTMLElement, configs: TracksideAlertSource[][]) {
   const liveTime = window.selection.getCurrentLiveTime();
   const time = liveTime ?? window.selection.getRenderTime() ?? window.log.getTimestampRange()[1];
-  const summary = window.liveStatus?.getLiveStatus();
-  const definitions = faultDefinitions();
-  const entries = [...definitions.keys()].map((key) => ({ key, limits: {} as Limits, fault: true }));
-  allLimits.forEach((limits) =>
-    Object.entries(limits).forEach(([key, limit]) => entries.push({ key, limits: limit, fault: false }))
-  );
-  const result = alertLine(
-    entries.map(({ key, limits, fault }) => {
-      const range = window.log.getRange(key, time, time);
-      const index = range?.timestamps.findLastIndex((t) => t <= time) ?? -1;
-      const value = index < 0 ? undefined : range?.values[index];
-      const profile = window.log.getChannelProfile(key);
-      const tile = tileState(
-        key,
+  const provider = window.liveStatus;
+  const summary = provider?.getLiveStatus();
+  const live = isTracksideLive(summary, liveTime);
+  const state = alertEntries(configs);
+  let changed = state.result === undefined;
+  for (const entry of state.entries) {
+    const { field, key, limits, profile, definition, label } = entry;
+    if (
+      live &&
+      (summary.backend !== "connected" || !summary.hasFreshData || provider!.getFieldFreshness(key) !== "online")
+    ) {
+      if (entry.item !== undefined) {
+        entry.item = undefined;
+        changed = true;
+      }
+      continue;
+    }
+    const sampleTime = Math.min(time, field?.getTimestamp(field.getTimestampCount() - 1) ?? -Infinity);
+    const version = field?.getDataVersion();
+    const discard = field?.getDiscardVersion();
+    if (entry.time !== sampleTime || entry.version !== version || entry.discard !== discard) {
+      const range = field?.getRange(time, time);
+      const value = range && range.timestamps[0] <= time ? range.values[0] : undefined;
+      if (!Object.is(entry.value, value)) entry.item = undefined;
+      entry.value = value;
+      entry.time = sampleTime;
+      entry.version = version;
+      entry.discard = discard;
+    }
+    if (entry.item === undefined) {
+      const value = entry.value;
+      entry.item = {
+        tile: tileState(key, value, profile, limits, definition, undefined, label),
         value,
         profile,
         limits,
-        fault ? definitions.get(key) : null,
-        isTracksideLive(summary, liveTime)
-          ? { summary, freshness: window.liveStatus!.getFieldFreshness(key), age: window.liveStatus!.getFieldAge(key) }
-          : undefined,
-        tileLabel(window.log.getMetadataString(key), key, savedDbcSignals[key])
-      );
-      return { tile, value, profile, limits, fault };
-    })
-  );
+        fault: definition !== null
+      };
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  const result = (state.result = alertLine(state.entries.flatMap(({ item }) => (item ? [item] : []))));
   setHidden(element, !result.text);
   setText(element, result.text);
   const title = result.detail ? result.text + "\n" + result.detail : result.text;

@@ -351,6 +351,57 @@ export default class LineGraphRenderer implements TabRenderer {
     context.stroke();
   }
 
+  private strokeDenseSteppedWindow(
+    context: CanvasRenderingContext2D,
+    samples: SteppedWindow,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    right: number,
+    ratio: number
+  ) {
+    const first = samples.chunks[0];
+    let y = yScaler.calculate(first.values[0]);
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo(xScaler.calculate(first.timestamps[0]), y);
+    let column = NaN;
+    let columnX = 0;
+    let min = 0;
+    let max = 0;
+    let last = 0;
+    const flush = () => {
+      if (Number.isNaN(column)) return;
+      const minY = yScaler.calculate(min);
+      const maxY = yScaler.calculate(max);
+      const nextY = yScaler.calculate(last);
+      context.lineTo(columnX, y);
+      if (minY !== nextY && minY !== y) context.lineTo(columnX, minY);
+      if (maxY !== nextY && maxY !== y) context.lineTo(columnX, maxY);
+      context.lineTo(columnX, nextY);
+      y = nextY;
+    };
+    for (const chunk of samples.chunks) {
+      for (let i = chunk === first ? 1 : 0; i < chunk.timestamps.length; i++) {
+        const x = xScaler.calculate(chunk.timestamps[i]);
+        const nextColumn = Math.floor(x * ratio);
+        const value = chunk.values[i];
+        if (column === nextColumn) {
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+          last = value;
+        } else {
+          flush();
+          column = nextColumn;
+          columnX = x;
+          min = max = last = value;
+        }
+      }
+    }
+    flush();
+    context.lineTo(right, y);
+    context.stroke();
+  }
+
   private appendSteppedChunk(
     context: CanvasRenderingContext2D,
     chunk: SteppedChunk,
@@ -694,20 +745,23 @@ export default class LineGraphRenderer implements TabRenderer {
           samples?.finite &&
           typeof Path2D === "function" &&
           samples.count >= 50 &&
-          samples.count <= graphWidth * devicePixelRatio * 4 &&
           xScale <= graphWidth &&
           Math.max(Math.abs(samples.min - yRange[0]), Math.abs(samples.max - yRange[0])) * -yScale < 50_000
         ) {
-          this.strokeSteppedWindow(
-            context,
-            samples,
-            xScaler,
-            yScaler,
-            xScale,
-            yScale,
-            graphLeft + graphWidth,
-            devicePixelRatio
-          );
+          if (samples.count <= graphWidth * devicePixelRatio) {
+            this.strokeSteppedWindow(
+              context,
+              samples,
+              xScaler,
+              yScaler,
+              xScale,
+              yScale,
+              graphLeft + graphWidth,
+              devicePixelRatio
+            );
+          } else {
+            this.strokeDenseSteppedWindow(context, samples, xScaler, yScaler, graphLeft + graphWidth, devicePixelRatio);
+          }
           return;
         }
 
@@ -748,7 +802,7 @@ export default class LineGraphRenderer implements TabRenderer {
               if (
                 typeof Path2D === "function" &&
                 timestamps.length >= 50 &&
-                timestamps.length <= graphWidth * devicePixelRatio * 4 &&
+                timestamps.length <= graphWidth * devicePixelRatio &&
                 xScale <= graphWidth &&
                 values.every((value) => Number.isFinite(value) && Math.abs((value - yRange[0]) * yScale) < 50_000)
               ) {

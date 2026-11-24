@@ -81,13 +81,13 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
   private receiptTimes = new Map<string, number>();
   /** Backend time of the newest sample per path, where a later history request resumes. */
-  private lastSampleNs = new Map<string, string>();
+  private lastSampleNs = new Map<string, bigint>();
   /**
    * Where history resumes for a path that stopped streaming (its tab was hidden, or the socket dropped):
    * its newest sample at that moment. Kept until a backfill merges, so samples that arrive later (e.g.
    * for the sidebar) cannot move it past the gap.
    */
-  private resumeFrom = new Map<string, string>();
+  private resumeFrom = new Map<string, bigint>();
   private backend: BackendState = "connecting";
   private backendDetail = "";
 
@@ -244,9 +244,11 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
         this.changedFields?.add(message.path); // Its freshness mark changes
         this.shouldRunOutputCallback = true;
         break;
-      case "samples":
-        message.samples.forEach((sample) => this.handleSample(sample));
+      case "samples": {
+        const now = Date.now();
+        for (const sample of message.samples) this.handleSample(sample, now);
         break;
+      }
       case "error":
         console.warn("[MUR] Backend error (" + message.code + "): " + message.message);
         break;
@@ -306,7 +308,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     }
   }
 
-  private handleSample(sample: TelemetrySample) {
+  private handleSample(sample: TelemetrySample, now: number) {
     if (!this.log) return;
     const descriptor = this.descriptors.get(sample.path);
     if (descriptor === undefined) return;
@@ -330,10 +332,9 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       return;
     }
 
-    const now = Date.now();
     this.receiptTimes.set(sample.path, now);
     const lastNs = this.lastSampleNs.get(sample.path);
-    if (lastNs === undefined || BigInt(sample.t_ns) > BigInt(lastNs)) this.lastSampleNs.set(sample.path, sample.t_ns);
+    if (lastNs === undefined || time.timestampNs > lastNs) this.lastSampleNs.set(sample.path, time.timestampNs);
     const becameAvailable = !this.availability.has(sample.path);
     if (becameAvailable) {
       this.availability.set(sample.path, { state: "online", lastSeenNs: sample.t_ns });
@@ -548,12 +549,21 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   }
 
   getLiveStatus(): LiveStatusSummary {
+    let hasFreshData = false;
+    if (this.backend === "connected") {
+      for (const [path, { state, lastSeenNs }] of this.availability) {
+        if (state === "online" && lastSeenNs !== null && this.descriptors.has(path)) {
+          hasFreshData = true;
+          break;
+        }
+      }
+    }
     return {
       backend: this.backend,
       backendDetail: this.backendDetail,
       viewedRun: 0,
       runCount: 1,
-      hasFreshData: Array.from(this.descriptors.keys()).some((key) => this.getFieldFreshness(key) === "online")
+      hasFreshData
     };
   }
 

@@ -700,9 +700,9 @@ export default class Log {
   }
 
   /** Writes a new Number value to the field. */
-  putNumber(key: string, timestamp: number, value: number) {
+  putNumber(key: string, timestamp: number, value: number, recordArrival = false) {
     this.createBlankField(key, LoggableType.Number);
-    this.fields[key].putNumber(timestamp, value);
+    this.fields[key].putNumber(timestamp, value, recordArrival);
     this.changedFields.add(key);
     if (this.fields[key].getType() === LoggableType.Number) {
       this.processTimestamp(key, timestamp); // Only update timestamp if type is correct

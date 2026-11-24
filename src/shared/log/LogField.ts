@@ -27,6 +27,7 @@ export default class LogField {
   private retainedTimestamps: number[] | null = null;
   private discardTimestamp = -Infinity;
   private retainSamples = false;
+  private numberArrivals?: { field: LogField; historyVersion: number };
   public structuredType: string | null = null;
   public wpilibType: string | null = null; // Original type from WPILOG & NT4
   public metadataString = "";
@@ -90,6 +91,7 @@ export default class LogField {
 
   /** Clears all data before the provided timestamp. */
   clearBeforeTime(clearTimestamp: number) {
+    this.discardNumberArrivals(clearTimestamp);
     if (this.dataStart === this.data.timestamps.length || this.data.timestamps[this.dataStart] >= clearTimestamp)
       return;
     const timestamps = this.data.timestamps;
@@ -118,6 +120,7 @@ export default class LogField {
 
   /** Removes expired samples without moving their timestamps or extending sample-and-hold. */
   discardBeforeTime(timestamp: number): boolean {
+    this.discardNumberArrivals(timestamp);
     this.discardTimestamp = Math.max(this.discardTimestamp, timestamp);
     const start = this.dataStart;
     while (this.dataStart < this.data.timestamps.length && this.data.timestamps[this.dataStart] < timestamp) {
@@ -372,11 +375,37 @@ export default class LogField {
     } else this.typeWarning = true;
   }
 
+  private discardNumberArrivals(timestamp: number) {
+    const field = this.numberArrivals?.field;
+    const last = field?.getTimestamp(field.getTimestampCount() - 1);
+    // Keep the last arrival to age out a stopped signal even after its history expires.
+    if (last !== undefined) field!.discardBeforeTime(Math.min(timestamp, last));
+  }
+
+  /** Numeric arrivals retain cadence even when the value series coalesces equal readings. */
+  getNumberArrivals() {
+    return this.numberArrivals;
+  }
+
   /** Writes a new Number value to the field. */
-  putNumber(timestamp: number, value: number) {
-    if (this.type === LoggableType.Number) {
-      this.putData(timestamp, value);
-    } else this.typeWarning = true;
+  putNumber(timestamp: number, value: number, recordArrival = false) {
+    if (this.type !== LoggableType.Number) {
+      this.typeWarning = true;
+      return;
+    }
+    this.putData(timestamp, value);
+    if (!recordArrival) return;
+    if (!this.numberArrivals) {
+      const field = new LogField(LoggableType.Number);
+      field.retainAllSamples();
+      this.numberArrivals = { field, historyVersion: 0 };
+    }
+    const arrivals = this.numberArrivals;
+    const field = arrivals.field;
+    const historic = timestamp <= (field.getTimestamp(field.getTimestampCount() - 1) ?? -Infinity);
+    const previousVersion = field.dataVersion;
+    field.putData(timestamp, value);
+    if (historic && field.dataVersion !== previousVersion) arrivals.historyVersion++;
   }
 
   /** Writes a new String value to the field. */

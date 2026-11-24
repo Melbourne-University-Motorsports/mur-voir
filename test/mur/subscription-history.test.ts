@@ -65,10 +65,10 @@ test("resubscribing requests history again and merges overlapping samples once",
   await pending!;
   periodic();
   assert.equal(requests, 1);
-  source.lastSampleNs.set(path, "2000000000"); // The newest sample before the tab was hidden
+  source.lastSampleNs.set(path, 2000000000n); // The newest sample before the tab was hidden
   active = new Set();
   periodic();
-  source.lastSampleNs.set(path, "3000000000"); // A later sample (e.g. for the sidebar) must not move the resume point
+  source.lastSampleNs.set(path, 3000000000n); // A later sample (e.g. for the sidebar) must not move the resume point
   assert.equal(source.historyRequested.has(path), false);
   history = [sample(1), sample(2), sample(3), sample(4)];
   active = new Set(["/" + path]);
@@ -83,14 +83,14 @@ test("resubscribing requests history again and merges overlapping samples once",
   assert.equal(new Set(data.timestamps).size, 4);
   assert.equal(writes.mock.callCount(), 4);
   active = new Set();
-  source.lastSampleNs.set(path, "4000000000");
+  source.lastSampleNs.set(path, 4000000000n);
   periodic();
   let release!: () => void;
   respond = new Promise<void>((resolve) => (release = resolve));
   active = new Set(["/" + path]);
   periodic();
   live(6);
-  source.lastSampleNs.set(path, "6000000000");
+  source.lastSampleNs.set(path, 6000000000n);
   active = new Set();
   periodic();
   release();

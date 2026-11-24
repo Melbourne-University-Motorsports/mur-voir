@@ -358,7 +358,12 @@ export default class Tabs {
       periodicGuard.run(() => {
         if (performance.now() - lastAlerts >= 200) {
           lastAlerts = performance.now();
-          updateTracksideAlerts(alertElement, this.getTracksideLimits(), this.getTracksideDbcSignals());
+          updateTracksideAlerts(
+            alertElement,
+            this.tabList.flatMap(({ controller }) =>
+              controller instanceof TracksideController ? [controller.getAlertConfiguration()] : []
+            )
+          );
         }
         this.tabsScrollSensor.periodic();
 
@@ -711,21 +716,6 @@ export default class Tabs {
       activeFields.add(utilityKey);
     }
     return activeFields;
-  }
-
-  getTracksideDbcSignals(): { [key: string]: string } {
-    return Object.assign(
-      {},
-      ...this.tabList.flatMap((tab) =>
-        tab.controller instanceof TracksideController ? [tab.controller.getSavedDbcSignals()] : []
-      )
-    );
-  }
-
-  getTracksideLimits() {
-    return this.tabList.flatMap((tab) =>
-      tab.controller instanceof TracksideController ? [tab.controller.getLimits()] : []
-    );
   }
 
   editTracksideLimits(uuid: string, key: string, limits: { low?: number; high?: number }) {

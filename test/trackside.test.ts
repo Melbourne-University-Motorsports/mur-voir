@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import TracksideController, { reorderTiles, tracksideGraphSources } from "../src/hub/controllers/TracksideController";
 import SourceList from "../src/hub/SourceList";
+import { updateTracksideAlerts } from "../src/hub/TracksideAlerts";
 import { channelProfile } from "../src/shared/display/ChannelProfile";
 import Log from "../src/shared/log/Log";
 import {
@@ -177,12 +178,15 @@ test("removed tiles stop contributing limits and active subscriptions", () => {
   const sourceList = Object.assign(Object.create(SourceList.prototype), { state: [source] });
   const controller: TracksideController = Object.assign(Object.create(TracksideController.prototype), {
     sourceList,
+    alertConfig: [],
     limits: { "/Motor temp": { high: 110 }, "/removed": { high: 0 } }
   });
-  assert.deepEqual(controller.getLimits(), { "/Motor temp": { high: 110 } });
+  const [configured] = controller.getAlertConfiguration();
+  assert.equal(configured.key, "/Motor temp");
+  assert.equal(configured.high, 110);
   assert.deepEqual(controller.getActiveFields(), ["/Motor temp"]);
   sourceList.state = [];
-  assert.deepEqual(controller.getLimits(), {});
+  assert.deepEqual(controller.getAlertConfiguration(), []);
   assert.deepEqual(controller.getActiveFields(), []);
 });
 
@@ -401,4 +405,60 @@ test("trackside sends only changed cells and can replay the merged snapshot", ()
   assert.equal(cached.tiles[0], previous.tiles[0]);
   assert.deepEqual(cached, next);
   assert.deepEqual(diffTrackside(cached, next), { tiles: [] });
+});
+
+test("standing alerts reuse their value and label until the sample, freshness or configuration changes", () => {
+  const before = { window: globalThis.window, document: globalThis.document };
+  const log = new Log();
+  log.putNumber("/temp", 0, 112);
+  const element = { hidden: true, textContent: "", title: "", dataset: {} } as any;
+  const classes = new Set<string>();
+  let reads = 0;
+  const field = log.getField("/temp")!;
+  const getRange = field.getRange.bind(field);
+  field.getRange = (...args) => {
+    reads++;
+    return getRange(...args);
+  };
+  let time = 1;
+  let freshness = "online";
+  globalThis.window = {
+    log,
+    selection: { getCurrentLiveTime: () => time },
+    liveStatus: {
+      getLiveStatus: () => ({ backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 }),
+      getFieldFreshness: () => freshness
+    }
+  } as any;
+  globalThis.document = {
+    body: {
+      classList: {
+        contains: (name: string) => classes.has(name),
+        toggle: (name: string, set: boolean) => (set ? classes.add(name) : classes.delete(name))
+      }
+    }
+  } as any;
+  try {
+    const config = [[{ key: "/temp", dbcSignal: "Inverter temp", high: 100 }]];
+    updateTracksideAlerts(element, config);
+    assert.match(element.textContent, /Inverter temp .*above 100/);
+    time = 2;
+    updateTracksideAlerts(element, config);
+    assert.equal(reads, 1);
+    freshness = "offline";
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, true);
+    freshness = "online";
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, false);
+    assert.equal(reads, 1);
+    log.putNumber("/temp", 2.1, 50);
+    time = 3;
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, true);
+    updateTracksideAlerts(element, [[{ key: "/temp", dbcSignal: "Renamed temp", high: 40 }]]);
+    assert.match(element.textContent, /Renamed temp .*above 40/);
+  } finally {
+    Object.assign(globalThis, before);
+  }
 });

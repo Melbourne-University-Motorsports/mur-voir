@@ -7,7 +7,17 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clipGaps, findGaps, gapThreshold, isUnresumed, PeriodStats, prepareTrace } from "../src/shared/TraceGaps";
+import {
+  clipGaps,
+  findGaps,
+  gapThreshold,
+  isUnresumed,
+  PeriodStats,
+  prepareTrace,
+  TraceGapCache
+} from "../src/shared/TraceGaps";
+
+import Log from "../src/shared/log/Log";
 
 const resumed = { t0: 0.2, v0: 2, t1: 5, v1: 5 };
 test("threshold is strictly greater than max(2 seconds, ten median periods)", () => {
@@ -94,4 +104,49 @@ test("lap-time and distance map bridge endpoints and clip both lap boundaries", 
 test("unresumed gaps stay unresumed in lap coordinates", () => {
   const gaps = findGaps([10, 10.1], [1, 2], 1, 20);
   assert.ok(isUnresumed(clipGaps(gaps, 10, 15, (t) => t * 2)));
+});
+
+test("the median follows interleaved additions and expiry with many distinct exact periods", () => {
+  const stats = new PeriodStats();
+  const periods: number[] = [];
+  for (let i = 0; i < 3000; i++) {
+    const period = ((i * 7919) % 1409) / 713 + 0.002;
+    stats.changePeriod(period, 1);
+    periods.push(period);
+    if (periods.length > 501) stats.changePeriod(periods.shift()!, -1);
+    const sorted = [...periods].sort((a, b) => a - b);
+    assert.equal(
+      stats.median(),
+      (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2
+    );
+  }
+  for (const period of periods) stats.changePeriod(period, -1);
+  assert.equal(stats.median(), null);
+});
+
+test("repeated arrivals keep a held trace fresh and anchor gaps at actual sample times", () => {
+  const log = new Log();
+  const key = "pedal";
+  const gaps = new TraceGapCache();
+  for (let time = 0; time <= 300; time++) log.putNumber(key, time, 0, true);
+  assert.deepEqual(log.getNumber(key, 0, 300)?.timestamps, [0]);
+  assert.deepEqual(gaps.update(log, key, 300.1), []);
+
+  const stopped = gaps.update(log, key, 301, true)!;
+  assert.equal(stopped[0].t0, 300);
+  assert.ok(isUnresumed(stopped));
+  assert.deepEqual(prepareTrace([0], [0], stopped).timestamps, [0, 300]);
+
+  log.putNumber(key, 315, 0, true);
+  const resumed = gaps.update(log, key, 315)!;
+  const data = prepareTrace([0], [0], resumed);
+  assert.deepEqual(data.timestamps, [0, 300, 315]);
+  assert.deepEqual(data.values, [0, 0, 0]);
+  assert.deepEqual(data.gapAfter, [false, true, false]);
+
+  for (let time = 301; time < 315; time++) log.putNumber(key, time, 0, true);
+  assert.deepEqual(gaps.update(log, key, 315), []);
+  log.clearBeforeTime(316);
+  assert.equal(gaps.update(log, key, 318, true)?.[0].t0, 315);
+  assert.equal(log.getField(key)?.getNumberArrivals()?.field.getTimestampCount(), 1);
 });

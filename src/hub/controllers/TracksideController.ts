@@ -22,6 +22,7 @@ import {
 import { createUUID } from "../../shared/util";
 import { isTextFrame } from "../FrameScheduler";
 import SourceList from "../SourceList";
+import type { TracksideAlertSource } from "../TracksideAlerts";
 import LineGraphController from "./LineGraphController";
 import TabController from "./TabController";
 import TracksideController_Config from "./TracksideController_Config";
@@ -136,17 +137,33 @@ export default class TracksideController implements TabController {
     this.sourceList.refresh();
   }
   newAssets() {}
-  /** Limits for fields still in the tile list. A removed tile's limits stop alerting. */
-  getLimits() {
-    const keys = new Set(this.sourceList.getState().map((source) => source.logKey));
-    return Object.fromEntries(Object.entries(this.limits).filter(([key]) => keys.has(key)));
+  private alertConfig: TracksideAlertSource[] = [];
+
+  /** Alert labels and limits follow the tiles, including unavailable or hidden fields. */
+  getAlertConfiguration(): TracksideAlertSource[] {
+    const sources = this.sourceList.getState();
+    if (
+      sources.length === this.alertConfig.length &&
+      sources.every(({ logKey, dbcSignal }, index) => {
+        const entry = this.alertConfig[index];
+        const limits = this.limits[logKey];
+        return (
+          entry.key === logKey &&
+          entry.dbcSignal === dbcSignal &&
+          entry.low === limits?.low &&
+          entry.high === limits?.high
+        );
+      })
+    )
+      return this.alertConfig;
+    return (this.alertConfig = sources.map(({ logKey, dbcSignal }) => ({
+      key: logKey,
+      dbcSignal,
+      low: this.limits[logKey]?.low,
+      high: this.limits[logKey]?.high
+    })));
   }
-  /** The DBC signal each tile was saved with, for naming fields the open log lacks. */
-  getSavedDbcSignals(): { [key: string]: string } {
-    return Object.fromEntries(
-      this.sourceList.getState().flatMap((source) => (source.dbcSignal ? [[source.logKey, source.dbcSignal]] : []))
-    );
-  }
+
   getActiveFields() {
     return this.sourceList.getActiveFields();
   }

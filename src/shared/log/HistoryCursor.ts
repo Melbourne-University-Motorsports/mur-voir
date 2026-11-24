@@ -18,10 +18,15 @@ export default class HistoryCursor {
   stamp = -Infinity;
   heldTimestamp: number | undefined;
 
-  update(log: Log, key: string, time: number, reset: () => void): number {
-    const field = log.getField(key);
+  update(
+    log: Log,
+    key: string,
+    time: number,
+    reset: () => void,
+    field = log.getField(key),
+    version = log.getHistoryVersion(key)
+  ): number {
     const first = field?.getTimestamp(0);
-    const version = log.getHistoryVersion(key);
     const discardVersion = field?.getDiscardVersion() ?? 0;
     if (
       log !== this.log ||

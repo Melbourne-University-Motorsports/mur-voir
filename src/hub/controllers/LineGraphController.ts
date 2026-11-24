@@ -737,7 +737,7 @@ export default class LineGraphController implements TabController {
           reusable &&
           !gaps?.some(({ t0, t1 }) => t0 < timeRange[1] && t1 > timeRange[0]) &&
           timeSpan > 0 &&
-          timeSpan <= 120 &&
+          timeSpan <= 600 &&
           Number.isSafeInteger(Math.floor(timeRange[1]))
         ) {
           let series = this.steppedSeries.get(field);

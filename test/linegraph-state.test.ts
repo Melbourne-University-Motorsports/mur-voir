@@ -271,3 +271,46 @@ test("a scrolling stepped trace reuses its projected interior until the scale or
     Object.assign(globalThis, { Path2D, DOMMatrix });
   }
 });
+
+test("dense stepped paths retain both extremes and the held value in a device pixel", () => {
+  const log = new Log();
+  for (const [time, value] of [
+    [0, 0],
+    [0.16, 7],
+    [0.17, -4],
+    [0.2, 3],
+    [0.8, 2]
+  ]) {
+    log.putNumber("v", time, value);
+  }
+  const range: [number, number] = [0, 1];
+  const samples = new SteppedSeries().get(log.getField("v")!, 0, "", range, (v) => v);
+  const points: number[][] = [];
+  const context = {
+    beginPath() {},
+    moveTo(x: number, y: number) {
+      points.push([x, y]);
+    },
+    lineTo(x: number, y: number) {
+      points.push([x, y]);
+    },
+    stroke() {}
+  };
+  const renderer = Object.create(LineGraphRenderer.prototype);
+  renderer.strokeDenseSteppedWindow(
+    context,
+    samples,
+    new ValueScaler(range, [0, 4]),
+    new ValueScaler(range, range),
+    4,
+    1
+  );
+  assert.deepEqual(points.slice(0, 5), [
+    [0, 0],
+    [0.64, 0],
+    [0.64, -4],
+    [0.64, 7],
+    [0.64, 3]
+  ]);
+  assert.deepEqual(points.at(-1), [4, 2]);
+});
