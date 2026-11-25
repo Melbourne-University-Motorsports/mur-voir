@@ -462,3 +462,27 @@ test("standing alerts reuse their value and label until the sample, freshness or
     Object.assign(globalThis, before);
   }
 });
+
+test("a field shown in two tiles of one tab raises its limit alert once", () => {
+  const before = { window: globalThis.window, document: globalThis.document };
+  const log = new Log();
+  log.putNumber("/temp", 0, 10);
+  const element = { hidden: true, textContent: "", title: "", dataset: {} } as any;
+  globalThis.window = {
+    log,
+    selection: { getCurrentLiveTime: () => 1 },
+    liveStatus: {
+      getLiveStatus: () => ({ backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 }),
+      getFieldFreshness: () => "online"
+    }
+  } as any;
+  globalThis.document = { body: { classList: { contains: () => false, toggle: () => {} } } } as any;
+  try {
+    const tile = { key: "/temp", dbcSignal: "Inverter temp", high: 5 };
+    updateTracksideAlerts(element, [[tile, { ...tile }]]);
+    assert.equal(element.hidden, false);
+    assert.equal(element.textContent.match(/above 5/g)?.length, 1, element.textContent);
+  } finally {
+    Object.assign(globalThis, before);
+  }
+});

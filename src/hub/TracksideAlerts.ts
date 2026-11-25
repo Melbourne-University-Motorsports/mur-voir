@@ -52,9 +52,14 @@ function alertEntries(configs: TracksideAlertSource[][]) {
   const signals = new Map<string, string>();
   const limits: (TracksideAlertSource & Limits)[] = [];
   for (const config of configs) {
+    // A tab keeps one set of limits per field, so a field in several of its tiles alerts once
+    const limited = new Set<string>();
     for (const source of config) {
       if (source.dbcSignal) signals.set(source.key, source.dbcSignal);
-      if (source.low !== undefined || source.high !== undefined) limits.push(source);
+      if ((source.low !== undefined || source.high !== undefined) && !limited.has(source.key)) {
+        limited.add(source.key);
+        limits.push(source);
+      }
     }
   }
   const entries: Entry[] = [];
