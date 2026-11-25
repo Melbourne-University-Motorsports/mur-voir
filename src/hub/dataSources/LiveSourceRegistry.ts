@@ -35,7 +35,8 @@ export const LIVE_SOURCES: LiveSourceDefinition[] = [
   {
     id: "mur",
     name: "MUR Telemetry",
-    defaultAddress: IS_LITE ? window.location.origin : "http://localhost:8090",
+    // Lite is served next to its backend. The desktop app defaults to the team backend on the MUR tailnet.
+    defaultAddress: IS_LITE ? window.location.origin : "http://mur-base:8080",
     liteCompatible: true,
     create: () => new MURSource()
   },
