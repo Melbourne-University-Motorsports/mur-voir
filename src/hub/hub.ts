@@ -286,7 +286,10 @@ function restoreState(state: HubState) {
 
 // Input and catalogue remaps can both change the saved layout.
 let lastSavedState = "";
+// Lite draws frames while it loads assets and before it restores the saved layout.
+let canSaveState = !IS_LITE;
 const saveChangedState = () => {
+  if (!canSaveState) return;
   const state = saveState();
   const serialized = JSON.stringify(state);
   if (serialized === lastSavedState) return;
@@ -764,6 +767,7 @@ afterFrames(() => {
 async function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
     case "show-when-ready":
+      canSaveState = true;
       // Wait for DOM updates to finish
       window.requestAnimationFrame(() => {
         window.sendMainMessage("show");
