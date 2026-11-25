@@ -49,6 +49,37 @@ type ConvertedSamples = {
 const graphSession = createUUID();
 let graphDataRevision = 0;
 
+/** Index of the first sample at or after `time` (binary search over sorted timestamps). */
+function sampleIndex(timestamps: number[], time: number): number {
+  let lo = 0;
+  let hi = timestamps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (timestamps[mid] < time) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Inserts a sample in time order unless one already exists at that time. */
+function insertSample(data: LogValueSetNumber, time: number, value: number) {
+  const index = sampleIndex(data.timestamps, time);
+  if (data.timestamps[index] === time) return;
+  data.timestamps.splice(index, 0, time);
+  data.values.splice(index, 0, value);
+}
+
+/** The series value at `time`: exact when sampled, linear between neighbours, else the nearest end. */
+function valueAtTime(data: LogValueSetNumber, time: number): number {
+  const { timestamps, values } = data;
+  if (timestamps.length === 0) return NaN;
+  const index = sampleIndex(timestamps, time);
+  if (timestamps[index] === time) return values[index];
+  if (index === 0) return values[0];
+  if (index === timestamps.length) return values[index - 1];
+  return scaleValueClamped(time, [timestamps[index - 1], timestamps[index]], [values[index - 1], values[index]]);
+}
+
 export default class LineGraphController implements TabController {
   private events = new AbortController();
   dispose() {
@@ -800,6 +831,17 @@ export default class LineGraphController implements TabController {
           }
         }
 
+        // A gap endpoint can be an arrival the compressed series lacks. Filters need it as a sample so
+        // the filtered trace and the gap agree there (an integral must stop growing at the gap start).
+        if (filter !== LineGraphFilter.None && gaps !== undefined && data.timestamps.length > 0) {
+          const first = data.timestamps[0];
+          const last = Math.max(timeRange[1], data.timestamps[data.timestamps.length - 1]);
+          for (const gap of gaps) {
+            if (gap.anchorStart && gap.t0 >= first && gap.t0 <= last) insertSample(data, gap.t0, gap.v0);
+            if (gap.anchorEnd && gap.t1 >= first && gap.t1 <= last) insertSample(data, gap.t1, gap.v1);
+          }
+        }
+
         // Apply filter
         switch (filter) {
           case LineGraphFilter.Differentiate:
@@ -854,6 +896,16 @@ export default class LineGraphController implements TabController {
         } else {
           data.values = values;
         }
+
+        // Filtered gap endpoints come from the filtered, converted series (before the edges are trimmed)
+        const filteredGaps =
+          filter === LineGraphFilter.None || gaps === undefined
+            ? undefined
+            : gaps.map((gap) => ({
+                ...gap,
+                v0: valueAtTime(data!, gap.t0),
+                v1: Number.isFinite(gap.t1) ? valueAtTime(data!, gap.t1) : gap.v1
+              }));
 
         // Trim early point
         if (data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
@@ -938,12 +990,14 @@ export default class LineGraphController implements TabController {
         // Add field command
         let itemCommand: NumericCommandCacheValue = {
           gaps:
-            gaps &&
-            clipGaps(gaps, timeRange[0], timeRange[1], (t) => t + timeRange[0]).map((gap) => ({
-              ...gap,
-              v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
-              v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
-            })),
+            filteredGaps !== undefined
+              ? clipGaps(filteredGaps, timeRange[0], timeRange[1], (t) => t + timeRange[0])
+              : gaps &&
+                clipGaps(gaps, timeRange[0], timeRange[1], (t) => t + timeRange[0]).map((gap) => ({
+                  ...gap,
+                  v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
+                  v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
+                })),
           timestamps: data.timestamps,
           values: data.values,
           ...fieldStyle

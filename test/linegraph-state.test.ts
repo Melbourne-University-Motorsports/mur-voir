@@ -8,13 +8,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import LineGraphController from "../src/hub/controllers/LineGraphController";
-import LineGraphFilter from "../src/shared/LineGraphFilter";
-import { SelectionMode } from "../src/shared/Selection";
 import { LapViewport } from "../src/shared/laps/LapViewport";
+import LineGraphFilter from "../src/shared/LineGraphFilter";
 import Log from "../src/shared/log/Log";
 import LoggableType from "../src/shared/log/LoggableType";
 import { SteppedSeries } from "../src/shared/log/SteppedSeries";
 import LineGraphRenderer from "../src/shared/renderers/LineGraphRenderer";
+import { SelectionMode } from "../src/shared/Selection";
+import { prepareTrace } from "../src/shared/TraceGaps";
 import { ValueScaler } from "../src/shared/util";
 
 function graphController(sources: unknown[]): LineGraphController {
@@ -176,6 +177,56 @@ test("a hidden source still loading does not suppress the visible source's empty
     globalThis.window = windowBefore;
   }
 });
+
+for (const filter of [LineGraphFilter.Integrate, LineGraphFilter.Differentiate]) {
+  test(`${LineGraphFilter[filter]} graphs take gap endpoints from the filtered series`, () => {
+    // A constant 2 arrives at 10 Hz until 9.9 s, pauses, then 4 arrives from 18 s. The log keeps one
+    // sample per value change, so the 9.9 s gap start exists only as an arrival.
+    const log = new Log();
+    const key = "/held";
+    for (let i = 0; i <= 99; i++) log.putNumber(key, i / 10, 2, true);
+    for (let i = 180; i <= 200; i++) log.putNumber(key, i / 10, 4, true);
+    const windowBefore = globalThis.window;
+    globalThis.window = {
+      log,
+      selection: {
+        getTimelineRange: () => [0, 20],
+        getMode: () => SelectionMode.Static,
+        getSelectedTime: () => null,
+        getHoveredTime: () => null,
+        getGrabZoomRange: () => null
+      },
+      getLoadingFields: () => new Set(),
+      matchMedia: () => ({ matches: false })
+    } as any;
+    try {
+      const controller = graphController([{ logKey: key, visible: true, type: "smooth", options: { color: "#fff" } }]);
+      (controller as any).leftFilter = filter;
+      const field = controller.getCommand().leftFields[0];
+      const valueAt = (time: number) => {
+        const data = prepareTrace(field.timestamps, field.values, field.gaps!);
+        return data.values[data.timestamps.indexOf(time)];
+      };
+      assert.equal(field.gaps!.length, 1);
+      const [gap] = field.gaps!;
+      assert.equal(gap.t0, 9.9);
+      assert.equal(gap.t1, 18);
+      // The gap's endpoints and the solid trace agree on the filtered value
+      assert.equal(valueAt(9.9), gap.v0);
+      assert.equal(valueAt(18), gap.v1);
+      if (filter === LineGraphFilter.Integrate) {
+        // The integral of the held 2 up to the last arrival before the gap, not the raw reading
+        assert.ok(Math.abs(gap.v0 - 19.8) < 1e-9, `integral at 9.9 s was ${gap.v0}`);
+        assert.ok(field.values.every((value, i) => i === 0 || value >= field.values[i - 1]));
+      } else {
+        assert.notEqual(gap.v0, 2);
+        assert.notEqual(gap.v1, 4);
+      }
+    } finally {
+      globalThis.window = windowBefore;
+    }
+  });
+}
 
 test("stepped windows reuse interior chunks and retain exact boundaries across append, backfill and discard", () => {
   const key = "/voltage";
