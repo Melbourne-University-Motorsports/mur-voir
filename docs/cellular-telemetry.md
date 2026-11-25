@@ -6,7 +6,7 @@ mur-voir connects to the MUR telemetry backend over HTTP and WebSocket. The Pi p
 
 1. Join the MUR tailnet on the laptop and confirm the backend hostname resolves.
 2. Open **File > Connect**, or press Cmd/Ctrl+K.
-3. Select **MUR Telemetry** and enter the backend URL supplied by the infrastructure maintainer. For example, `http://mur-base:8080` if that is the deployed hostname and port.
+3. Select **MUR Telemetry**. The address defaults to the team backend, `http://mur-base:8080`. Change it only to reach another backend, such as the mock at `http://localhost:8090`.
 4. Expand the signal tree and drag a signal onto a Line Graph axis. The graph requests up to five minutes of recent backend history, then follows live data.
 
 The window title distinguishes searching, connected, no car data and connection errors. A connected backend can have an offline car. The signal tree and Trackside tiles show stale or offline values. Unsynchronised timestamps carry an approximate-time indicator.
