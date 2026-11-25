@@ -4,6 +4,7 @@
 // Use of this source code is governed by a BSD
 // license that can be found in the LICENSE file
 // at the root directory of this project.
+import { clientSize, prepareCanvas } from "../shared/domWrite";
 import { calcAxisStepSize, clampValue, cleanFloat, scaleValue } from "../shared/util";
 import ScrollSensor from "./ScrollSensor";
 
@@ -122,25 +123,79 @@ export default class Timeline {
     this.bandSupplier = supplier;
   }
 
+  private static darkQuery: MediaQueryList | null = null;
+  private tickWidths = new Map<string, number>();
+  private helpTextWidth?: number;
+  private lastDraw: { key: string; range: [number, number] } | null = null;
+
+  /** Opacity of the "Scroll timeline to zoom" hint, which fades out after the first zoom. */
+  private getHelpTextOpacity(): number {
+    // Reset scrollTime once preference is set
+    let hasScrolledTimeline = (window.preferences?.hasScrolledTimeline ?? false) || this.scrollSensor.shouldHideHint();
+    if (hasScrolledTimeline) {
+      this.scrollTime = null;
+      this.zoomInAccumulator = 0;
+      return 0;
+    }
+    if (this.scrollTime === null) return 0.5;
+    let elapsed = Date.now() - this.scrollTime;
+    if (elapsed < 600) return 0.5;
+    if (elapsed < 1000) return 0.5 * (1 - (elapsed - 600) / 400);
+    return 0;
+  }
+
   private isHidden() {
-    return this.CONTAINER.clientHeight === 0;
+    return this.CONTAINER.hidden || clientSize(this.CONTAINER)[1] === 0;
   }
 
   periodic() {
     if (this.isHidden()) return;
     this.scrollSensor.periodic();
 
-    // Initial setup and scaling
     const devicePixelRatio = window.devicePixelRatio;
-    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    let width = this.CONTAINER.clientWidth;
-    let height = this.CONTAINER.clientHeight;
-    let light = !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    let [width, height] = clientSize(this.CONTAINER);
+    Timeline.darkQuery ??= window.matchMedia("(prefers-color-scheme: dark)");
+    let light = !Timeline.darkQuery.matches;
     let timeRange = window.selection.getTimelineRange();
-    this.CANVAS.width = width * devicePixelRatio;
-    this.CANVAS.height = height * devicePixelRatio;
-    context.scale(devicePixelRatio, devicePixelRatio);
-    context.clearRect(0, 0, width, height);
+    const bands = this.bandSupplier();
+    const helpTextOpacity = this.getHelpTextOpacity();
+
+    const hoveredTime = window.selection.getHoveredTime();
+    const selectedTime = window.selection.getSelectedTime();
+    const marker = (time: number | null) => {
+      if (time === null) return null;
+      const x = scaleValue(time, timeRange, [0, width]);
+      return x > 1 && x < width - 1 ? Math.round(x * devicePixelRatio) : null;
+    };
+
+    // A timeline only needs a new frame when a visible marker or range moves by a device pixel.
+    const key = JSON.stringify([
+      width,
+      height,
+      devicePixelRatio,
+      light,
+      window.log.getTimestampDisplayOffset(),
+      bands,
+      window.selection.getGrabZoomRange(),
+      marker(hoveredTime),
+      marker(selectedTime),
+      this.lastCursorX,
+      helpTextOpacity
+    ]);
+    const last = this.lastDraw;
+    if (last !== null && last.key === key) {
+      const pxPerSecond = (width * devicePixelRatio) / (last.range[1] - last.range[0]);
+      if (
+        Math.abs(timeRange[0] - last.range[0]) * pxPerSecond < 1 &&
+        Math.abs(timeRange[1] - last.range[1]) * pxPerSecond < 1
+      )
+        return;
+    }
+    this.lastDraw = { key, range: [timeRange[0], timeRange[1]] };
+
+    // Setup and scaling
+    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
+    prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
     let helpFont = "200 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
     let labelFont = "200 12px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont";
 
@@ -155,11 +210,11 @@ export default class Timeline {
     let stepSize = calcAxisStepSize(displayTimeRange, width, this.STEP_TARGET_PX + extraDigits * 12);
 
     // Draw bands (e.g. laps)
-    const bandsLabelled = this.bandSupplier().some((b) => b.label);
+    const bandsLabelled = bands.some((b) => b.label);
     const tickLabelY = bandsLabelled ? 9 : height / 2;
     context.lineWidth = 1;
     let rangeBorders: number[] = [];
-    this.bandSupplier().forEach((range) => {
+    bands.forEach((range) => {
       let startTime = range.start;
       let endTime = range.end === undefined ? timeRange[1] : range.end;
       context.fillStyle = light ? range.color : range.darkColor;
@@ -246,37 +301,14 @@ export default class Timeline {
     };
 
     // Mark hovered and selected times
-    let hoveredTime = window.selection.getHoveredTime();
-    let selectedTime = window.selection.getSelectedTime();
-    if (hoveredTime !== null) markTime(hoveredTime, 0.5);
+    const markerHover = window.selection.getHoveredTime();
+    if (markerHover !== null) markTime(markerHover, 0.5);
     if (selectedTime !== null) markTime(selectedTime, 1);
 
     // Draw tick marks
     let helpText = "Scroll timeline to zoom";
     context.font = helpFont;
-    let helpTextWidth = context.measureText(helpText).width;
-
-    // Reset scrollTime once preference is set
-    let hasScrolledTimeline = (window.preferences?.hasScrolledTimeline ?? false) || this.scrollSensor.shouldHideHint();
-    if (hasScrolledTimeline) {
-      this.scrollTime = null;
-      this.zoomInAccumulator = 0;
-    }
-
-    // Calculate opacity of help text
-    let helpTextOpacity = 0.5;
-    if (hasScrolledTimeline) {
-      helpTextOpacity = 0;
-    } else if (this.scrollTime !== null) {
-      let elapsed = Date.now() - this.scrollTime;
-      if (elapsed < 600) {
-        helpTextOpacity = 0.5;
-      } else if (elapsed < 1000) {
-        helpTextOpacity = 0.5 * (1 - (elapsed - 600) / 400);
-      } else {
-        helpTextOpacity = 0;
-      }
-    }
+    const helpTextWidth = (this.helpTextWidth ??= context.measureText(helpText).width);
 
     context.lineWidth = 0.5;
     context.strokeStyle = light ? "#222" : "#eee";
@@ -284,6 +316,7 @@ export default class Timeline {
     context.textAlign = "center";
     context.textBaseline = "middle";
     let stepPos = Math.ceil(cleanFloat(displayTimeRange[0] / stepSize)) * stepSize;
+    const ticksByAlpha = new Map<number, number[]>();
     let iterCount = 0;
     while (iterCount++ < 100) {
       let x = scaleValue(stepPos, displayTimeRange, [0, width]);
@@ -293,7 +326,12 @@ export default class Timeline {
 
       let text = cleanFloat(stepPos).toString() + "s";
       context.font = labelFont;
-      let textWidth = context.measureText(text).width;
+      let textWidth = this.tickWidths.get(text);
+      if (textWidth === undefined) {
+        if (this.tickWidths.size >= 256) this.tickWidths.clear();
+        textWidth = context.measureText(text).width;
+        this.tickWidths.set(text, textWidth);
+      }
       let textX = clampValue(x, textWidth / 2 + 3, width - textWidth / 2 - 3);
       let textXRange = [textX - textWidth / 2, textX + textWidth / 2];
 
@@ -321,19 +359,27 @@ export default class Timeline {
       }
 
       let minDistance = Math.min(markDistance, adjustedHelpDistance);
-      context.globalAlpha = clampValue(scaleValue(minDistance, [0, 20], [0.2, 0.5]), 0, 1);
+      const alpha = clampValue(scaleValue(minDistance, [0, 20], [0.2, 0.5]), 0, 1);
+      context.globalAlpha = alpha;
       context.fillText(text, textX, tickLabelY);
-
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, 8);
-      if (!bandsLabelled) {
-        context.moveTo(x, height - 8);
-        context.lineTo(x, height);
-      }
-      context.stroke();
+      const ticks = ticksByAlpha.get(alpha);
+      if (ticks) ticks.push(x);
+      else ticksByAlpha.set(alpha, [x]);
 
       stepPos += stepSize;
+    }
+    for (const [alpha, ticks] of ticksByAlpha) {
+      context.globalAlpha = alpha;
+      context.beginPath();
+      for (const x of ticks) {
+        context.moveTo(x, 0);
+        context.lineTo(x, 8);
+        if (!bandsLabelled) {
+          context.moveTo(x, height - 8);
+          context.lineTo(x, height);
+        }
+      }
+      context.stroke();
     }
 
     // Draw help text in center

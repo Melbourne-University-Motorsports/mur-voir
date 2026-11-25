@@ -9,7 +9,7 @@ import { TabState, TabsState } from "../shared/HubState";
 import LineGraphFilter from "../shared/LineGraphFilter";
 import { RenderGuard, inlineStatus } from "../shared/RenderGuard";
 import TabType, { filterRestorableTabs, getDefaultTabTitle, getTabIcon } from "../shared/TabType";
-import { dbcDefinition } from "../shared/Trackside";
+import { dbcDefinition, diffTrackside } from "../shared/Trackside";
 import { getAutonomousKey, getEnabledKey, getUtilityKey } from "../shared/log/RobotState";
 import CarDynamicsRenderer from "../shared/renderers/CarDynamicsRenderer";
 import ConsoleRenderer from "../shared/renderers/ConsoleRenderer";
@@ -22,7 +22,7 @@ import PointsRenderer from "../shared/renderers/PointsRenderer";
 import StatisticsRenderer from "../shared/renderers/StatisticsRenderer";
 import TabRenderer, { NoopRenderer } from "../shared/renderers/TabRenderer";
 import TableRenderer from "../shared/renderers/TableRenderer";
-import TracksideRenderer from "../shared/renderers/TracksideRenderer";
+import TracksideRenderer, { TracksideRendererCommand } from "../shared/renderers/TracksideRenderer";
 import VideoRenderer from "../shared/renderers/VideoRenderer";
 import { Units } from "../shared/units";
 import { clampValue } from "../shared/util";
@@ -43,7 +43,9 @@ import TableController from "./controllers/TableController";
 import TracksideController from "./controllers/TracksideController";
 import VideoController from "./controllers/VideoController";
 
+import { setHidden, setRootProperty, setStyle } from "../shared/domWrite";
 import LapRenderer from "../shared/renderers/LapRenderer";
+import { invalidateFrames, isInteractive, requestFrame } from "./FrameScheduler";
 import { lapService } from "./LapService";
 import LapController from "./controllers/LapController";
 
@@ -83,7 +85,22 @@ export default class Tabs {
     controlsHeight: number;
   }[] = [];
   private selectedTab = 0;
+  private lastControlsLayout = "";
+  private shownTabsRevision = 0;
+  private lapTabs = new Set<TabController>();
   private activeSatellites: string[] = [];
+  /** Satellites redraw from every command, so commands go out only when they change, and at most this often. */
+  private SATELLITE_INTERVAL_MS = 100;
+  private SATELLITE_INTERACTIVE_INTERVAL_MS = 1000 / 30;
+  private satelliteSends = new Map<
+    string,
+    { time: number; title: string; command: string | TracksideRendererCommand; revision: string }
+  >();
+  private satelliteRetry: ReturnType<typeof setTimeout> | null = null;
+  private refreshRevision = 0;
+  private refreshedRevision = new WeakMap<object, number>();
+  private satelliteRevision = 0;
+  private readonly SATELLITE_SESSION = Math.random().toString(36).slice(2);
   private fieldDragHover: { index: number; timer: number } | null = null;
 
   constructor() {
@@ -320,6 +337,10 @@ export default class Tabs {
       ScrollSensorMouseControl.None
     );
 
+    const updateShadows = () => this.updateTabBarShadows();
+    this.TAB_BAR.addEventListener("scroll", updateShadows, { passive: true });
+    new ResizeObserver(updateShadows).observe(this.TAB_BAR);
+
     // Add timeline
     this.timeline = new Timeline(this.TIMELINE_CONTAINER);
     this.setTimelineBandSupplier(() => lapService.bands());
@@ -333,28 +354,28 @@ export default class Tabs {
     const guards = new WeakMap<object, RenderGuard>();
     // Periodic function
     let periodic = () => {
-      window.requestAnimationFrame(periodic);
+      requestFrame(periodic);
       periodicGuard.run(() => {
         if (performance.now() - lastAlerts >= 200) {
           lastAlerts = performance.now();
-          updateTracksideAlerts(alertElement, this.getTracksideLimits(), this.getTracksideDbcSignals());
+          updateTracksideAlerts(
+            alertElement,
+            this.tabList.flatMap(({ controller }) =>
+              controller instanceof TracksideController ? [controller.getAlertConfiguration()] : []
+            )
+          );
         }
-        // Update tab bar
-        this.SHADOW_LEFT.style.opacity = Math.floor(this.TAB_BAR.scrollLeft) <= 0 ? "0" : "1";
-        this.SHADOW_RIGHT.style.opacity =
-          Math.ceil(this.TAB_BAR.scrollLeft) >= this.TAB_BAR.scrollWidth - this.TAB_BAR.clientWidth ? "0" : "1";
         this.tabsScrollSensor.periodic();
 
         // Update timeline and controls
         this.timeline.periodic();
-        this.updateControlsHeight();
         this.updateTimelineVisibility();
+        const layout = this.controlsLayoutKey();
+        if (layout !== this.lastControlsLayout) this.updateControlsHeight();
       });
-      // Render new frame
-      this.tabList.forEach((tab, index) => {
-        let activeLocal = index === this.selectedTab;
-        let activeSatellite = this.activeSatellites.includes(tab.controller.UUID);
-        if (activeLocal || activeSatellite) {
+      // Render new frame (only the tabs on screen here or in a satellite)
+      this.getShownTabs().forEach(({ tab, activeLocal, activeSatellite }) => {
+        {
           let guard = guards.get(tab);
           if (!guard) {
             guard = new RenderGuard();
@@ -362,6 +383,10 @@ export default class Tabs {
           }
           guard.run(
             () => {
+              if (this.refreshedRevision.get(tab) !== this.refreshRevision) {
+                this.refreshedRevision.set(tab, this.refreshRevision);
+                tab.controller.refresh();
+              }
               if (tab.type === TabType.Table) {
                 // Update range from renderer
                 let renderer = tab.renderer as TableRenderer;
@@ -379,11 +404,7 @@ export default class Tabs {
                     : tab.title === ""
                     ? getDefaultTabTitle(tab.type)
                     : tab.title;
-                window.sendMainMessage("update-satellite", {
-                  uuid: tab.controller.UUID,
-                  command: command,
-                  title: title
-                });
+                this.sendSatelliteCommand(tab.controller.UUID, command, title, tab.type === TabType.Trackside);
               }
             },
             () =>
@@ -396,10 +417,26 @@ export default class Tabs {
         }
       });
     };
-    window.requestAnimationFrame(periodic);
+    requestFrame(periodic);
+  }
+
+  private updateTabBarShadows() {
+    const bar = this.TAB_BAR;
+    setStyle(this.SHADOW_LEFT, "opacity", Math.floor(bar.scrollLeft) <= 0 ? "0" : "1");
+    setStyle(this.SHADOW_RIGHT, "opacity", Math.ceil(bar.scrollLeft) >= bar.scrollWidth - bar.clientWidth ? "0" : "1");
+  }
+
+  private controlsLayoutKey(): string {
+    return [
+      window.innerHeight,
+      this.selectedTab,
+      this.TIMELINE_CONTAINER.hidden,
+      document.body.classList.contains("has-trackside-alerts")
+    ].join("|");
   }
 
   private updateControlsHeight() {
+    this.lastControlsLayout = this.controlsLayoutKey();
     let availableHeight = window.innerHeight - this.RENDERER_CONTENT.getBoundingClientRect().top;
     availableHeight -= 150;
     if (this.selectedTab < 0 || this.selectedTab >= this.tabList.length) return;
@@ -415,10 +452,10 @@ export default class Tabs {
       if (appliedHeight < 30) appliedHeight = 0;
     }
     selectedTab.controlsHeight = appliedHeight;
-    this.CONTROLS_HANDLE.hidden = fixedHeight === 0;
-    this.CONTROLS_CONTENT.hidden = appliedHeight === 0;
-    document.documentElement.style.setProperty("--tab-controls-height", appliedHeight.toString() + "px");
-    document.documentElement.style.setProperty("--show-tab-controls", appliedHeight === 0 ? "0" : "1");
+    setHidden(this.CONTROLS_HANDLE, fixedHeight === 0);
+    setHidden(this.CONTROLS_CONTENT, appliedHeight === 0);
+    setRootProperty("--tab-controls-height", appliedHeight.toString() + "px");
+    setRootProperty("--show-tab-controls", appliedHeight === 0 ? "0" : "1");
   }
 
   /** Returns the current state. */
@@ -485,6 +522,8 @@ export default class Tabs {
       this.CONTROLS_CONTENT.removeChild(tab.controlsElement);
     });
     this.tabList = [];
+    this.lapTabs.clear();
+    this.shownTabsCache = null;
     this.selectedTab = 0;
     const restored = filterRestorableTabs(state.tabs, state.selected);
     restored.tabs.forEach((tabState, index) => {
@@ -498,11 +537,45 @@ export default class Tabs {
     this.updateControlsHeight();
   }
 
-  /** Refresh based on new log data. */
-  refresh() {
-    this.tabList.forEach((tab) => {
-      tab.controller.refresh();
+  /** Refresh shown controllers whose fields changed. Catalogue changes also invalidate hidden tabs. */
+  refresh(changed: ReadonlySet<string> | null = null) {
+    if (changed === null) this.refreshRevision++;
+    for (const shown of this.getShownTabs()) {
+      if (changed !== null && !this.touchesFields(shown, changed)) continue;
+      this.refreshedRevision.set(shown.tab, this.refreshRevision);
+      shown.tab.controller.refresh();
+    }
+    if (changed === null) this.visibleFields = null;
+  }
+
+  private touchesFields(shown: ReturnType<Tabs["getShownTabs"]>[number], changed: ReadonlySet<string>): boolean {
+    const fields = this.getVisibleFieldCache().byTab.get(shown.tab);
+    if (!fields) return false;
+    for (const key of changed) {
+      if (fields.has(key)) return true;
+    }
+    return false;
+  }
+
+  private shownTabsCache: {
+    selected: number;
+    satellites: string[];
+    tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[];
+  } | null = null;
+
+  /** The selected tab and tabs open in satellites. Rebuilt only when tabs, selection or satellites change. */
+  private getShownTabs() {
+    const cache = this.shownTabsCache;
+    if (cache && cache.selected === this.selectedTab && cache.satellites === this.activeSatellites) return cache.tabs;
+    const tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[] = [];
+    this.tabList.forEach((tab, index) => {
+      const activeLocal = index === this.selectedTab;
+      const activeSatellite = this.activeSatellites.includes(tab.controller.UUID);
+      if (activeLocal || activeSatellite) tabs.push({ tab, activeLocal, activeSatellite });
     });
+    this.shownTabsRevision++;
+    this.shownTabsCache = { selected: this.selectedTab, satellites: this.activeSatellites, tabs };
+    return tabs;
   }
 
   /** Refresh based on a new set of assets. */
@@ -512,19 +585,120 @@ export default class Tabs {
     });
   }
 
-  /** Returns the set of fields currently being displayed. */
-  getActiveFields(): Set<string> {
-    const hasLapView = this.tabList.some(
-      (tab) =>
-        tab.type === TabType.TrackMap ||
-        tab.type === TabType.Laps ||
-        (tab.type === TabType.LineGraph && (tab.controller as LineGraphController).getLapMode() !== "time")
-    );
-    let activeFields = new Set<string>([
-      ...window.log.getFieldKeys().filter((key) => dbcDefinition(window.log.getMetadataString(key), key)),
-      ...(hasLapView ? lapService.fields() : [])
-    ]);
-    this.tabList.forEach((tab) => {
+  private dbcFields: { log: typeof window.log; fieldsVersion: number; metadataVersion: number; keys: string[] } | null =
+    null;
+
+  /** Fields with a DBC definition, cached until the log's fields or metadata change. */
+  private getDbcFields(): string[] {
+    const log = window.log;
+    const cache = this.dbcFields;
+    if (
+      cache &&
+      cache.log === log &&
+      cache.fieldsVersion === log.getFieldKeysVersion() &&
+      cache.metadataVersion === log.getMetadataVersion()
+    )
+      return cache.keys;
+    const keys = log.getFieldKeys().filter((key) => dbcDefinition(log.getMetadataString(key), key));
+    this.dbcFields = {
+      log,
+      fieldsVersion: log.getFieldKeysVersion(),
+      metadataVersion: log.getMetadataVersion(),
+      keys
+    };
+    return keys;
+  }
+
+  /** Sends changes at the satellite cadence. A held-back change gets a trailing frame. */
+  private sendSatelliteCommand(uuid: string, command: unknown, title: string, trackside: boolean) {
+    const last = this.satelliteSends.get(uuid);
+    if (last?.title === title && last.command === command) return;
+    const now = performance.now();
+    const interval = isInteractive() ? this.SATELLITE_INTERACTIVE_INTERVAL_MS : this.SATELLITE_INTERVAL_MS;
+    if (last !== undefined && now - last.time < interval - 4) {
+      if (this.satelliteRetry === null)
+        this.satelliteRetry = setTimeout(
+          () => {
+            this.satelliteRetry = null;
+            invalidateFrames();
+          },
+          last.time + interval - now
+        );
+      return;
+    }
+    const saved = trackside ? (command as TracksideRendererCommand) : JSON.stringify(command);
+    if (last?.command === saved && last.title === title) return;
+    let update: object = { command };
+    if (
+      typeof saved !== "string" &&
+      last &&
+      typeof last.command !== "string" &&
+      last.command.tiles.length === saved.tiles.length
+    ) {
+      const patch = diffTrackside(last.command, saved);
+      if (!patch.tiles.length && patch.graph === undefined && patch.message === undefined && last.title === title)
+        return;
+      update = { patch, baseRevision: last.revision };
+    }
+    const revision = this.SATELLITE_SESSION + ":" + (++this.satelliteRevision).toString();
+    this.satelliteSends.set(uuid, { time: now, title, command: saved, revision });
+    window.sendMainMessage("update-satellite", { uuid, title, revision, ...update });
+  }
+
+  /** Whether a tab draws laps, so it needs the lap service's fields. */
+  private showsLaps(tab: { controller: TabController }): boolean {
+    return this.lapTabs.has(tab.controller);
+  }
+
+  private visibleFields: {
+    at: number;
+    shown: ReturnType<Tabs["getShownTabs"]>;
+    keys: Set<string>;
+    byTab: Map<Tabs["tabList"][number], Set<string>>;
+  } | null = null;
+
+  /** Shown fields and parent keys used for ingest invalidation. */
+  private getVisibleFieldCache() {
+    const now = performance.now();
+    const shown = this.getShownTabs();
+    const cache = this.visibleFields;
+    if (cache && now - cache.at < 250 && cache.shown === shown) return cache;
+    const keys = new Set<string>();
+    const byTab = new Map<Tabs["tabList"][number], Set<string>>();
+    shown.forEach(({ tab }) => {
+      const fields = [...tab.controller.getActiveFields(), ...(this.showsLaps(tab) ? lapService.fields() : [])];
+      const related = new Set<string>();
+      fields.forEach((field) => {
+        for (let key = field; key.length > 0 && !related.has(key); key = key.substring(0, key.lastIndexOf("/"))) {
+          keys.add(key);
+          related.add(key);
+        }
+      });
+      byTab.set(tab, related);
+    });
+    return (this.visibleFields = { at: now, shown, keys, byTab });
+  }
+
+  getVisibleFields(): ReadonlySet<string> {
+    return this.getVisibleFieldCache().keys;
+  }
+
+  /** Changes when the selected tab or the set of satellite tabs changes. */
+  getVisibleTabsKey(): string {
+    this.getShownTabs();
+    return this.shownTabsRevision.toString();
+  }
+
+  /**
+   * Returns the set of fields currently being displayed. With `onlyVisible`, fields of tabs that are
+   * not on screen are left out; live sources use it to stream only what is drawn and backfill a tab's
+   * history when it is shown. Alerts, laps and enabled state are background features and always count.
+   */
+  getActiveFields(onlyVisible = false): Set<string> {
+    const tabs = onlyVisible ? this.getShownTabs().map(({ tab }) => tab) : this.tabList;
+    const hasLapView = this.lapTabs.size > 0;
+    let activeFields = new Set<string>([...this.getDbcFields(), ...(hasLapView ? lapService.fields() : [])]);
+    tabs.forEach((tab) => {
       tab.controller.getActiveFields().forEach((field) => {
         activeFields.add(field);
       });
@@ -542,21 +716,6 @@ export default class Tabs {
       activeFields.add(utilityKey);
     }
     return activeFields;
-  }
-
-  getTracksideDbcSignals(): { [key: string]: string } {
-    return Object.assign(
-      {},
-      ...this.tabList.flatMap((tab) =>
-        tab.controller instanceof TracksideController ? [tab.controller.getSavedDbcSignals()] : []
-      )
-    );
-  }
-
-  getTracksideLimits() {
-    return this.tabList.flatMap((tab) =>
-      tab.controller instanceof TracksideController ? [tab.controller.getLimits()] : []
-    );
   }
 
   editTracksideLimits(uuid: string, key: string, limits: { low?: number; high?: number }) {
@@ -603,7 +762,13 @@ export default class Tabs {
         renderer = new DocumentationRenderer(rendererElement);
         break;
       case TabType.LineGraph:
-        controller = new LineGraphController(controlsElement);
+        const lineGraph = new LineGraphController(controlsElement);
+        lineGraph.onLapModeChanged = () => {
+          if (lineGraph.getLapMode() === "time") this.lapTabs.delete(lineGraph);
+          else this.lapTabs.add(lineGraph);
+          this.visibleFields = null;
+        };
+        controller = lineGraph;
         renderer = new LineGraphRenderer(rendererElement, true);
         break;
       case TabType.Field2d:
@@ -679,6 +844,8 @@ export default class Tabs {
       this.selectedTab = -1;
     }
     let controlsHeightConfig = this.FIXED_CONTROL_HEIGHTS.get(type);
+    this.shownTabsCache = null;
+    if (type === TabType.TrackMap || type === TabType.Laps) this.lapTabs.add(controller);
     this.tabList.splice(this.selectedTab + 1, 0, {
       type: type,
       title: "",
@@ -713,7 +880,9 @@ export default class Tabs {
     this.tabList[index].renderer.dispose?.();
     this.RENDERER_CONTENT.removeChild(this.tabList[index].rendererElement);
     this.CONTROLS_CONTENT.removeChild(this.tabList[index].controlsElement);
+    this.lapTabs.delete(this.tabList[index].controller);
     this.tabList.splice(index, 1);
+    this.shownTabsCache = null;
     if (this.selectedTab > index) this.selectedTab--;
     if (this.selectedTab > this.tabList.length - 1) this.selectedTab = this.tabList.length - 1;
     this.updateElements();
@@ -752,6 +921,7 @@ export default class Tabs {
 
     let tab = this.tabList.splice(index, 1)[0];
     this.tabList.splice(index + shift, 0, tab);
+    this.shownTabsCache = null;
     this.updateElements();
   }
 
@@ -763,6 +933,9 @@ export default class Tabs {
   /** Updates the list of active satellites for data publishing. */
   setActiveSatellites(activeSatellites: string[]) {
     this.activeSatellites = activeSatellites;
+    // A satellite that closes and reopens needs its first command again
+    for (const uuid of this.satelliteSends.keys())
+      if (!activeSatellites.includes(uuid)) this.satelliteSends.delete(uuid);
   }
 
   /** Check whether the UUID is associated with a tab. */
@@ -783,6 +956,7 @@ export default class Tabs {
     }
     tab.title = name;
     tab.titleElement.innerText = getTabIcon(tab.type) + " " + (name === "" ? getDefaultTabTitle(tab.type) : name);
+    this.updateTabBarShadows();
   }
 
   /** Adjusts the locked range and unit conversion for an axis on the selected line graph. */
@@ -873,14 +1047,21 @@ export default class Tabs {
       }
     });
 
-    // Update timeline
+    this.updateTabBarShadows();
+    // Selection and topology can change the controls height and timeline.
     this.updateTimelineVisibility();
+    this.updateControlsHeight();
+  }
+
+  /** Whether the shown tab draws a time axis that scrolls with the live edge. */
+  followsLiveTime(): boolean {
+    return this.tabList[this.selectedTab]?.controller.followsLiveTime?.() ?? false;
   }
 
   /** Hides or shows the timeline based on the controller request. */
   private updateTimelineVisibility() {
     let show = this.tabList[this.selectedTab].controller.showTimeline();
-    document.documentElement.style.setProperty("--show-timeline", show ? "1" : "0");
-    this.TIMELINE_CONTAINER.hidden = !show;
+    setRootProperty("--show-timeline", show ? "1" : "0");
+    setHidden(this.TIMELINE_CONTAINER, !show);
   }
 }

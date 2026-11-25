@@ -6,6 +6,7 @@
 // at the root directory of this project.
 
 import Selection, { SelectionMode } from "../shared/Selection";
+import { setHidden, setRootProperty } from "../shared/domWrite";
 import { AKIT_TIMESTAMP_KEYS } from "../shared/log/RobotState";
 
 export default class SelectionImpl implements Selection {
@@ -101,11 +102,12 @@ export default class SelectionImpl implements Selection {
   /** Switches the current mode and updates the buttons. */
   private setMode(newMode: SelectionMode) {
     this.mode = newMode;
-    document.documentElement.style.setProperty("--show-lock-buttons", this.liveConnected ? "1" : "0");
-    this.PLAY_BUTTON.hidden = this.mode === SelectionMode.Playback || this.mode === SelectionMode.Locked;
-    this.PAUSE_BUTTON.hidden = this.mode === SelectionMode.Idle || this.mode === SelectionMode.Static;
-    this.LOCK_BUTTON.hidden = !this.liveConnected || this.mode === SelectionMode.Locked;
-    this.UNLOCK_BUTTON.hidden = !this.liveConnected || this.mode !== SelectionMode.Locked;
+    // Live output calls this many times a second, so only changes are written
+    setRootProperty("--show-lock-buttons", this.liveConnected ? "1" : "0");
+    setHidden(this.PLAY_BUTTON, this.mode === SelectionMode.Playback || this.mode === SelectionMode.Locked);
+    setHidden(this.PAUSE_BUTTON, this.mode === SelectionMode.Idle || this.mode === SelectionMode.Static);
+    setHidden(this.LOCK_BUTTON, !this.liveConnected || this.mode === SelectionMode.Locked);
+    setHidden(this.UNLOCK_BUTTON, !this.liveConnected || this.mode !== SelectionMode.Locked);
   }
 
   /** Gets the current the hovered time. */
@@ -284,8 +286,6 @@ export default class SelectionImpl implements Selection {
     this.liveTimeSupplier = timeSupplier;
     if (newConnection) {
       this.setMode(SelectionMode.Locked);
-    } else {
-      this.setMode(this.mode); // Just update buttons
     }
   }
 

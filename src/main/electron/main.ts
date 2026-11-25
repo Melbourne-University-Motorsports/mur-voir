@@ -49,7 +49,9 @@ import TabType, {
   getTabIcon,
   NEW_TAB_TYPES
 } from "../../shared/TabType";
+import { applyTracksidePatch } from "../../shared/Trackside";
 import { BUILD_DATE, COPYRIGHT } from "../../shared/buildConstants";
+import type { TracksideRendererCommand } from "../../shared/renderers/TracksideRenderer";
 import { Units } from "../../shared/units";
 import { createUUID, formatDate } from "../../shared/util";
 import { GITHUB_REPOSITORY } from "../github";
@@ -88,7 +90,10 @@ const csvFiles = new WeakMap<
 let hubWindows: BrowserWindow[] = []; // Ordered by last focus time (recent first)
 let prefsWindow: BrowserWindow | null = null;
 let licensesWindow: BrowserWindow | null = null;
-let satelliteWindows: { [id: string]: BrowserWindow[] } = {};
+const satelliteWindows = new Set<BrowserWindow>();
+type SatelliteRender = { command: unknown; title: string; revision?: string };
+type SatelliteTab = { windows: Set<BrowserWindow>; latest?: SatelliteRender };
+const satelliteTabs = new WeakMap<BrowserWindow, Map<string, SatelliteTab>>();
 let windowPorts: { [id: number]: MessagePortMain } = {};
 let hubTouchBarSliders: { [id: number]: TouchBarSlider } = {};
 let hubExportingIds: Set<number> = new Set();
@@ -133,12 +138,8 @@ function sendAllPreferences() {
       sendMessage(window, "set-preferences", data);
     }
   });
-  Object.values(satelliteWindows).forEach((satelliteArray) => {
-    satelliteArray.forEach((satellite) => {
-      if (!satellite.isDestroyed()) {
-        sendMessage(satellite, "set-preferences", data);
-      }
-    });
+  satelliteWindows.forEach((satellite) => {
+    if (!satellite.isDestroyed()) sendMessage(satellite, "set-preferences", data);
   });
   if (menuTemplate !== null) {
     const selectedLiveSource = getSelectedLiveSourceId(data);
@@ -157,12 +158,8 @@ function sendAllPreferences() {
 
 /** Sends the current set of assets to all windows. */
 function sendAssets() {
-  Object.values(satelliteWindows).forEach((windowCollection) => {
-    windowCollection.forEach((window) => {
-      if (!window.isDestroyed()) {
-        sendMessage(window, "set-assets", advantageScopeAssets);
-      }
-    });
+  satelliteWindows.forEach((window) => {
+    if (!window.isDestroyed()) sendMessage(window, "set-assets", advantageScopeAssets);
   });
   hubWindows.forEach((window) => {
     if (!window.isDestroyed()) {
@@ -171,17 +168,99 @@ function sendAssets() {
   });
 }
 
-/** Sends the list of active satellites to all hub windows. */
-function sendActiveSatellites() {
-  let activeSatellites: string[] = [];
-  Object.entries(satelliteWindows).forEach(([uuid, windows]) => {
-    if (windows.length > 0) {
-      activeSatellites.push(uuid);
+// Reload assets when the user assets folder changes. Every window rebuilds on new assets, so only send changes.
+// A file watcher keeps the synchronous folder scan off the steady state; polling is the fallback.
+let assetWatcher: fs.FSWatcher | null = null;
+let assetPoll: ReturnType<typeof setInterval> | null = null;
+let assetReloadTimer: ReturnType<typeof setTimeout> | null = null;
+async function reloadAssets() {
+  const assets = await loadAssets();
+  if (JSON.stringify(assets) === JSON.stringify(advantageScopeAssets)) return;
+  advantageScopeAssets = assets;
+  sendAssets();
+}
+/** Watches the current user assets folder, replacing any earlier watch. */
+function watchUserAssets() {
+  assetWatcher?.close();
+  assetWatcher = null;
+  if (assetPoll !== null) clearInterval(assetPoll);
+  assetPoll = null;
+  try {
+    assetWatcher = fs.watch(getUserAssetsPath(), { recursive: true }, () => {
+      if (assetReloadTimer !== null) clearTimeout(assetReloadTimer);
+      assetReloadTimer = setTimeout(() => {
+        assetReloadTimer = null;
+        void reloadAssets();
+      }, 500);
+    });
+  } catch {
+    // No recursive watch here: compare file times every 5 s, read asynchronously so main never blocks.
+    // Assets load (synchronously) only after something changed.
+    let lastSignature: string | null = null;
+    let checking = false;
+    assetPoll = setInterval(async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const signature = await assetSignature(getUserAssetsPath());
+        if (lastSignature !== null && signature !== lastSignature) await reloadAssets();
+        lastSignature = signature;
+      } finally {
+        checking = false;
+      }
+    }, 5000);
+  }
+}
+
+/** Path, modification time and size of every file under `folder`, read asynchronously. */
+async function assetSignature(folder: string): Promise<string> {
+  const parts: string[] = [];
+  const walk = async (dir: string) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
     }
-  });
-  hubWindows.forEach((window) => {
-    sendMessage(window, "set-active-satellites", activeSatellites);
-  });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else {
+        try {
+          const stat = await fs.promises.stat(full);
+          parts.push(full + ":" + stat.mtimeMs.toString() + ":" + stat.size.toString());
+        } catch {
+          // Removed while walking; the next check sees it
+        }
+      }
+    }
+  };
+  await walk(folder);
+  return parts.sort().join("\n");
+}
+
+const deliveredSatelliteRevisions = new WeakMap<BrowserWindow, string>();
+
+function replaySatelliteRender(satellite: BrowserWindow, tab: SatelliteTab) {
+  const latest = tab.latest;
+  if (
+    latest !== undefined &&
+    !satellite.isDestroyed() &&
+    satellite.isVisible() &&
+    (latest.revision === undefined || deliveredSatelliteRevisions.get(satellite) !== latest.revision) &&
+    sendMessage(satellite, "render", latest) &&
+    latest.revision !== undefined
+  ) {
+    deliveredSatelliteRevisions.set(satellite, latest.revision);
+  }
+}
+
+/** Only the originating hub publishes updates for its satellites. */
+function sendActiveSatellites(window: BrowserWindow) {
+  if (!window.isDestroyed()) {
+    sendMessage(window, "set-active-satellites", [...(satelliteTabs.get(window)?.keys() ?? [])]);
+  }
 }
 
 // One recovery prompt per incident. Recovery is explicit and never automatically replays
@@ -1219,18 +1298,29 @@ async function handleHubMessage(window: BrowserWindow, message: NamedMessage) {
       createSatellite({ parentWindow: window, uuid: message.data.uuid, type: message.data.type });
       break;
 
-    case "update-satellite":
-      let satelliteUUID = message.data.uuid;
-      let command = message.data.command;
-      let title = message.data.title;
-      if (satelliteUUID in satelliteWindows) {
-        satelliteWindows[satelliteUUID].forEach((satellite) => {
-          if (satellite.isVisible()) {
-            sendMessage(satellite, "render", { command: command, title: title });
-          }
-        });
-      }
+    case "update-satellite": {
+      const { uuid, command, patch, baseRevision, title, revision } = message.data;
+      const tab = satelliteTabs.get(window)?.get(uuid);
+      if (tab === undefined) break;
+      const previous = tab.latest;
+      if (patch && (previous === undefined || previous.revision !== baseRevision)) break;
+      const latest = {
+        command: patch && previous ? applyTracksidePatch(previous.command as TracksideRendererCommand, patch) : command,
+        title,
+        revision
+      };
+      // Keep a complete latest snapshot for newly loaded or newly visible windows.
+      tab.latest = latest;
+      tab.windows.forEach((satellite) => {
+        if (!satellite.isVisible()) return;
+        const update =
+          patch && deliveredSatelliteRevisions.get(satellite) === baseRevision
+            ? { patch, baseRevision, title, revision }
+            : latest;
+        if (sendMessage(satellite, "render", update)) deliveredSatelliteRevisions.set(satellite, revision);
+      });
       break;
+    }
 
     case "ask-2d-camera":
       select2DCameraPopup(window, message.data.position, message.data.selectedIndex);
@@ -1461,6 +1551,7 @@ function setupMenu() {
             advantageScopeAssets = await loadAssets();
             sendAllPreferences();
             sendAssets();
+            watchUserAssets();
           }
         },
         ...(isMac
@@ -1672,7 +1763,13 @@ function setupMenu() {
                         additionalLayout.version === data.version
                       ) {
                         data.hubs = data.hubs.concat(additionalLayout.hubs);
-                        data.satellites = data.satellites.concat(additionalLayout.satellites);
+                        const hubOffset = data.hubs.length - additionalLayout.hubs.length;
+                        data.satellites = data.satellites.concat(
+                          additionalLayout.satellites.flatMap((satellite: SatelliteWindowState) => {
+                            const index = satelliteHubIndex(additionalLayout.hubs, satellite);
+                            return index < 0 ? [] : [{ ...satellite, hubIndex: index + hubOffset }];
+                          })
+                        );
                       }
                     }
                   }
@@ -1692,27 +1789,16 @@ function setupMenu() {
                   }
 
                   // Close all current hub and satellite windows
-                  hubWindows.forEach((window) => {
+                  [...hubWindows].forEach((window) => {
                     if (!window.isDestroyed()) {
                       window.close();
                     }
                   });
-                  Object.values(satelliteWindows).forEach((windows) =>
-                    windows.forEach((window) => {
-                      if (!window.isDestroyed()) {
-                        window.close();
-                      }
-                    })
-                  );
+                  satelliteWindows.forEach((window) => {
+                    if (!window.isDestroyed()) window.close();
+                  });
 
-                  // Create new windows based on layout
-                  let applicationState = data as ApplicationState;
-                  applicationState.hubs.forEach((hubState) => {
-                    createHubWindow(hubState);
-                  });
-                  applicationState.satellites.forEach((satelliteState) => {
-                    createSatellite({ state: satelliteState });
-                  });
+                  restoreApplicationWindows(data as ApplicationState);
                 }
               });
           }
@@ -1889,13 +1975,9 @@ function setupMenu() {
                 });
                 if (prefsWindow && !prefsWindow.isDestroyed()) prefsWindow?.moveTop();
                 if (licensesWindow && !licensesWindow.isDestroyed()) licensesWindow?.moveTop();
-                Object.values(satelliteWindows).forEach((windows) =>
-                  windows.forEach((window) => {
-                    if (!window.isDestroyed()) {
-                      window.moveTop();
-                    }
-                  })
-                );
+                satelliteWindows.forEach((window) => {
+                  if (!window.isDestroyed()) window.moveTop();
+                });
                 window?.moveTop();
               }
             },
@@ -2116,7 +2198,7 @@ function createHubWindow(state?: WindowState, layoutOverride?: any) {
     });
     sendMessage(window, "show-when-ready");
     sendAllPreferences();
-    sendActiveSatellites();
+    sendActiveSatellites(window);
     if (fs.existsSync(TYPE_MEMORY_FILENAME)) {
       sendMessage(window, "restore-type-memory", jsonfile.readFileSync(TYPE_MEMORY_FILENAME));
     }
@@ -2150,6 +2232,9 @@ function createHubWindow(state?: WindowState, layoutOverride?: any) {
     const index = hubWindows.indexOf(window);
     if (index !== -1) hubWindows.splice(index, 1);
     downloadRuns.forgetWindow(windowId);
+    for (const tab of satelliteTabs.get(window)?.values() ?? []) {
+      tab.windows.forEach((satellite) => satellite.close());
+    }
   });
   window.on("enter-full-screen", () => sendMessage(window, "set-fullscreen", true));
   window.on("leave-full-screen", () => sendMessage(window, "set-fullscreen", false));
@@ -2403,38 +2488,27 @@ function createExportWindow(
  * @param uuid UUID to use.
  * @param type TabType to use.
  */
-function createSatellite(
-  config:
-    | {
-        parentWindow: Electron.BrowserWindow;
-        uuid: string;
-        type: TabType;
-      }
-    | {
-        state: SatelliteWindowState;
-      }
-) {
-  const configData = !("state" in config)
-    ? (config as {
-        parentWindow: Electron.BrowserWindow;
-        uuid: string;
-        type: TabType;
-      })
-    : undefined;
-  const state = "state" in config ? config.state : undefined;
-  if (!getAllTabTypes().includes(configData?.type ?? state!.state.type)) return;
-  const uuid = configData !== undefined ? configData.uuid : state!.uuid;
-
-  const width = state === undefined ? SATELLITE_DEFAULT_WIDTH : state.width;
-  const height = state === undefined ? SATELLITE_DEFAULT_HEIGHT : state.height;
-  const x =
-    configData === undefined
-      ? state?.x
-      : Math.floor(configData.parentWindow.getBounds().x + configData.parentWindow.getBounds().width / 2 - width / 2);
-  const y =
-    configData === undefined
-      ? state?.y
-      : Math.floor(configData.parentWindow.getBounds().y + configData.parentWindow.getBounds().height / 2 - height / 2);
+function createSatellite({
+  parentWindow,
+  uuid,
+  type,
+  state
+}: {
+  parentWindow: BrowserWindow;
+  uuid: string;
+  type: TabType;
+  state?: SatelliteWindowState;
+}) {
+  if (!getAllTabTypes().includes(type)) return;
+  const width = state?.width ?? SATELLITE_DEFAULT_WIDTH;
+  const height = state?.height ?? SATELLITE_DEFAULT_HEIGHT;
+  const parentBounds = parentWindow.getBounds();
+  const x = state?.x ?? Math.floor(parentBounds.x + (parentBounds.width - width) / 2);
+  const y = state?.y ?? Math.floor(parentBounds.y + (parentBounds.height - height) / 2);
+  let tabs = satelliteTabs.get(parentWindow);
+  if (tabs === undefined) satelliteTabs.set(parentWindow, (tabs = new Map()));
+  let tab = tabs.get(uuid);
+  if (tab === undefined) tabs.set(uuid, (tab = { windows: new Set() }));
   const satellite = new BrowserWindow({
     width: width,
     height: height,
@@ -2453,10 +2527,16 @@ function createSatellite(
   installRendererRecovery(satellite, false);
   satellite.setMenu(null);
   satellite.setMenuBarVisibility(false);
-  satellite.once("ready-to-show", satellite.show);
+  satellite.once("ready-to-show", () => {
+    satellite.show();
+    replaySatelliteRender(satellite, tab);
+  });
+  satellite.on("show", () => replaySatelliteRender(satellite, tab));
+  satellite.on("restore", () => replaySatelliteRender(satellite, tab));
   satellite.loadFile(path.join(__dirname, "../www/satellite.html"));
   let firstLoad = true;
   satellite.webContents.on("dom-ready", () => {
+    deliveredSatelliteRevisions.delete(satellite);
     // Create ports on reload
     const { port1, port2 } = new MessageChannelMain();
     satellite.webContents.postMessage("port", null, [port1]);
@@ -2511,16 +2591,11 @@ function createSatellite(
           break;
 
         case "sector-zoom":
-          hubWindows.forEach((window) => {
-            sendMessage(window, "sector-zoom", { uuid, focus: message.data });
-          });
+          sendMessage(parentWindow, "sector-zoom", { uuid, focus: message.data });
           break;
 
         case "call-selection-setter":
-          message.data.uuid = configData !== undefined ? configData.uuid : state!.uuid;
-          hubWindows.forEach((window) => {
-            sendMessage(window, "call-selection-setter", message.data);
-          });
+          sendMessage(parentWindow, "call-selection-setter", { ...message.data, uuid });
           break;
 
         case "open-link":
@@ -2535,19 +2610,14 @@ function createSatellite(
     port2.start();
     sendMessage(satellite, "set-assets", advantageScopeAssets);
     sendMessage(satellite, "set-battery", powerMonitor.isOnBatteryPower());
-    if (firstLoad) {
-      if (configData !== undefined) {
-        sendMessage(satellite, "set-type", configData.type);
-      } else if (state !== undefined) {
-        sendMessage(satellite, "restore-state", state.state);
-      }
+    const rendererState = (firstLoad ? undefined : stateTracker.getRendererState(satellite)) ?? state?.state;
+    if (rendererState !== undefined) {
+      sendMessage(satellite, "restore-state", rendererState);
     } else {
-      let cachedState = stateTracker.getRendererState(satellite);
-      if (cachedState !== undefined) {
-        sendMessage(satellite, "restore-state", stateTracker.getRendererState(satellite));
-      }
+      sendMessage(satellite, "set-type", type);
     }
     sendAllPreferences();
+    replaySatelliteRender(satellite, tab);
     firstLoad = false;
   });
   satellite.webContents.setWindowOpenHandler((details) => {
@@ -2558,17 +2628,43 @@ function createSatellite(
   powerMonitor.on("on-ac", () => sendMessage(satellite, "set-battery", false));
   powerMonitor.on("on-battery", () => sendMessage(satellite, "set-battery", true));
 
-  if (!(uuid in satelliteWindows)) {
-    satelliteWindows[uuid] = [];
-  }
-  satelliteWindows[uuid].push(satellite);
-  stateTracker.saveSatelliteIds(satelliteWindows);
-  sendActiveSatellites();
+  tab.windows.add(satellite);
+  satelliteWindows.add(satellite);
+  stateTracker.trackSatellite(satellite, parentWindow, uuid);
+  sendActiveSatellites(parentWindow);
   satellite.once("closed", () => {
-    satelliteWindows[uuid!].splice(satelliteWindows[uuid!].indexOf(satellite), 1);
-    stateTracker.saveSatelliteIds(satelliteWindows);
-    sendActiveSatellites();
+    satelliteWindows.delete(satellite);
+    tab.windows.delete(satellite);
+    if (tab.windows.size === 0) tabs.delete(uuid);
+    sendActiveSatellites(parentWindow);
   });
+}
+
+function satelliteHubIndex(hubs: WindowState[], satellite: SatelliteWindowState): number {
+  if (satellite.hubIndex !== undefined) {
+    const index = satellite.hubIndex;
+    return Number.isInteger(index) && index >= 0 && index < hubs.length ? index : -1;
+  }
+  // Older layouts have only the tab UUID. Use the first matching hub in saved order.
+  return hubs.findIndex(
+    (hub) => hub.state?.tabs?.tabs?.some((tab: { controllerUUID: string }) => tab.controllerUUID === satellite.uuid)
+  );
+}
+
+function restoreApplicationWindows(state: ApplicationState): BrowserWindow | null {
+  const hubs = state.hubs.map((hubState) => createHubWindow(hubState));
+  for (const satellite of state.satellites) {
+    const index = satelliteHubIndex(state.hubs, satellite);
+    if (hubs[index]) {
+      createSatellite({
+        parentWindow: hubs[index],
+        uuid: satellite.uuid,
+        type: satellite.state.type,
+        state: satellite
+      });
+    }
+  }
+  return hubs[0] ?? null;
 }
 
 /**
@@ -2762,28 +2858,13 @@ app.whenReady().then(async () => {
 
   // Load assets
   createAssetFolders();
-  setInterval(async () => {
-    // Periodically load assets in case they are updated
-    advantageScopeAssets = await loadAssets();
-    sendAssets();
-  }, 5000);
+  watchUserAssets();
   advantageScopeAssets = await loadAssets();
 
   // Create menu and windows
   setupMenu();
   let applicationState = stateTracker.getSavedApplicationState();
-  let targetWindow: BrowserWindow | null = null;
-  if (applicationState === null || applicationState.hubs.length === 0) {
-    targetWindow = createHubWindow();
-  } else {
-    applicationState.hubs.forEach((hubState, index) => {
-      let hubWindow = createHubWindow(hubState);
-      if (index === 0) targetWindow = hubWindow;
-    });
-    applicationState.satellites.forEach((satelliteState) => {
-      createSatellite({ state: satelliteState });
-    });
-  }
+  const targetWindow = (applicationState && restoreApplicationWindows(applicationState)) ?? createHubWindow();
 
   // Check for file path given as argument
   let fileArgs = process.argv.filter(
@@ -2848,6 +2929,9 @@ setInterval(() => {
     });
   }
 }, AKIT_PATH_INPUT_PERIOD);
+
+// Keep state changes from the last save period
+app.on("before-quit", () => stateTracker.save());
 
 // Clean up files on quit
 app.on("quit", () => {

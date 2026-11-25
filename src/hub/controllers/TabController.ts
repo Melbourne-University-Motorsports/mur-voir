@@ -35,6 +35,9 @@ export default interface TabController {
   /** Returns whether to display the timeline. */
   showTimeline(): boolean;
 
+  /** Whether the view draws a time axis that scrolls with the live edge (default false). */
+  followsLiveTime?(): boolean;
+
   /** Returns data required by renderers. */
   getCommand(): unknown;
 }

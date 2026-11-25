@@ -76,15 +76,36 @@ try {
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  // Slow assets leave time for the hub to draw its starter tabs before the layout is restored.
+  const startupAssets = Promise.withResolvers();
+  await page.route(
+    "**/assets",
+    async (route) => {
+      await startupAssets.promise;
+      await route.continue();
+    },
+    { times: 1 }
+  );
   await page.goto(`http://127.0.0.1:${port}`);
   const hub = page.frameLocator(".hub-frame");
+  const frame = page.frames().find((frame) => frame.url().endsWith("hub.html"));
+  try {
+    await frame.waitForFunction(() => window.platform === "lite");
+    await frame.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.equal(
+      await page.evaluate(() => Object.keys(localStorage).some((key) => key.endsWith("/state"))),
+      false,
+      "Lite saved its starter tabs before restoring the layout"
+    );
+  } finally {
+    startupAssets.resolve();
+  }
   await hub.locator(".connect-source").waitFor({ state: "attached" });
   await hub.locator("body").press("Control+k");
   await hub.locator(".connect-source").selectOption("mur");
   assert.equal(await hub.locator(".connect-address").inputValue(), `http://127.0.0.1:${port}`);
   await hub.locator(".connect-confirm").click();
   await hub.locator(".connect-dialog-backdrop").waitFor({ state: "hidden" });
-  const frame = page.frames().find((frame) => frame.url().endsWith("hub.html"));
   // Check that the live connection imports values. The default layout's ENNOID_CellVoltageMin tile
   // re-points from its cellular path to the mock's field by DBC signal name and subscribes to it.
   await frame

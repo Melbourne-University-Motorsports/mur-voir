@@ -224,3 +224,16 @@ test("Invert survives a layout round-trip with DBC-name field resolution", () =>
   list.setState(JSON.parse(JSON.stringify(list.getState())));
   assert.deepEqual(list.getState()[0], state);
 });
+
+test("a catalogue remap schedules a state save without input", () => {
+  const log = new Log();
+  const { list } = sourceList(log, [item()]);
+  let saves = 0;
+  (globalThis as any).window.requestStateSave = () => saves++;
+  list.refresh();
+  assert.equal(saves, 0);
+  field(log, "INVERTER/INV_MotorTemp");
+  list.refresh();
+  list.refresh();
+  assert.equal(saves, 1);
+});

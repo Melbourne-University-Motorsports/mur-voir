@@ -195,7 +195,7 @@ export default class CarDynamicsController implements TabController {
     if (time === null) time = window.log.getTimestampRange()[1];
 
     let sources = this.sourceList.getState();
-    let read = (slot: string, unit: string) => sourceNumberAt(sources, slot, time!, unit, this.UUID);
+    let read = (slot: string, unit: string) => sourceNumberAt(sources, slot, time!, unit);
 
     // The front wheels turn by the road wheel angle. The rear wheels have no measurements, so the
     // renderer draws only their outlines.

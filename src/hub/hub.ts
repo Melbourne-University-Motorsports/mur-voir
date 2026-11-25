@@ -11,14 +11,23 @@ import { HubState } from "../shared/HubState";
 import NamedMessage from "../shared/NamedMessage";
 import Preferences from "../shared/Preferences";
 import { RenderGuard } from "../shared/RenderGuard";
-import Selection from "../shared/Selection";
+import Selection, { SelectionMode } from "../shared/Selection";
 import { SourceListItemState, SourceListTypeMemory } from "../shared/SourceListConfig";
 import { IS_LITE } from "../shared/buildConstants";
+import { setHidden } from "../shared/domWrite";
 import Log from "../shared/log/Log";
 import { MERGE_PREFIX } from "../shared/log/LogKeyUtils";
 import { AKIT_TIMESTAMP_KEYS, getEnabledData } from "../shared/log/RobotState";
 import { isRunName, isVehicleId, RunRef } from "../shared/mur/archive";
 import { calcMockProgress, clampValue, htmlEncode, scaleValue } from "../shared/util";
+import {
+  invalidateFrames,
+  isInteractive,
+  onAfterFrame,
+  requestFrame,
+  setFramePaceSupplier,
+  wakeFrames
+} from "./FrameScheduler";
 import { ConnectDialog } from "./LiveConnectionUI";
 import SelectionImpl from "./SelectionImpl";
 import Sidebar from "./Sidebar";
@@ -36,6 +45,8 @@ import { LiveStatusProvider } from "./dataSources/LiveStatus";
 // Constants
 const STATE_SAVE_PERIOD_MS = 250;
 const TYPE_MEMORY_SAVE_PERIOD_MS = 1000;
+// Saved state and type memory change only through input and messages from main
+const QUIET_SAVE_PERIOD_MS = Infinity;
 const DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
 
 // Global variables
@@ -60,6 +71,7 @@ declare global {
     tuner: LiveDataTuner | null;
     liveStatus: LiveStatusProvider | null;
     getLoadingFields(): Set<string>;
+    requestStateSave(): void;
 
     messagePort: MessagePort | null;
     sendMainMessage: (name: string, data?: any) => void;
@@ -117,6 +129,17 @@ let openRun: RunRef | null = null;
 /** The address of the last MUR live connection in this window, whichever way it was started. */
 let murConnectionAddress: string | null = null;
 
+// Frames run at display rate during playback, at the live pace while live data streams, and slowly otherwise
+setFramePaceSupplier(() =>
+  window.selection.getMode() === SelectionMode.Playback
+    ? "display"
+    : liveActive && liveStatus === LiveDataSourceStatus.Active
+    ? window.tabs.followsLiveTime()
+      ? "scroll"
+      : "live"
+    : "idle"
+);
+
 const connectDialog = new ConnectDialog((sourceId, address) => connectLive(sourceId, address));
 
 function guardedInterval(action: () => void, period: number) {
@@ -124,7 +147,40 @@ function guardedInterval(action: () => void, period: number) {
   return window.setInterval(() => guard.run(action), period);
 }
 
-guardedInterval(() => {
+/**
+ * Runs `action` after frames, at most once per `period`. State that can only change through input,
+ * messages or data (which all cause frames) is checked here instead of on a timer, so an idle window
+ * wakes for none of it. A trailing run catches a change in the last frame before the window goes idle.
+ * Without recent input, the check runs at most once per `quietPeriod`, so live data frames alone do
+ * not keep rebuilding state that input changes. With an infinite `quietPeriod` it runs only within
+ * the second after input or a message from main, plus once after that.
+ */
+function afterFrames(action: () => void, period: number, quietPeriod = period) {
+  const guard = new RenderGuard();
+  let last = -Infinity;
+  let trailing: ReturnType<typeof setTimeout> | null = null;
+  const run = () => {
+    last = performance.now();
+    guard.run(action);
+  };
+  onAfterFrame(() => {
+    const interactive = isInteractive();
+    if (!interactive && quietPeriod === Infinity) return;
+    const wait = last + (interactive ? period : quietPeriod) - performance.now();
+    if (wait <= 0) {
+      if (trailing !== null) clearTimeout(trailing);
+      trailing = null;
+      run();
+    } else if (trailing === null) {
+      trailing = setTimeout(() => {
+        trailing = null;
+        run();
+      }, wait);
+    }
+  });
+}
+
+afterFrames(() => {
   if (!liveActive || liveStatus !== LiveDataSourceStatus.Active) return;
   const status = window.liveStatus?.getLiveStatus();
   setWindowTitle(liveAddress, status?.backend === "connected" && !status.hasFreshData ? "No car data" : undefined);
@@ -141,9 +197,12 @@ let dragData: any = null;
 
 // WINDOW UTILITIES
 
+let lastWindowTitle = "";
 function setWindowTitle(name: string, status?: string) {
   let title =
     htmlEncode(name) + (status ? " (" + htmlEncode(status) + ")" : "") + " &mdash; mur-voir" + (IS_LITE ? " Lite" : "");
+  if (title === lastWindowTitle) return; // Called twice a second while live
+  lastWindowTitle = title;
   document.getElementsByTagName("title")[0].innerHTML = title;
   document.getElementsByClassName("title-bar-text")[0].innerHTML = title;
 }
@@ -227,13 +286,39 @@ function restoreState(state: HubState) {
   window.tabs.restoreState(state.tabs);
 }
 
-guardedInterval(() => {
-  window.sendMainMessage("save-state", saveState());
-}, STATE_SAVE_PERIOD_MS);
+// Input and catalogue remaps can both change the saved layout.
+let lastSavedState = "";
+// Lite draws frames while it loads assets and before it restores the saved layout.
+let canSaveState = !IS_LITE;
+const saveChangedState = () => {
+  if (!canSaveState) return;
+  const state = saveState();
+  const serialized = JSON.stringify(state);
+  if (serialized === lastSavedState) return;
+  lastSavedState = serialized;
+  window.sendMainMessage("save-state", state);
+};
+afterFrames(saveChangedState, STATE_SAVE_PERIOD_MS, QUIET_SAVE_PERIOD_MS);
+let pendingStateSave: ReturnType<typeof setTimeout> | null = null;
+window.requestStateSave = () => {
+  pendingStateSave ??= setTimeout(() => {
+    pendingStateSave = null;
+    saveChangedState();
+  }, STATE_SAVE_PERIOD_MS);
+};
 
-guardedInterval(() => {
-  window.sendMainMessage("save-type-memory", window.typeMemory);
-}, TYPE_MEMORY_SAVE_PERIOD_MS);
+// Main reads and merges the type memory file for each message, so only send changes
+let lastSavedTypeMemory = "";
+afterFrames(
+  () => {
+    const serialized = JSON.stringify(window.typeMemory);
+    if (serialized === lastSavedTypeMemory) return;
+    lastSavedTypeMemory = serialized;
+    window.sendMainMessage("save-type-memory", window.typeMemory);
+  },
+  TYPE_MEMORY_SAVE_PERIOD_MS,
+  QUIET_SAVE_PERIOD_MS
+);
 
 // MANAGE DRAGGING
 
@@ -296,7 +381,7 @@ const fpsDiv = document.getElementsByClassName("fps")[0] as HTMLElement;
 const sampleLength = 10;
 let frameTimes: number[] = [];
 let periodic = () => {
-  window.requestAnimationFrame(periodic);
+  requestFrame(periodic);
   frameTimes.push(window.performance.now());
   while (frameTimes.length > sampleLength) {
     frameTimes.shift();
@@ -306,12 +391,12 @@ let periodic = () => {
     let avgFrameTime = (frameTimes[frameTimes.length - 1] - frameTimes[0]) / (frameTimes.length - 1);
     fps = 1000 / avgFrameTime;
   }
-  fpsDiv.hidden = !window.fps;
+  setHidden(fpsDiv, !window.fps);
   if (window.fps) {
     fpsDiv.innerText = "FPS: " + fps.toFixed(1);
   }
 };
-window.requestAnimationFrame(periodic);
+requestFrame(periodic);
 
 // DATA SOURCE HANDLING
 
@@ -349,6 +434,7 @@ function startHistorical(path: string, clear = true, merge = false) {
     window.log = new Log();
     window.sidebar.refresh();
     window.tabs.refresh();
+    invalidateFrames();
   }
 
   liveConnection?.stop();
@@ -449,8 +535,28 @@ function startHistorical(path: string, clear = true, merge = false) {
     (hasNewFields: boolean) => {
       window.sidebar.refresh();
       if (hasNewFields) window.tabs.refresh();
+      invalidateFrames(); // Show the new data
     }
   );
+}
+
+/** Whether new data for these keys can change what is on screen. Null means unknown. */
+function showsAnyField(changed: ReadonlySet<string> | null): boolean {
+  if (changed === null) return true;
+  if (changed.size === 0) return false;
+  const sidebarFields = window.sidebar.getOnScreenFields();
+  if (sidebarFields === null) return true;
+  const tabFields = window.tabs.getVisibleFields();
+  for (const key of changed) {
+    if (tabFields.has(key)) return true;
+  }
+  // A sidebar row can be the child of a struct field that changed
+  for (const field of sidebarFields) {
+    for (let key = field; key.length > 0; key = key.substring(0, key.lastIndexOf("/"))) {
+      if (changed.has(key)) return true;
+    }
+  }
+  return false;
 }
 
 /** Connects from the prompt and saves the source and address. */
@@ -518,6 +624,7 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
     (status: LiveDataSourceStatus) => {
       if (liveConnection !== connection) return;
       liveStatus = status;
+      invalidateFrames();
       connectDialog.updateStatus(status);
       switch (status) {
         case LiveDataSourceStatus.Connecting:
@@ -543,8 +650,13 @@ function startLive(sourceType: "robot" | "sim", target?: { sourceId: string; add
       liveConnected = true;
       window.log = log;
       window.selection.setLiveConnected(timeSupplier);
-      window.sidebar.refresh();
-      window.tabs.refresh();
+      const changed = source.takeChangedFields();
+      // Incremental batches have the same catalogue. The sidebar reads current values on text frames.
+      if (changed === null) window.sidebar.refresh();
+      window.tabs.refresh(changed);
+      // Frames follow data that is on screen, up to the live frame cap. The live clock frames move
+      // the timeline and age the freshness marks in between.
+      if (showsAnyField(changed)) invalidateFrames();
     },
     (detail) => {
       if (liveConnection !== connection) return;
@@ -594,6 +706,7 @@ window.addEventListener("message", (event) => {
     window.messagePort.onmessage = (event) => {
       let message: NamedMessage = event.data;
       handleMainMessage(message);
+      wakeFrames();
     };
 
     // Share the registered live sources for the main process menus
@@ -627,13 +740,14 @@ function reportViewSource() {
   document.body.classList.toggle("has-run-link", openRun !== null);
 }
 // Most changes report straight away; the interval catches the rest (e.g. a live connection dropping).
-guardedInterval(reportViewSource, 250);
+afterFrames(reportViewSource, 250, 1000);
 COPY_RUN_LINK.addEventListener("click", () => {
   if (openRun !== null) window.sendMainMessage("copy-run-link", openRun);
 });
 
-// Update touch bar slider position
-guardedInterval(() => {
+// Update touch bar slider position, only when it moves
+let lastTouchBarPercent: number | null = null;
+afterFrames(() => {
   if (window.platform === "darwin") {
     let range = window.log.getTimestampRange();
     let liveTime = window.selection.getCurrentLiveTime();
@@ -645,13 +759,17 @@ guardedInterval(() => {
       selectedTime = range[0];
     }
     let timePercent = clampValue(scaleValue(selectedTime, range, [0, 1]), 0, 1);
+    // The slider is a few hundred points wide, so finer changes are invisible
+    if (lastTouchBarPercent !== null && Math.abs(timePercent - lastTouchBarPercent) < 0.002) return;
+    lastTouchBarPercent = timePercent;
     window.sendMainMessage("update-touch-bar-slider", timePercent);
   }
-}, 1000 / 60);
+}, 100);
 
 async function handleMainMessage(message: NamedMessage) {
   switch (message.name) {
     case "show-when-ready":
+      canSaveState = true;
       // Wait for DOM updates to finish
       window.requestAnimationFrame(() => {
         window.sendMainMessage("show");

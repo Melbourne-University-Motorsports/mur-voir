@@ -308,6 +308,7 @@ export default class Log {
   setStructuredType(key: string, type: string | null) {
     if (key in this.fields) {
       if (this.fields[key].structuredType !== type) {
+        this.metadataVersion++;
         this.profileCache.clear();
         this.fieldUnitCache = {};
       }
@@ -699,9 +700,9 @@ export default class Log {
   }
 
   /** Writes a new Number value to the field. */
-  putNumber(key: string, timestamp: number, value: number) {
+  putNumber(key: string, timestamp: number, value: number, recordArrival = false) {
     this.createBlankField(key, LoggableType.Number);
-    this.fields[key].putNumber(timestamp, value);
+    this.fields[key].putNumber(timestamp, value, recordArrival);
     this.changedFields.add(key);
     if (this.fields[key].getType() === LoggableType.Number) {
       this.processTimestamp(key, timestamp); // Only update timestamp if type is correct

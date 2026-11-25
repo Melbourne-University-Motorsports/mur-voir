@@ -5,7 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import fs from "fs";
 import jsonfile from "jsonfile";
 import { getAllTabTypes } from "../../shared/TabType";
@@ -18,19 +18,41 @@ import {
 } from "./ElectronConstants";
 
 export default class StateTracker {
-  private SAVE_PERIOD_MS = 250;
+  private SAVE_PERIOD_MS = 1000;
+  private lastSaved = "";
   private rendererStates: { [id: number]: any } = {};
-  private satelliteUUIDs: { [id: number]: string } = {};
+  private satellites = new Map<number, { hubId: number; uuid: string }>();
+  private saveTimer: NodeJS.Timeout | null = null;
 
   constructor() {
-    let lastState = this.getSavedApplicationState(false);
-    setInterval(() => {
-      let state: ApplicationState = this.getCurrentApplicationState();
-      if (state.hubs.length > 0 && JSON.stringify(state) !== JSON.stringify(lastState)) {
-        jsonfile.writeFileSync(STATE_FILENAME, state);
-        lastState = state;
-      }
+    this.lastSaved = JSON.stringify(this.getSavedApplicationState(false));
+    // Save a second after something changes: a renderer's state, the satellite set, or a window's
+    // bounds. A stable app never builds or serializes the state.
+    const watch = (window: BrowserWindow) => {
+      window.on("move", () => this.markChanged());
+      window.on("resize", () => this.markChanged());
+      window.on("closed", () => this.markChanged());
+    };
+    BrowserWindow.getAllWindows().forEach(watch);
+    app.on("browser-window-created", (_, window) => watch(window));
+  }
+
+  private markChanged() {
+    if (this.saveTimer !== null) return;
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      this.save();
     }, this.SAVE_PERIOD_MS);
+  }
+
+  /** Writes the state file if the state changed. Also called before quitting, so the last second is kept. */
+  save() {
+    let state: ApplicationState = this.getCurrentApplicationState();
+    if (state.hubs.length === 0) return;
+    const serialized = JSON.stringify(state);
+    if (serialized === this.lastSaved) return;
+    jsonfile.writeFileSync(STATE_FILENAME, state);
+    this.lastSaved = serialized;
   }
 
   /** Reads the full application state based on the saved file. */
@@ -76,38 +98,32 @@ export default class StateTracker {
   /** Returns the full application state. */
   getCurrentApplicationState(): ApplicationState {
     let state: ApplicationState = { hubs: [], satellites: [] };
-    Object.keys(this.rendererStates).forEach((windowId) => {
-      let windowIdNum = Number(windowId);
-      let window = BrowserWindow.fromId(Number(windowIdNum));
-      if (window === null) return;
-      let windowBounds = window.getBounds();
-      let windowState = this.rendererStates[windowIdNum];
-      let satelliteUUID = windowIdNum in this.satelliteUUIDs ? this.satelliteUUIDs[windowIdNum] : null;
-      if (satelliteUUID === null) {
-        state.hubs.push({
-          x: windowBounds.x,
-          y: windowBounds.y,
-          width: windowBounds.width,
-          height: windowBounds.height,
-          state: windowState
-        });
+    const hubIndices = new Map<number, number>();
+    const satellites: { bounds: Electron.Rectangle; state: any; hubId: number; uuid: string }[] = [];
+    for (const [id, rendererState] of Object.entries(this.rendererStates)) {
+      const windowId = Number(id);
+      const window = BrowserWindow.fromId(windowId);
+      if (window === null) continue;
+      const bounds = window.getBounds();
+      const satellite = this.satellites.get(windowId);
+      if (satellite === undefined) {
+        hubIndices.set(windowId, state.hubs.length);
+        state.hubs.push({ ...bounds, state: rendererState });
       } else {
-        state.satellites.push({
-          x: windowBounds.x,
-          y: windowBounds.y,
-          width: windowBounds.width,
-          height: windowBounds.height,
-          state: windowState,
-          uuid: satelliteUUID
-        });
+        satellites.push({ bounds, state: rendererState, ...satellite });
       }
-    });
+    }
+    for (const { bounds, state: rendererState, hubId, uuid } of satellites) {
+      const hubIndex = hubIndices.get(hubId);
+      if (hubIndex !== undefined) state.satellites.push({ ...bounds, state: rendererState, uuid, hubIndex });
+    }
     return state;
   }
 
   /** Caches the renderer state for a window. */
   saveRendererState(window: BrowserWindow, rendererState: any) {
     this.rendererStates[window.id] = rendererState;
+    this.markChanged();
   }
 
   /** Returns the cached renderer state for a window. */
@@ -115,14 +131,16 @@ export default class StateTracker {
     return this.rendererStates[window.id];
   }
 
-  /** Caches the set of satellite windows for each UUID. */
-  saveSatelliteIds(windows: { [id: string]: BrowserWindow[] }) {
-    this.satelliteUUIDs = {};
-    Object.entries(windows).forEach(([uuid, value]) => {
-      value.forEach((window) => {
-        this.satelliteUUIDs[window.id] = uuid;
-      });
+  /** Records which hub owns a satellite so it can be restored with the same hub. */
+  trackSatellite(window: BrowserWindow, hub: BrowserWindow, uuid: string) {
+    const id = window.id;
+    this.satellites.set(id, { hubId: hub.id, uuid });
+    window.once("closed", () => {
+      this.satellites.delete(id);
+      delete this.rendererStates[id];
+      this.markChanged();
     });
+    this.markChanged();
   }
 }
 
@@ -138,4 +156,5 @@ export type WindowState = {
 
 export type SatelliteWindowState = WindowState & {
   uuid: string;
+  hubIndex?: number;
 };

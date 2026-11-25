@@ -23,7 +23,10 @@ test("resubscribing requests history again and merges overlapping samples once",
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { tabs: { getActiveFields: () => active }, sidebar: { getActiveFields: () => [] } }
+    value: {
+      tabs: { getActiveFields: () => active, getVisibleTabsKey: () => "" },
+      sidebar: { getActiveFields: () => [] }
+    }
   });
   t.after(() => {
     if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
@@ -32,36 +35,69 @@ test("resubscribing requests history again and merges overlapping samples once",
   const sample = (seq: number) => ({ stream_id: "test", seq, t_ns: String(seq * 1000000000), value: seq });
   let history = [sample(1), sample(2)];
   let requests = 0;
-  t.mock.method(globalThis, "fetch", async () => {
+  let respond: Promise<void> | undefined;
+  const urls: string[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string) => {
     requests++;
+    urls.push(url);
+    await respond;
     return { ok: true, status: 200, json: async () => ({ samples: history }) };
   });
   source.send = () => {};
+  // The subscription check runs at most every 250 ms; step the clock past that before each periodic()
+  t.mock.timers.enable({ apis: ["Date"] });
+  const periodic = () => {
+    t.mock.timers.tick(250);
+    source.periodic();
+  };
   const fetchHistory = source.fetchHistory.bind(source);
   let pending: Promise<void>;
-  source.fetchHistory = (path: string) => (pending = fetchHistory(path));
+  source.fetchHistory = (path: string, generation: number) => (pending = fetchHistory(path, generation));
   const live = (seq: number) => {
     const s = sample(seq);
-    if (source.dedup.accept(path, s.stream_id, seq)) {
-      writeValue(source.log, descriptor, source.timeBase.sampleTime(s).seconds, s.value);
+    const time = source.timeBase.sampleTime(s).seconds;
+    if (source.dedup.accept(path, s.stream_id, seq, time)) {
+      writeValue(source.log, descriptor, time, s.value);
     }
   };
   live(2);
-  source.periodic();
+  periodic();
   await pending!;
-  source.periodic();
+  periodic();
   assert.equal(requests, 1);
+  source.lastSampleNs.set(path, 2000000000n); // The newest sample before the tab was hidden
   active = new Set();
-  source.periodic();
+  periodic();
+  source.lastSampleNs.set(path, 3000000000n); // A later sample (e.g. for the sidebar) must not move the resume point
   assert.equal(source.historyRequested.has(path), false);
   history = [sample(1), sample(2), sample(3), sample(4)];
   active = new Set(["/" + path]);
   live(4);
-  source.periodic();
+  periodic();
   await pending!;
   assert.equal(requests, 2);
+  assert.doesNotMatch(urls[0], /from_ns/);
+  assert.match(urls[1], /from_ns=2000000000/); // The gap since the tab was hidden fills in
   const data = source.log.getNumber("/" + path, -Infinity, Infinity);
   assert.deepEqual(data.values, [1, 2, 3, 4]);
   assert.equal(new Set(data.timestamps).size, 4);
   assert.equal(writes.mock.callCount(), 4);
+  active = new Set();
+  source.lastSampleNs.set(path, 4000000000n);
+  periodic();
+  let release!: () => void;
+  respond = new Promise<void>((resolve) => (release = resolve));
+  active = new Set(["/" + path]);
+  periodic();
+  live(6);
+  source.lastSampleNs.set(path, 6000000000n);
+  active = new Set();
+  periodic();
+  release();
+  await pending!;
+  respond = undefined;
+  active = new Set(["/" + path]);
+  periodic();
+  await pending!;
+  assert.match(urls[3], /from_ns=/, "a retired request cannot erase the next resume cursor");
 });

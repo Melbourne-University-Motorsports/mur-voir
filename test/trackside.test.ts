@@ -9,10 +9,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import TracksideController, { reorderTiles, tracksideGraphSources } from "../src/hub/controllers/TracksideController";
 import SourceList from "../src/hub/SourceList";
+import { updateTracksideAlerts } from "../src/hub/TracksideAlerts";
 import { channelProfile } from "../src/shared/display/ChannelProfile";
+import Log from "../src/shared/log/Log";
 import {
   alertLine,
+  applyTracksidePatch,
   dbcDefinition,
+  diffTrackside,
   isTracksideLive,
   limitUnit,
   parseCriticalLimit,
@@ -29,6 +33,16 @@ test("Trackside reads the live edge and latest disconnected sample independently
   let liveTime: number | null = 100;
   const queriedTimes: number[] = [];
   const graphTimes: number[] = [];
+  const log = new Log();
+  log.putNumber("/temp", 99, 112);
+  log.getChannelProfile = () => profile;
+  const field = log.getField("/temp")!;
+  const getRange = field.getRange.bind(field);
+  field.getRange = (start, end) => {
+    assert.equal(start, end);
+    queriedTimes.push(start);
+    return getRange(start, end);
+  };
   const summary = { backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 };
   globals.window = {
     selection: {
@@ -37,28 +51,18 @@ test("Trackside reads the live edge and latest disconnected sample independently
         throw new Error("Trackside must not read the analysis cursor");
       }
     },
-    log: {
-      getTimestampRange: () => [0, 99],
-      getRange: (_key: string, start: number, end: number) => {
-        assert.equal(start, end);
-        queriedTimes.push(start);
-        return { timestamps: [99], values: [112] };
-      },
-      getChannelProfile: () => profile,
-      getMetadataString: () => ""
-    },
+    log,
     liveStatus: {
       getLiveStatus: () => summary,
       getFieldFreshness: () => "online",
       getFieldAge: () => 0.1
     }
   };
+  const sources = [
+    { type: "tile", logKey: "/temp", logType: "Number", visible: true, options: { showInGraph: "true" } }
+  ];
   const controller: TracksideController = Object.assign(Object.create(TracksideController.prototype), {
-    sourceList: {
-      getState: () => [
-        { type: "tile", logKey: "/temp", logType: "Number", visible: true, options: { showInGraph: "true" } }
-      ]
-    },
+    sourceList: { getState: () => sources },
     graphController: {
       restoreState: () => {},
       getCommand: (time: number) => {
@@ -66,7 +70,8 @@ test("Trackside reads the live edge and latest disconnected sample independently
         return null;
       }
     },
-    limits: { "/temp": { high: 110 } }
+    limits: { "/temp": { high: 110 } },
+    tiles: new WeakMap()
   });
   try {
     assert.equal(controller.showTimeline(), false);
@@ -78,8 +83,8 @@ test("Trackside reads the live edge and latest disconnected sample independently
     const disconnected = controller.getCommand().tiles[0];
     assert.equal(disconnected.severity, "ok");
     assert.equal(disconnected.state, "⊘ link lost");
-    assert.deepEqual(queriedTimes, [100, 101, 99]);
-    assert.deepEqual(graphTimes, queriedTimes);
+    assert.deepEqual(queriedTimes, [100, 99]);
+    assert.deepEqual(graphTimes, [100, 101, 99]);
   } finally {
     globals.window = previous;
   }
@@ -173,12 +178,15 @@ test("removed tiles stop contributing limits and active subscriptions", () => {
   const sourceList = Object.assign(Object.create(SourceList.prototype), { state: [source] });
   const controller: TracksideController = Object.assign(Object.create(TracksideController.prototype), {
     sourceList,
+    alertConfig: [],
     limits: { "/Motor temp": { high: 110 }, "/removed": { high: 0 } }
   });
-  assert.deepEqual(controller.getLimits(), { "/Motor temp": { high: 110 } });
+  const [configured] = controller.getAlertConfiguration();
+  assert.equal(configured.key, "/Motor temp");
+  assert.equal(configured.high, 110);
   assert.deepEqual(controller.getActiveFields(), ["/Motor temp"]);
   sourceList.state = [];
-  assert.deepEqual(controller.getLimits(), {});
+  assert.deepEqual(controller.getAlertConfiguration(), []);
   assert.deepEqual(controller.getActiveFields(), []);
 });
 
@@ -377,5 +385,104 @@ test("single critical edits drive tile alarms and clearing restores a healthy ti
       }).severity,
       "ok"
     );
+  }
+});
+
+test("trackside sends only changed cells and can replay the merged snapshot", () => {
+  const tile = (text: string) => ({
+    label: "Speed",
+    text,
+    unit: "km/h",
+    state: "",
+    severity: "ok" as const,
+    freshness: "online" as const
+  });
+  const previous = { tiles: [tile("30"), tile("45")], graph: null, message: "Offline" };
+  const next = { tiles: [tile("30"), tile("47")], graph: null, message: "" };
+  const patch = diffTrackside(previous, next);
+  assert.deepEqual(patch, { tiles: [[1, next.tiles[1]]], message: "" });
+  const cached = applyTracksidePatch(previous, patch);
+  assert.equal(cached.tiles[0], previous.tiles[0]);
+  assert.deepEqual(cached, next);
+  assert.deepEqual(diffTrackside(cached, next), { tiles: [] });
+});
+
+test("standing alerts reuse their value and label until the sample, freshness or configuration changes", () => {
+  const before = { window: globalThis.window, document: globalThis.document };
+  const log = new Log();
+  log.putNumber("/temp", 0, 112);
+  const element = { hidden: true, textContent: "", title: "", dataset: {} } as any;
+  const classes = new Set<string>();
+  let reads = 0;
+  const field = log.getField("/temp")!;
+  const getRange = field.getRange.bind(field);
+  field.getRange = (...args) => {
+    reads++;
+    return getRange(...args);
+  };
+  let time = 1;
+  let freshness = "online";
+  globalThis.window = {
+    log,
+    selection: { getCurrentLiveTime: () => time },
+    liveStatus: {
+      getLiveStatus: () => ({ backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 }),
+      getFieldFreshness: () => freshness
+    }
+  } as any;
+  globalThis.document = {
+    body: {
+      classList: {
+        contains: (name: string) => classes.has(name),
+        toggle: (name: string, set: boolean) => (set ? classes.add(name) : classes.delete(name))
+      }
+    }
+  } as any;
+  try {
+    const config = [[{ key: "/temp", dbcSignal: "Inverter temp", high: 100 }]];
+    updateTracksideAlerts(element, config);
+    assert.match(element.textContent, /Inverter temp .*above 100/);
+    time = 2;
+    updateTracksideAlerts(element, config);
+    assert.equal(reads, 1);
+    freshness = "offline";
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, true);
+    freshness = "online";
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, false);
+    assert.equal(reads, 1);
+    log.putNumber("/temp", 2.1, 50);
+    time = 3;
+    updateTracksideAlerts(element, config);
+    assert.equal(element.hidden, true);
+    updateTracksideAlerts(element, [[{ key: "/temp", dbcSignal: "Renamed temp", high: 40 }]]);
+    assert.match(element.textContent, /Renamed temp .*above 40/);
+  } finally {
+    Object.assign(globalThis, before);
+  }
+});
+
+test("a field shown in two tiles of one tab raises its limit alert once", () => {
+  const before = { window: globalThis.window, document: globalThis.document };
+  const log = new Log();
+  log.putNumber("/temp", 0, 10);
+  const element = { hidden: true, textContent: "", title: "", dataset: {} } as any;
+  globalThis.window = {
+    log,
+    selection: { getCurrentLiveTime: () => 1 },
+    liveStatus: {
+      getLiveStatus: () => ({ backend: "connected", hasFreshData: true, viewedRun: 0, runCount: 1 }),
+      getFieldFreshness: () => "online"
+    }
+  } as any;
+  globalThis.document = { body: { classList: { contains: () => false, toggle: () => {} } } } as any;
+  try {
+    const tile = { key: "/temp", dbcSignal: "Inverter temp", high: 5 };
+    updateTracksideAlerts(element, [[tile, { ...tile }]]);
+    assert.equal(element.hidden, false);
+    assert.equal(element.textContent.match(/above 5/g)?.length, 1, element.textContent);
+  } finally {
+    Object.assign(globalThis, before);
   }
 });

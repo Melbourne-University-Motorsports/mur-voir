@@ -153,7 +153,7 @@ test("gap periods, candidates and storage follow retained data through repeated 
       const state = cache as any;
       assert.equal(state.stats.median(), stats.median());
       assert.ok(state.timestamps.length <= 2 * whole.timestamps.length);
-      assert.ok(state.stats.counts.size <= whole.timestamps.length);
+      assert.ok(state.stats.periods.size <= whole.timestamps.length);
     }
   }
 });

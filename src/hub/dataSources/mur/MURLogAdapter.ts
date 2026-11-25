@@ -156,12 +156,12 @@ export function writeValue(log: Log, descriptor: SignalDescriptor, timestamp: nu
     case "float64":
       if (typeof value !== "number") return false;
       // A DBC "no reading" value is stored as NaN, a gap, as the MF4 importer does.
-      log.putNumber(key, timestamp, isLiveSentinel(descriptor, value) ? NaN : value);
+      log.putNumber(key, timestamp, isLiveSentinel(descriptor, value) ? NaN : value, true);
       return true;
     case "int64": {
       const parsed = parseInt64Number(value);
       if (parsed === null) return false;
-      log.putNumber(key, timestamp, parsed);
+      log.putNumber(key, timestamp, parsed, true);
       return true;
     }
     case "bool":

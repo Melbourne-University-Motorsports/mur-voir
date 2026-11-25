@@ -23,7 +23,7 @@ export const BUNDLED_ASSETS = path.join(__dirname, "..", "bundledAssets");
 export const DEFAULT_USER_ASSETS = path.join(app.getPath("userData"), "userAssets");
 export const AKIT_PATH_OUTPUT = path.join(app.getPath("temp"), "akit-log-path.txt");
 export const AKIT_PATH_INPUT = path.join(app.getPath("temp"), "ascope-log-path.txt");
-export const AKIT_PATH_INPUT_PERIOD = 250;
+export const AKIT_PATH_INPUT_PERIOD = 1000; // AdvantageKit hand-off; a stat a second is enough
 export const VIDEO_CACHE = path.join(app.getPath("temp"), "mur-voir-video-cache");
 export const VIDEO_CACHE_FALLBACK = path.join(app.getPath("userData"), "video-cache");
 export const WINDOW_ICON = process.platform === "darwin" ? undefined : path.join(__dirname, "../icons/window-icon.png");

@@ -73,6 +73,14 @@ export abstract class LiveDataSource {
     return null;
   }
 
+  /**
+   * Returns the field keys written since the last call, or null when the source does not track them or
+   * the set of fields changed. The hub uses it to draw frames only for data that is on screen.
+   */
+  takeChangedFields(): ReadonlySet<string> | null {
+    return null;
+  }
+
   /** Returns an object to be used for sending tuning data, or null if tuning is not supported. */
   getTuner(): LiveDataTuner | null {
     return null;

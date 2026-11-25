@@ -33,6 +33,7 @@ test("lap inputs follow open lap views, including unselected satellite tabs", ()
     const plain = { type: TabType.Table, controller: { getActiveFields: () => ["table"] } };
     tabs.tabList = [plain];
     tabs.selectedTab = 0;
+    tabs.lapTabs = new Set();
     const check = (lap: boolean) => {
       const before = calls;
       assert.deepEqual(
@@ -43,28 +44,40 @@ test("lap inputs follow open lap views, including unselected satellite tabs", ()
     };
     check(false);
     for (const type of [TabType.TrackMap, TabType.Laps]) {
-      tabs.tabList.push({ type, controller: { UUID: "satellite", getActiveFields: () => [] } });
+      const controller = { UUID: "satellite", getActiveFields: () => [] };
+      tabs.tabList.push({ type, controller });
+      tabs.lapTabs.add(controller);
       tabs.activeSatellites = ["satellite"];
       check(true);
       tabs.tabList.pop();
+      tabs.lapTabs.delete(controller);
       check(false);
     }
     const graph = Object.create(LineGraphController.prototype) as any;
     graph.getActiveFields = () => [];
     graph.lapMode = "time";
+    graph.onLapModeChanged = () => {
+      if (graph.getLapMode() === "time") tabs.lapTabs.delete(graph);
+      else tabs.lapTabs.add(graph);
+    };
+    const setMode = (mode: string) => {
+      graph.lapMode = mode;
+      graph.onLapModeChanged();
+    };
     tabs.tabList.push({ type: TabType.LineGraph, controller: graph });
     check(false);
     for (const mode of ["lapTime", "distance"]) {
-      graph.lapMode = mode;
+      setMode(mode);
       check(true);
-      graph.lapMode = "time";
+      setMode("time");
       check(false);
     }
-    graph.lapMode = "lapTime";
+    setMode("lapTime");
     tabs.tabList.push({ type: TabType.TrackMap, controller: { getActiveFields: () => [] } });
     tabs.tabList.pop();
     check(true);
     tabs.tabList.pop();
+    tabs.lapTabs.delete(graph);
     check(false);
   } finally {
     lapService.fields = fields;

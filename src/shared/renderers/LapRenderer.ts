@@ -10,6 +10,7 @@
 import type { LapSettings } from "../../hub/LapService";
 import { attachResizeHandle } from "../../hub/ResizeHandle";
 import ScrollSensor, { ScrollSensorMouseControl } from "../../hub/ScrollSensor";
+import { prepareCanvas, setStyle } from "../domWrite";
 import {
   Coordinate,
   deltaTime,
@@ -889,12 +890,10 @@ export default class LapRenderer implements TabRenderer {
     const drawKey = JSON.stringify([traceKey, c.time, this.dragging, hint]);
     if (drawKey === this.lastDraw) return;
     this.lastDraw = drawKey;
-    this.canvas.style.width = w + "px";
-    this.canvas.style.height = h + "px";
-    this.canvas.width = w * ratio;
-    this.canvas.height = h * ratio;
+    setStyle(this.canvas, "width", w + "px");
+    setStyle(this.canvas, "height", h + "px");
+    prepareCanvas(this.canvas, ctx, w, h, ratio);
     if (!ss.length) return;
-    ctx.scale(ratio, ratio);
     ctx.lineCap = "round";
 
     // Fit the track with a margin, then apply zoom and pan the same way as the 2D Field

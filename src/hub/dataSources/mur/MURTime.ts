@@ -46,6 +46,8 @@ export function sessionSecondsToNs(seconds: number, epochNs: bigint): bigint {
 }
 
 export interface SampleTime {
+  /** The sample's original timestamp, including when receipt time is used for display. */
+  timestampNs: bigint;
   /** Seconds since the session epoch. */
   seconds: number;
   /** True when this is a receive-time fallback for an unsynchronised source (shown with an indicator). */
@@ -74,18 +76,17 @@ export class SessionTimeBase {
   /** Returns the session time of a sample, or null if its timestamps can't be parsed. */
   sampleTime(sample: Pick<TelemetrySample, "t_ns" | "received_ns" | "time_quality">): SampleTime | null {
     const tNs = parseNs(sample.t_ns);
-    const receivedNs = parseNs(sample.received_ns);
     if (tNs === null) return null;
 
     if (sample.time_quality !== "unsynchronised") {
       this.observeReference(tNs);
-      return { seconds: nsToSessionSeconds(tNs, this.epochNs!), approximate: false };
+      return { timestampNs: tNs, seconds: nsToSessionSeconds(tNs, this.epochNs!), approximate: false };
     }
 
     // Unsynchronised: fall back to receive time
-    const fallbackNs = receivedNs ?? tNs;
+    const fallbackNs = parseNs(sample.received_ns) ?? tNs;
     this.observeReference(fallbackNs);
-    return { seconds: nsToSessionSeconds(fallbackNs, this.epochNs!), approximate: true };
+    return { timestampNs: tNs, seconds: nsToSessionSeconds(fallbackNs, this.epochNs!), approximate: true };
   }
 }
 

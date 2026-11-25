@@ -19,6 +19,7 @@
 // - Reconnect: automatic with backoff; fresh snapshot, then the subscription is replayed by periodic().
 
 import Log from "../../../shared/log/Log";
+import LoggableType from "../../../shared/log/LoggableType";
 import type {
   AvailabilityState,
   CatalogueSnapshotOp,
@@ -36,6 +37,7 @@ import {
   getLayoutSignature,
   getMetadataString,
   keyToPath,
+  pathToKey,
   writeValue
 } from "./MURLogAdapter";
 import { SegmentTracker } from "./MURSegments";
@@ -44,7 +46,12 @@ import { LiveClock, SessionTimeBase } from "./MURTime";
 const API_VERSION = 1;
 const SUBSCRIPTION_ID = "mur-voir-active";
 const MAX_RATE_HZ = 50;
+/** Output to the hub at the live frame pace (FrameScheduler LIVE_FPS). */
+const OUTPUT_PERIOD_MS = 1000 / 20;
+/** How often the subscription is checked against the fields the tabs and sidebar show. */
+const SUBSCRIPTION_PERIOD_MS = 250;
 const HISTORY_MAX_POINTS = 2000;
+const HISTORY_RESUME_MAX_POINTS = 20000;
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 5000;
 const UNSYNC_HOLD_MS = 3000; // How long a signal stays flagged after its last unsynchronised sample
@@ -66,9 +73,21 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   private reconnectTimeout: number | null = null;
   private reconnectDelayMs = RECONNECT_MIN_MS;
   private periodicActive = false;
+  private periodicTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastSubscriptionCheck = -Infinity;
   private shouldRunOutputCallback = false;
+  /** Paths written since the hub last asked, or null after a change to the catalogue or the log. */
+  private changedFields: Set<string> | null = null;
 
   private receiptTimes = new Map<string, number>();
+  /** Backend time of the newest sample per path, where a later history request resumes. */
+  private lastSampleNs = new Map<string, bigint>();
+  /**
+   * Where history resumes for a path that stopped streaming (its tab was hidden, or the socket dropped):
+   * its newest sample at that moment. Kept until a backfill merges, so samples that arrive later (e.g.
+   * for the sidebar) cannot move it past the gap.
+   */
+  private resumeFrom = new Map<string, bigint>();
   private backend: BackendState = "connecting";
   private backendDetail = "";
 
@@ -85,7 +104,8 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
   private requests = new AbortController();
   private subscribedPaths: string[] = [];
-  private historyRequested = new Set<string>();
+  private historyRequested = new Map<string, number>();
+  private historyGeneration = 0;
   private historyAvailable: boolean | null = null;
 
   connect(
@@ -100,27 +120,23 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     this.log = new Log();
     this.openSocket();
 
-    // Periodic subscription updates and output (same scheduling as NT4Source)
+    // Periodic subscription updates and output. A timer, not an idle callback: idle callbacks run
+    // every display frame, and output faster than the live frame pace is never seen.
     this.periodicActive = true;
-    const schedule = (callback: () => void) => {
-      if (window.requestIdleCallback !== undefined) {
-        window.requestIdleCallback(callback, { timeout: 100 });
-      } else {
-        window.requestAnimationFrame(callback);
-      }
-    };
     const periodic = () => {
       if (!this.periodicActive) return;
       this.periodic();
-      schedule(periodic);
+      this.periodicTimer = setTimeout(periodic, OUTPUT_PERIOD_MS);
     };
-    schedule(periodic);
+    periodic();
   }
 
   stop() {
     super.stop();
     this.requests.abort();
     this.periodicActive = false;
+    if (this.periodicTimer !== null) clearTimeout(this.periodicTimer);
+    this.periodicTimer = null;
     if (this.reconnectTimeout !== null) window.clearTimeout(this.reconnectTimeout);
     this.reconnectTimeout = null;
     if (this.socket !== null) {
@@ -172,7 +188,9 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       if (this.socket !== socket) return;
       this.socket = null;
       this.catalogue = null;
+      this.subscribedPaths.forEach((path) => this.retireHistory(path));
       this.subscribedPaths = [];
+      this.lastSubscriptionCheck = -Infinity;
       if (this.backend === "connected") {
         this.backend = "connecting";
         this.backendDetail = "Connection lost, reconnecting";
@@ -209,6 +227,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       case "catalogue_upsert":
         if (!this.isNextRevision(message.catalogue_epoch, message.revision)) return;
         this.upsertDescriptor(message.signal);
+        this.changedFields = null;
         this.shouldRunOutputCallback = true;
         break;
       case "catalogue_remove":
@@ -217,15 +236,19 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
         this.layouts.delete(message.path);
         this.availability.delete(message.path);
         if (this.log) deleteField(this.log, message.path);
+        this.changedFields = null;
         this.shouldRunOutputCallback = true;
         break;
       case "availability":
         this.availability.set(message.path, { state: message.state, lastSeenNs: message.last_seen_ns });
+        this.changedFields?.add(message.path); // Its freshness mark changes
         this.shouldRunOutputCallback = true;
         break;
-      case "samples":
-        message.samples.forEach((sample) => this.handleSample(sample));
+      case "samples": {
+        const now = Date.now();
+        for (const sample of message.samples) this.handleSample(sample, now);
         break;
+      }
       case "error":
         console.warn("[MUR] Backend error (" + message.code + "): " + message.message);
         break;
@@ -258,11 +281,13 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
     // Subscriptions are not durable across sockets: periodic() replays them. Refetch history to fill the gap.
     this.subscribedPaths = [];
+    this.lastSubscriptionCheck = -Infinity;
     this.historyRequested.clear();
 
     this.backend = "connected";
     this.backendDetail = "";
     this.setStatus(LiveDataSourceStatus.Active);
+    this.changedFields = null;
     this.shouldRunOutputCallback = true;
   }
 
@@ -283,7 +308,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     }
   }
 
-  private handleSample(sample: TelemetrySample) {
+  private handleSample(sample: TelemetrySample, now: number) {
     if (!this.log) return;
     const descriptor = this.descriptors.get(sample.path);
     if (descriptor === undefined) return;
@@ -297,17 +322,21 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       time = this.timeBase.sampleTime(sample)!;
       this.segments.observe(sample.path, sample.stream_id, sample.seq, time.seconds, !time.approximate);
     }
-    if (!this.dedup.accept(sample.path, sample.stream_id, sample.seq)) return;
-    if (time.seconds < 0) return;
+    if (time.seconds < 0 || !this.dedup.accept(sample.path, sample.stream_id, sample.seq, time.seconds)) return;
 
+    const key = pathToKey(sample.path);
+    const field = this.log.getField(key);
+    const previousVersion = field?.getDataVersion();
     if (!writeValue(this.log, descriptor, time.seconds, sample.value)) {
       console.warn('[MUR] Value does not match type "' + descriptor.type + '" for ' + sample.path, sample.value);
       return;
     }
 
-    const now = Date.now();
     this.receiptTimes.set(sample.path, now);
-    if (!this.availability.has(sample.path)) {
+    const lastNs = this.lastSampleNs.get(sample.path);
+    if (lastNs === undefined || time.timestampNs > lastNs) this.lastSampleNs.set(sample.path, time.timestampNs);
+    const becameAvailable = !this.availability.has(sample.path);
+    if (becameAvailable) {
       this.availability.set(sample.path, { state: "online", lastSeenNs: sample.t_ns });
     }
     if (time.approximate) {
@@ -316,7 +345,11 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       this.unsynchronised.delete(sample.path);
     }
     this.clock.observe(time.seconds, now);
-    this.shouldRunOutputCallback = true;
+    const structured = field?.getType() === LoggableType.Empty;
+    if (becameAvailable || field === null || structured || field.getDataVersion() !== previousVersion) {
+      this.changedFields?.add(sample.path);
+      this.shouldRunOutputCallback = true;
+    }
   }
 
   /** Replaces the Log after a clock rewind and drops the previous run. */
@@ -331,9 +364,12 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
 
     this.log = new Log();
     this.receiptTimes.clear();
+    this.lastSampleNs.clear();
+    this.resumeFrom.clear();
     // Keep availability from the snapshot that preceded this stream.
     this.descriptors.forEach((descriptor) => createField(this.log!, descriptor));
     console.log("[MUR] Starting segment " + this.segments.getSegmentIndex().toString());
+    this.changedFields = null;
     this.runOutputCallback();
     this.newSegmentCallback?.();
   }
@@ -344,11 +380,22 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   private periodic() {
     if (this.status === LiveDataSourceStatus.Stopped || !this.log) return;
 
-    if (this.catalogue !== null) {
-      // Active fields (same sources as NT4Source.periodic): tabs plus visible sidebar fields
+    // The subscription check walks the shown tabs' fields, so it runs a few times a second, and at once
+    // when another tab is shown
+    const now = Date.now();
+    if (
+      this.catalogue !== null &&
+      (now - this.lastSubscriptionCheck >= SUBSCRIPTION_PERIOD_MS ||
+        window.tabs.getVisibleTabsKey() !== this.lastVisibleTabs)
+    ) {
+      this.lastSubscriptionCheck = now;
+      this.lastVisibleTabs = window.tabs.getVisibleTabsKey();
+      // Stream only the shown tabs, visible sidebar fields and background features. A hidden tab's
+      // fields unsubscribe, and their history is fetched again when the tab is shown.
       const isKnownPath = (path: string) => this.descriptors.has(path);
       const tabPaths = new Set<string>();
-      window.tabs.getActiveFields().forEach((key) => {
+      // Without backend history, hidden tabs keep streaming so they have data when shown.
+      window.tabs.getActiveFields(this.historyAvailable !== false).forEach((key) => {
         const path = keyToPath(key, isKnownPath);
         if (path !== null) tabPaths.add(path);
       });
@@ -373,16 +420,22 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
           this.send({ op: "unsubscribe", subscription_id: SUBSCRIPTION_ID });
         }
         this.subscribedPaths.forEach((path) => {
-          if (!activePaths.has(path)) this.historyRequested.delete(path);
+          if (!activePaths.has(path)) {
+            this.retireHistory(path);
+          }
         });
         this.subscribedPaths = paths;
       }
 
       // Backfill history for fields that just became active in a tab
+      for (const path of this.historyRequested.keys()) {
+        if (!tabPaths.has(path)) this.retireHistory(path);
+      }
       tabPaths.forEach((path) => {
         if (!this.historyRequested.has(path)) {
-          this.historyRequested.add(path);
-          this.fetchHistory(path);
+          const generation = ++this.historyGeneration;
+          this.historyRequested.set(path, generation);
+          this.fetchHistory(path, generation);
         }
       });
     }
@@ -393,7 +446,10 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (discardS !== undefined && discardS !== -1 && liveEdge !== null && Date.now() - this.lastDiscard >= 1000) {
       this.lastDiscard = Date.now();
       const minTime = liveEdge - discardS;
-      if (minTime > this.log.getTimestampRange()[0]) this.log.clearBeforeTime(minTime, false);
+      if (minTime > this.log.getTimestampRange()[0]) {
+        this.log.clearBeforeTime(minTime, false);
+        this.dedup.discardBefore(minTime);
+      }
     }
 
     if (this.shouldRunOutputCallback) {
@@ -403,6 +459,16 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   }
 
   private lastDiscard = -Infinity;
+  private lastVisibleTabs = "";
+
+  takeChangedFields(): ReadonlySet<string> | null {
+    const changed = this.changedFields;
+    this.changedFields = new Set();
+    if (changed === null) return null;
+    const keys = new Set<string>();
+    changed.forEach((path) => keys.add(pathToKey(path)));
+    return keys;
+  }
 
   private runOutputCallback() {
     if (this.status === LiveDataSourceStatus.Stopped || !this.outputCallback || !this.log) return;
@@ -412,15 +478,23 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     });
   }
 
-  private async fetchHistory(path: string) {
+  private async fetchHistory(path: string, generation: number) {
     if (this.historyAvailable === false) return;
     const segmentIndex = this.segments.getSegmentIndex();
-    const url = this.baseUrl + "/api/v1/history?path=" + encodeURIComponent(path) + "&max_points=" + HISTORY_MAX_POINTS;
+    // A field seen before (its tab was hidden) resumes from its newest sample, so the whole gap fills in
+    const resumeNs = this.resumeFrom.get(path);
+    const url =
+      this.baseUrl +
+      "/api/v1/history?path=" +
+      encodeURIComponent(path) +
+      (resumeNs === undefined
+        ? "&max_points=" + HISTORY_MAX_POINTS
+        : "&from_ns=" + resumeNs + "&max_points=" + HISTORY_RESUME_MAX_POINTS);
     let response: Response;
     try {
       response = await fetch(url, { signal: this.requests.signal });
     } catch {
-      this.historyRequested.delete(path); // Retry on the next periodic call after reconnecting
+      if (this.historyRequested.get(path) === generation) this.historyRequested.delete(path);
       return;
     }
     if (response.status === 501) {
@@ -434,7 +508,7 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
       body = await response.json();
     } catch {
       // stop() aborted the request, or the connection dropped while the body was arriving
-      this.historyRequested.delete(path);
+      if (this.historyRequested.get(path) === generation) this.historyRequested.delete(path);
       return;
     }
 
@@ -442,14 +516,29 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
     if (this.requests.signal.aborted || !this.log || segmentIndex !== this.segments.getSegmentIndex()) return;
     const descriptor = this.descriptors.get(path);
     if (descriptor === undefined) return;
-    const samples = body.samples.filter((sample) => this.segments.acceptHistory(sample.stream_id));
     let wrote = false;
-    this.dedup.filterHistory(path, samples).forEach((sample) => {
+    for (const sample of body.samples.sort((a, b) => a.seq - b.seq)) {
+      if (!this.segments.acceptHistory(sample.stream_id)) continue;
       const time = this.timeBase.sampleTime(sample);
-      if (time === null || time.seconds < 0) return;
-      if (writeValue(this.log!, descriptor, time.seconds, sample.value)) wrote = true;
-    });
-    if (wrote) this.shouldRunOutputCallback = true;
+      if (time === null || time.seconds < 0 || !this.dedup.accept(path, sample.stream_id, sample.seq, time.seconds))
+        continue;
+      if (writeValue(this.log, descriptor, time.seconds, sample.value)) wrote = true;
+    }
+    if (resumeNs !== undefined && this.historyRequested.get(path) === generation) this.resumeFrom.delete(path);
+    if (wrote) {
+      this.changedFields?.add(path);
+      this.shouldRunOutputCallback = true;
+    }
+  }
+
+  private retireHistory(path: string) {
+    this.historyRequested.delete(path);
+    this.rememberResume(path);
+  }
+
+  private rememberResume(path: string) {
+    const newest = this.lastSampleNs.get(path);
+    if (newest !== undefined && !this.resumeFrom.has(path)) this.resumeFrom.set(path, newest);
   }
 
   // ------------------------------------------------------------------------------------------
@@ -460,12 +549,21 @@ export default class MURSource extends LiveDataSource implements LiveStatusProvi
   }
 
   getLiveStatus(): LiveStatusSummary {
+    let hasFreshData = false;
+    if (this.backend === "connected") {
+      for (const [path, { state, lastSeenNs }] of this.availability) {
+        if (state === "online" && lastSeenNs !== null && this.descriptors.has(path)) {
+          hasFreshData = true;
+          break;
+        }
+      }
+    }
     return {
       backend: this.backend,
       backendDetail: this.backendDetail,
       viewedRun: 0,
       runCount: 1,
-      hasFreshData: Array.from(this.descriptors.keys()).some((key) => this.getFieldFreshness(key) === "online")
+      hasFreshData
     };
   }
 

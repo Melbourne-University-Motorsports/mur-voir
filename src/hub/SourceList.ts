@@ -16,6 +16,7 @@ import {
   SourceListTypeMemoryEntry
 } from "../shared/SourceListConfig";
 import { formatChannelValue, rawChannelValue } from "../shared/display/ChannelProfile";
+import { clientSize } from "../shared/domWrite";
 import {
   grabModuleVelocities,
   grabPosesAuto,
@@ -28,6 +29,7 @@ import { getLogValueText, getOrDefault } from "../shared/log/LogUtil";
 import LoggableType from "../shared/log/LoggableType";
 import { Units } from "../shared/units";
 import { createUUID, jsonCopy } from "../shared/util";
+import { invalidateFrames, isTextFrame, requestFrame } from "./FrameScheduler";
 
 export default class SourceList {
   private events = new AbortController();
@@ -35,6 +37,68 @@ export default class SourceList {
 
   static typePromptCallbacks: { [key: string]: (state: SourceListItemState) => void } = {};
   static clearPromptCallbacks: { [key: string]: () => void } = {};
+
+  // One animation-frame loop serves the visible source lists. Lists on hidden tabs cost nothing per
+  // frame: an IntersectionObserver keeps the visible set, so no list is scanned or measured.
+  private static instances = new Set<SourceList>();
+  private static visible = new Set<SourceList>();
+  private static byRoot = new WeakMap<Element, SourceList>();
+  private static observer: IntersectionObserver | null = null;
+  private static frameRequested = false;
+  private static darkQuery: MediaQueryList | null = null;
+
+  private static register(list: SourceList) {
+    if (typeof IntersectionObserver === "undefined") {
+      // No observer (tests): treat every list as visible
+      SourceList.instances.add(list);
+      SourceList.visible.add(list);
+      SourceList.schedule();
+      return;
+    }
+    if (SourceList.observer === null) {
+      SourceList.observer = new IntersectionObserver((entries) => {
+        let anyVisible = false;
+        for (const entry of entries) {
+          const list = SourceList.byRoot.get(entry.target);
+          if (list === undefined || !SourceList.instances.has(list)) continue;
+          if (entry.isIntersecting) {
+            SourceList.visible.add(list);
+            anyVisible = true;
+          } else {
+            SourceList.visible.delete(list);
+          }
+        }
+        if (anyVisible) SourceList.schedule();
+      });
+      // Icon colors depend on the theme
+      SourceList.darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      SourceList.darkQuery.addEventListener("change", () =>
+        SourceList.instances.forEach((instance) => instance.updateAllItems())
+      );
+    }
+    SourceList.instances.add(list);
+    SourceList.byRoot.set(list.ROOT, list);
+    SourceList.observer.observe(list.ROOT);
+  }
+
+  private static unregister(list: SourceList) {
+    SourceList.instances.delete(list);
+    SourceList.observer?.unobserve(list.ROOT);
+    SourceList.visible.delete(list);
+  }
+
+  private static schedule() {
+    if (SourceList.frameRequested) return;
+    SourceList.frameRequested = true;
+    requestFrame(SourceList.periodic);
+  }
+
+  private static periodic = () => {
+    SourceList.frameRequested = false;
+    if (isTextFrame()) SourceList.visible.forEach((instance) => instance.updateAllPreviews());
+    // With every list hidden the loop stops; the observer restarts it when one appears
+    if (SourceList.visible.size > 0) SourceList.schedule();
+  };
 
   private UUID = createUUID();
   private ITEM_TEMPLATE = document.getElementById("sourceListItemTemplate")?.firstElementChild as HTMLElement;
@@ -44,6 +108,7 @@ export default class SourceList {
   private CLEAR_BUTTON: HTMLButtonElement;
   private HELP_BUTTON: HTMLButtonElement;
   private LIST: HTMLElement;
+  private listScrollTop = 0;
   private HAND_ICON: HTMLImageElement;
   private DRAG_HIGHLIGHT: HTMLElement;
   private DRAG_ITEM = document.getElementById("dragItem") as HTMLElement;
@@ -51,7 +116,10 @@ export default class SourceList {
   /** Status text for fields hidden by the current graph mode. */
   itemStatus = new Map<string, { text: string; error: boolean; warn?: boolean; title?: string }>();
   private stopped = false;
-  private animationFrame = 0;
+  /** The item under the pointer. Only it gets the sample age tooltip, which changes every frame. */
+  private hoveredItem: HTMLElement | null = null;
+  /** The text last written to each preview, so updates skip reading innerText (which forces layout). */
+  private previewTexts = new WeakMap<HTMLElement, string>();
   private config: SourceListConfig;
   private configStr: string;
   private state: SourceListState = [];
@@ -129,6 +197,14 @@ export default class SourceList {
     this.HELP_BUTTON.hidden = editButtonCallback !== undefined;
 
     this.LIST = document.createElement("div");
+    this.LIST.addEventListener(
+      "scroll",
+      () => {
+        this.listScrollTop = this.LIST.scrollTop;
+        invalidateFrames();
+      },
+      { passive: true, signal: this.events.signal }
+    );
     this.ROOT.appendChild(this.LIST);
     this.LIST.classList.add("list");
 
@@ -213,6 +289,28 @@ export default class SourceList {
       { signal: this.events.signal }
     );
 
+    // Track the hovered item so its tooltip is filled in right away
+    this.LIST.addEventListener(
+      "pointerover",
+      (event) => {
+        let element = event.target as HTMLElement | null;
+        while (element !== null && element.parentElement !== this.LIST) element = element.parentElement;
+        if (element === this.hoveredItem) return;
+        this.hoveredItem = element;
+        if (element === null) return;
+        const index = Array.prototype.indexOf.call(this.LIST.children, element);
+        if (index >= 0 && index < this.state.length) this.updatePreview(element, this.state[index]);
+      },
+      { signal: this.events.signal }
+    );
+    this.LIST.addEventListener(
+      "pointerleave",
+      () => {
+        this.hoveredItem = null;
+      },
+      { signal: this.events.signal }
+    );
+
     // Entry dragging support
     this.LIST.addEventListener(
       "mousedown",
@@ -269,24 +367,6 @@ export default class SourceList {
           dragContainer.style.padding = "none";
           dragContainer.classList.add("source-list");
           let elementClone = element.cloneNode(true) as HTMLElement;
-          {
-            // Apply icon color
-            Array.from(elementClone.getElementsByTagName("object")).forEach((objElement) => {
-              const color = objElement.getAttribute("type-color");
-              objElement.addEventListener(
-                "load",
-                () => {
-                  if (color !== null && objElement.contentDocument !== null) {
-                    let svgs = objElement.contentDocument.getElementsByTagName("svg");
-                    if (svgs.length > 0) {
-                      svgs[0].style.color = color;
-                    }
-                  }
-                },
-                { signal: this.events.signal }
-              );
-            });
-          }
           dragContainer.appendChild(elementClone);
           this.DRAG_ITEM.appendChild(dragContainer);
 
@@ -305,24 +385,8 @@ export default class SourceList {
       { signal: this.events.signal }
     );
 
-    // Periodic method
-    let lastIsDark: boolean | null = null;
-    let periodic = () => {
-      if (this.stopped) return;
-
-      // Update items when theme changes (some icon colors will change)
-      let isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      if (isDark !== lastIsDark) {
-        lastIsDark = isDark;
-        this.updateAllItems();
-      }
-
-      // Update value previews
-      if (this.ROOT.isConnected && this.ROOT.getClientRects().length > 0) this.updateAllPreviews();
-
-      this.animationFrame = window.requestAnimationFrame(periodic);
-    };
-    this.animationFrame = window.requestAnimationFrame(periodic);
+    // Value previews run from one shared loop, and only while this list is on screen
+    SourceList.register(this);
   }
 
   setTitle(title: string): void {
@@ -370,7 +434,7 @@ export default class SourceList {
 
   stop() {
     this.stopped = true;
-    window.cancelAnimationFrame(this.animationFrame);
+    SourceList.unregister(this);
     this.events.abort();
     delete SourceList.clearPromptCallbacks[this.UUID];
     delete SourceList.typePromptCallbacks[this.UUID];
@@ -382,15 +446,24 @@ export default class SourceList {
   /** Removes all items in the source list. */
   clear() {
     this.state = [];
+    this.refreshedCatalogue = undefined;
     while (this.LIST.firstChild) {
       this.LIST.removeChild(this.LIST.firstChild);
     }
     this.updateHandIcon();
   }
 
+  private refreshedCatalogue?: { log: typeof window.log; fields: number; metadata: number };
+
   /** Call when a new set of log fields may be available. */
   refresh() {
-    if (this.dbcLookup?.log !== window.log) this.dbcLookup = undefined;
+    const log = window.log;
+    const fields = log.getFieldKeysVersion();
+    const metadata = log.getMetadataVersion();
+    const previous = this.refreshedCatalogue;
+    if (previous?.log === log && previous.fields === fields && previous.metadata === metadata) return;
+    this.refreshedCatalogue = { log, fields, metadata };
+    if (this.dbcLookup?.log !== log) this.dbcLookup = undefined;
     this.state.forEach((item, index) => {
       if (this.isFieldAvailable(item) || !item.dbcSignal) return;
       if (
@@ -437,6 +510,7 @@ export default class SourceList {
         const previousKey = item.logKey;
         item.logKey = matches[0];
         this.onFieldRemapped?.(previousKey, item.logKey);
+        window.requestStateSave?.();
         let element = this.LIST.children[index] as HTMLElement;
         this.updateItem(element, item);
         this.updatePreview(element, item);
@@ -871,16 +945,24 @@ export default class SourceList {
     }
   }
 
-  /** Update the preview values of all items. */
+  /** Refresh previews only for rows inside the scroll area. */
   private updateAllPreviews() {
-    let count = Math.min(this.state.length, this.LIST.childElementCount);
-    for (let i = 0; i < count; i++) {
-      this.updatePreview(this.LIST.children[i] as HTMLElement, this.state[i]);
+    const count = Math.min(this.state.length, this.LIST.childElementCount);
+    const time = window.selection.getRenderTime();
+    const bottom = this.listScrollTop + clientSize(this.LIST)[1];
+    let top = 0;
+    for (let i = 0; i < count && top < bottom; i++) {
+      const item = this.LIST.children[i] as HTMLElement;
+      if (top + (parseFloat(item.style.height) || 30) > this.listScrollTop) {
+        this.updatePreview(item, this.state[i], time);
+      }
+      top += parseFloat(item.style.height) || 30;
     }
   }
 
   /** Make a list item element and inserts it into the list. */
   private addListItem(state: SourceListItemState, insertIndex?: number) {
+    this.refreshedCatalogue = undefined;
     if (this.config.types.find((type) => type.key === state.type)?.singleField) {
       for (let i = this.state.length - 1; i >= 0; i--) {
         if (this.state[i].type !== state.type) continue;
@@ -890,25 +972,6 @@ export default class SourceList {
       }
     }
     let item = this.ITEM_TEMPLATE.cloneNode(true) as HTMLElement;
-    Array.from(item.getElementsByTagName("object")).forEach((objElement) => {
-      // Add a persistent load listener to re-apply the correct color.
-      // This is necessary because Safari may unload and reload the SVG when
-      // the element is detached or hidden (e.g. switching tabs).
-      objElement.addEventListener(
-        "load",
-        () => {
-          let color = objElement.getAttribute("type-color");
-          if (color !== null && objElement.contentDocument !== null) {
-            let svgs = objElement.contentDocument.getElementsByTagName("svg");
-            if (svgs.length > 0) {
-              svgs[0].style.color = color;
-            }
-          }
-        },
-        { signal: this.events.signal }
-      );
-    });
-
     if (insertIndex === undefined) {
       this.LIST.appendChild(item);
       this.state.push(state);
@@ -960,6 +1023,7 @@ export default class SourceList {
         delete SourceList.typePromptCallbacks[this.UUID];
         let index = Array.from(this.LIST.children).indexOf(item);
         this.state[index] = newState;
+        this.refreshedCatalogue = undefined;
         if (this.config.types.find((type) => type.key === newState.type)?.singleField) {
           const state = this.state.filter((entry, i) => i === index || entry.type !== newState.type);
           this.setState(state);
@@ -1113,13 +1177,7 @@ export default class SourceList {
     if (typeConfig === undefined) throw 'Unknown type "' + state.type + '"';
 
     // Update type icon
-    let typeIconVisible = item.getElementsByTagName("object")[0] as HTMLObjectElement;
-    let typeIconHidden = item.getElementsByTagName("object")[1] as HTMLObjectElement;
-    if (typeIconVisible.classList.contains("hidden")) {
-      let temp = typeIconVisible;
-      typeIconVisible = typeIconHidden;
-      typeIconHidden = temp;
-    }
+    let typeIcon = item.getElementsByClassName("type-icon")[0] as HTMLElement;
     let color: string;
     const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     if (typeConfig.color.startsWith("#")) {
@@ -1138,30 +1196,11 @@ export default class SourceList {
       }
     }
     color = ensureThemeContrast(color);
-    typeIconVisible.setAttribute("type-color", color);
-    typeIconHidden.setAttribute("type-color", color);
-
-    let symbol = typeConfig.symbol;
-    let dataPath = "symbols/sourceList/" + symbol + ".svg";
-    if (dataPath !== typeIconVisible.getAttribute("data")) {
-      // Load new image on hidden icon
-      typeIconHidden.data = dataPath;
-      typeIconHidden.addEventListener(
-        "load",
-        () => {
-          if (typeIconHidden.contentDocument) {
-            typeIconHidden.classList.remove("hidden");
-            typeIconVisible.classList.add("hidden");
-          }
-        },
-        { signal: this.events.signal, once: true }
-      );
-    } else if (typeIconVisible.contentDocument !== null) {
-      // Replace color on visible icon
-      let svgs = typeIconVisible.contentDocument.getElementsByTagName("svg");
-      if (svgs.length > 0) {
-        svgs[0].style.color = color;
-      }
+    const icon = 'url("symbols/sourceList/' + typeConfig.symbol + '.svg")';
+    if (typeIcon.style.getPropertyValue("--type-icon") !== icon) typeIcon.style.setProperty("--type-icon", icon);
+    if (typeIcon.dataset.color !== color) {
+      typeIcon.dataset.color = color;
+      typeIcon.style.backgroundColor = color;
     }
 
     // Update type name
@@ -1245,8 +1284,7 @@ export default class SourceList {
    * @param item The HTML element to update
    * @param state The associated item state
    */
-  private updatePreview(item: HTMLElement, state: SourceListItemState) {
-    let time = window.selection.getRenderTime();
+  private updatePreview(item: HTMLElement, state: SourceListItemState, time = window.selection.getRenderTime()) {
     let valueSymbol = item.getElementsByClassName("value-symbol")[0] as HTMLElement;
     let valueText = item.getElementsByClassName("value")[0] as HTMLElement;
     let typeConfig = this.config.types.find((typeConfig) => typeConfig.key === state.type);
@@ -1450,17 +1488,19 @@ export default class SourceList {
       }
     }
 
+    // The raw value and sample age tooltip changes every frame, so only the hovered item builds it
+    let title: string | null = null;
     const rawTime = window.selection.getRenderTime();
-    if (rawTime !== null) {
+    if (item === this.hoveredItem && rawTime !== null) {
       const type = window.log.getType(state.logKey);
       const raw = type === null ? null : getOrDefault(window.log, state.logKey, type, rawTime, null);
-      valueText.title = rawChannelValue(raw, window.log.getChannelProfile(state.logKey));
+      title = rawChannelValue(raw, window.log.getChannelProfile(state.logKey));
       if (type === LoggableType.Number) {
         // Sample age and rate, so a held value from a stalled source is not mistaken for a live one
         const recent = window.log.getNumber(state.logKey, rawTime - 10, rawTime);
         const ts = recent?.timestamps ?? [];
         const last = ts.findLast((t) => t <= rawTime);
-        if (last === undefined) valueText.title += "\nno sample in the last 10 s";
+        if (last === undefined) title += "\nno sample in the last 10 s";
         else {
           const recentRate = ts.filter((t) => t <= rawTime && t > last - 1).length - 1;
           let nominalRate: number | undefined;
@@ -1469,7 +1509,7 @@ export default class SourceList {
           } catch {
             /* Not every imported field has JSON metadata. */
           }
-          valueText.title +=
+          title +=
             `\nsample age ${(rawTime - last).toFixed(2)} s` +
             (nominalRate ? ` · source ${nominalRate} Hz` : recentRate > 0 ? ` · retained ${recentRate} Hz` : "");
         }
@@ -1478,14 +1518,21 @@ export default class SourceList {
     const status = this.itemStatus.get(state.logKey);
     if (status) {
       text = status.text;
-      valueText.title = status.title ?? status.text;
+      title = status.title ?? status.text;
     }
-    // Update state
-    valueSymbol.hidden = text === null;
-    valueText.hidden = text === null;
-    item.style.height = valueSymbol.hidden ? "30px" : "50px";
-    if (text !== null && text !== valueText.innerText) {
-      valueText.innerText = text;
+    // Update state, writing only what changed so an unchanged preview costs no style or layout work
+    if (title !== null && valueText.title !== title) valueText.title = title;
+    const hidden = text === null;
+    if (valueSymbol.hidden !== hidden) valueSymbol.hidden = hidden;
+    if (valueText.hidden !== hidden) valueText.hidden = hidden;
+    const height = hidden ? "30px" : "50px";
+    if (item.style.height !== height) item.style.height = height;
+    if (text !== null && text !== this.previewTexts.get(valueText)) {
+      this.previewTexts.set(valueText, text);
+      if (text.includes("\n") || text.includes("\r")) valueText.innerText = text;
+      else if (valueText.firstChild?.nodeType === Node.TEXT_NODE && valueText.firstChild === valueText.lastChild)
+        valueText.firstChild.nodeValue = text;
+      else valueText.textContent = text;
     }
   }
 }

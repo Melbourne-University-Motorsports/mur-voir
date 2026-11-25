@@ -11,6 +11,8 @@ import Preferences from "./shared/Preferences";
 import { RenderGuard, inlineStatus } from "./shared/RenderGuard";
 import Selection, { SelectionMode } from "./shared/Selection";
 import TabType, { getAllTabTypes, getTabIcon } from "./shared/TabType";
+import { applyTracksidePatch } from "./shared/Trackside";
+import { LAYOUT_SIZE_EVENT } from "./shared/domWrite";
 import CarDynamicsRenderer from "./shared/renderers/CarDynamicsRenderer";
 import ConsoleRenderer from "./shared/renderers/ConsoleRenderer";
 import DocumentationRenderer from "./shared/renderers/DocumentationRenderer";
@@ -57,6 +59,7 @@ let title: string | null = null;
 let messagePort: MessagePort | null = null;
 let lastAspectRatio: number | null = null;
 let lastCommand: any = null;
+let lastRevision: string | undefined = undefined;
 
 /** Updates the current visualizer based on the type. */
 function updateVisualizer() {
@@ -145,16 +148,27 @@ window.addEventListener("message", (event) => {
 
         case "set-type":
           type = message.data;
+          lastCommand = null;
+          lastRevision = undefined; // A new visualizer has drawn nothing yet
           updateVisualizer();
+          scheduleSaveState();
           break;
 
         case "restore-state":
           type = message.data.type;
+          lastCommand = null;
+          lastRevision = undefined;
           updateVisualizer();
           renderer?.restoreState(message.data.visualizer);
+          scheduleSaveState();
           break;
 
         case "render":
+          // A replayed revision (window shown or restored) is already on screen
+          if (message.data.revision !== undefined && message.data.revision === lastRevision) break;
+          const patch = message.data.patch;
+          if (patch && (lastCommand === null || lastRevision !== message.data.baseRevision)) break;
+          lastRevision = message.data.revision;
           // Update title
           let titleElement = document.getElementsByTagName("title")[0] as HTMLElement;
           let newTitle = message.data.title;
@@ -165,9 +179,14 @@ window.addEventListener("message", (event) => {
           }
 
           // Render frame
-          lastCommand = message.data.command;
+          // Commands change a visualizer's saved state only when it first draws; input covers the rest
+          if (lastCommand === null) scheduleSaveState();
+          lastCommand = patch ? applyTracksidePatch(lastCommand, patch) : message.data.command;
           if (renderer) {
-            guardedRender(() => renderer!.render(message.data.command));
+            guardedRender(() => {
+              if (patch && renderer instanceof TracksideRenderer) renderer.render(lastCommand, patch);
+              else renderer!.render(lastCommand);
+            });
             let aspectRatio = renderer.getAspectRatio();
             processAspectRatio(aspectRatio);
 
@@ -185,6 +204,7 @@ window.addEventListener("message", (event) => {
         case "set-2d-camera":
           if (type === TabType.Field2d) {
             (renderer as Field2dRenderer).set2DCamera(message.data);
+            scheduleSaveState(); // The camera mode is part of the saved state
           }
           break;
 
@@ -196,14 +216,16 @@ window.addEventListener("message", (event) => {
   }
 });
 
-window.addEventListener("resize", () => {
+function redrawLastCommand() {
   if (renderer === null || lastCommand === null) {
     return;
   }
   guardedRender(() => renderer!.render(lastCommand));
   let aspectRatio = renderer.getAspectRatio();
   if (aspectRatio) processAspectRatio(aspectRatio);
-});
+}
+window.addEventListener("resize", redrawLastCommand);
+window.addEventListener(LAYOUT_SIZE_EVENT, redrawLastCommand);
 
 function processAspectRatio(aspectRatio: number | null) {
   if (aspectRatio !== lastAspectRatio) {
@@ -253,9 +275,24 @@ window.addEventListener("keydown", (event) => {
   }
 });
 
-setInterval(() => {
-  window.sendMainMessage("save-state", { type: type, visualizer: renderer?.saveState() });
-}, SAVE_PERIOD_MS);
+// The visualizer's state changes through input and commands, so check shortly after either instead of on a
+// timer; an idle satellite then never wakes for it. Only changes are sent.
+let lastSavedState = "";
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSaveState() {
+  if (saveTimer !== null) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const state = { type: type, visualizer: renderer?.saveState() };
+    const serialized = JSON.stringify(state);
+    if (serialized === lastSavedState) return;
+    lastSavedState = serialized;
+    window.sendMainMessage("save-state", state);
+  }, SAVE_PERIOD_MS);
+}
+for (const event of ["pointerup", "wheel", "keyup", "resize", "change"]) {
+  window.addEventListener(event, scheduleSaveState, { capture: true, passive: true });
+}
 
 // Mock selection, send setter calls back to hub
 

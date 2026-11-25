@@ -15,9 +15,75 @@ import { calcAxisStepSize, clampValue, cleanFloat, scaleValue, shiftColor, Value
 import TabRenderer from "./TabRenderer";
 
 import { prepareTrace, TraceGap } from "../TraceGaps";
+import { clientSize, isDarkMode, prepareCanvas, setStyle } from "../domWrite";
 import { niceTicks } from "../laps/LapAnalysis";
 import { interpolate } from "../laps/LapEngine";
 import { LapViewport } from "../laps/LapViewport";
+import { SteppedChunk, SteppedSeries, SteppedWindow, steppedWindows } from "../log/SteppedSeries";
+
+type DataPath = {
+  times: number[];
+  values: number[];
+  path: Path2D;
+};
+
+/** Caches one-second spans in data coordinates so a scrolling plot reuses its settled history. */
+class SteppedPaths {
+  private chunks = new Map<number, DataPath>();
+
+  project(
+    timestamps: number[],
+    values: number[],
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    xScale: number,
+    yScale: number
+  ): Path2D {
+    const path = new Path2D();
+    const transform = new DOMMatrix([xScale, 0, 0, yScale, 0, 0]);
+    const next = new Map<number, DataPath>();
+    for (let start = 1; start < timestamps.length; ) {
+      const bucket = Math.floor(timestamps[start]);
+      let end = start + 1;
+      while (end < timestamps.length && timestamps[end] < bucket + 1) end++;
+      let chunk = this.chunks.get(bucket);
+      const first = start - 1;
+      if (chunk?.times.length === end - first) {
+        for (let i = first; i < end; i++) {
+          if (timestamps[i] !== chunk.times[i - first] || values[i] !== chunk.values[i - first]) {
+            chunk = undefined;
+            break;
+          }
+        }
+      } else {
+        chunk = undefined;
+      }
+      if (chunk === undefined) {
+        const baseTime = timestamps[first];
+        const baseValue = values[first];
+        const segment = new Path2D();
+        segment.moveTo(0, 0);
+        for (let i = start; i < end; i++) {
+          const x = timestamps[i] - baseTime;
+          segment.lineTo(x, values[i - 1] - baseValue);
+          segment.lineTo(x, values[i] - baseValue);
+        }
+        chunk = {
+          times: timestamps.slice(first, end),
+          values: values.slice(first, end),
+          path: segment
+        };
+      }
+      next.set(bucket, chunk);
+      transform.e = xScaler.calculate(chunk.times[0]);
+      transform.f = yScaler.calculate(chunk.values[0]);
+      path.addPath(chunk.path, transform);
+      start = end;
+    }
+    this.chunks = next;
+    return path;
+  }
+}
 
 export default class LineGraphRenderer implements TabRenderer {
   private events = new AbortController();
@@ -39,6 +105,13 @@ export default class LineGraphRenderer implements TabRenderer {
   private zoomInAccumulator = 0;
   private scrollSensor: ScrollSensor;
   private lastRenderState = "";
+  private axisTextWidths = new Map<string, number>();
+  private leftSteppedPaths: SteppedPaths[][] = [];
+  private rightSteppedPaths: SteppedPaths[][] = [];
+  private steppedInteriors = new WeakMap<
+    SteppedSeries,
+    { chunks: SteppedChunk[]; raw: Path2D; projected?: { x: number; y: number; path: Path2D } }
+  >();
   private lapViewport = new LapViewport();
   private mouseDownX = 0;
   private grabZoomActive = false;
@@ -191,6 +264,162 @@ export default class LineGraphRenderer implements TabRenderer {
     return output;
   }
 
+  private strokeSteppedWindow(
+    context: CanvasRenderingContext2D,
+    samples: SteppedWindow,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    xScale: number,
+    yScale: number,
+    right: number,
+    ratio: number
+  ) {
+    const { chunks, series } = samples;
+    const leading = samples.clippedStart ? 1 : 0;
+    const tail = chunks.length - 1;
+    context.lineJoin = "round";
+    context.beginPath();
+
+    let boundaryStart = 0;
+    if (leading < tail) {
+      const first = chunks[leading];
+      const last = chunks[tail - 1];
+      const firstTime = first.timestamps[0];
+      const firstValue = first.values[0];
+      let interior = this.steppedInteriors.get(series);
+      if (
+        interior === undefined ||
+        interior.chunks.length > tail - leading ||
+        interior.chunks.some((chunk, i) => chunk !== chunks[leading + i])
+      ) {
+        const raw = new Path2D();
+        raw.moveTo(0, 0);
+        interior = { chunks: [], raw };
+        this.steppedInteriors.set(series, interior);
+      }
+      if (interior.chunks.length < tail - leading) {
+        // Only a newly settled chunk needs to add segments to the path.
+        const previous = interior.chunks.at(-1);
+        let held = previous?.values.at(-1) ?? firstValue;
+        for (let i = leading + interior.chunks.length; i < tail; i++) {
+          const chunk = chunks[i];
+          for (let j = i === leading ? 1 : 0; j < chunk.timestamps.length; j++) {
+            const x = chunk.timestamps[j] - firstTime;
+            interior.raw.lineTo(x, held - firstValue);
+            interior.raw.lineTo(x, chunk.values[j] - firstValue);
+            held = chunk.values[j];
+          }
+          interior.chunks.push(chunk);
+        }
+        interior.projected = undefined;
+      }
+      if (interior.projected?.x !== xScale || interior.projected.y !== yScale) {
+        const path = new Path2D();
+        path.addPath(interior.raw, new DOMMatrix([xScale, 0, 0, yScale, 0, 0]));
+        interior.projected = { x: xScale, y: yScale, path };
+      }
+      context.setTransform(
+        ratio,
+        0,
+        0,
+        ratio,
+        xScaler.calculate(firstTime) * ratio,
+        yScaler.calculate(firstValue) * ratio
+      );
+      context.stroke(interior.projected.path);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+      if (leading > 0) {
+        const left = chunks[0];
+        context.moveTo(xScaler.calculate(left.timestamps[0]), yScaler.calculate(left.values[0]));
+        const y = this.appendSteppedChunk(context, left, 1, xScaler, yScaler, yScaler.calculate(left.values[0]));
+        const x = xScaler.calculate(firstTime);
+        context.lineTo(x, y);
+        context.lineTo(x, yScaler.calculate(firstValue));
+      }
+      boundaryStart = tail;
+      context.moveTo(xScaler.calculate(last.timestamps.at(-1)!), yScaler.calculate(last.values.at(-1)!));
+    } else {
+      context.moveTo(xScaler.calculate(chunks[0].timestamps[0]), yScaler.calculate(chunks[0].values[0]));
+    }
+
+    let y = yScaler.calculate(boundaryStart === 0 ? chunks[0].values[0] : chunks[boundaryStart - 1].values.at(-1)!);
+    for (let i = boundaryStart; i <= tail; i++) {
+      y = this.appendSteppedChunk(context, chunks[i], i === 0 ? 1 : 0, xScaler, yScaler, y);
+    }
+    context.lineTo(right, y);
+    context.stroke();
+  }
+
+  private strokeDenseSteppedWindow(
+    context: CanvasRenderingContext2D,
+    samples: SteppedWindow,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    right: number,
+    ratio: number
+  ) {
+    const first = samples.chunks[0];
+    let held = first.values[0];
+    let y = yScaler.calculate(held);
+    context.lineJoin = "round";
+    context.beginPath();
+    context.moveTo(xScaler.calculate(first.timestamps[0]), y);
+    let column = NaN;
+    let columnX = 0;
+    let min = 0;
+    let max = 0;
+    let last = 0;
+    const flush = () => {
+      if (Number.isNaN(column)) return;
+      const nextY = yScaler.calculate(last);
+      context.lineTo(columnX, y);
+      if (min !== last && min !== held) context.lineTo(columnX, yScaler.calculate(min));
+      if (max !== last && max !== held) context.lineTo(columnX, yScaler.calculate(max));
+      context.lineTo(columnX, nextY);
+      y = nextY;
+      held = last;
+    };
+    for (const chunk of samples.chunks) {
+      for (let i = chunk === first ? 1 : 0; i < chunk.timestamps.length; i++) {
+        const x = xScaler.calculate(chunk.timestamps[i]);
+        const nextColumn = Math.floor(x * ratio);
+        const value = chunk.values[i];
+        if (column === nextColumn) {
+          min = Math.min(min, value);
+          max = Math.max(max, value);
+          last = value;
+        } else {
+          flush();
+          column = nextColumn;
+          columnX = x;
+          min = max = last = value;
+        }
+      }
+    }
+    flush();
+    context.lineTo(right, y);
+    context.stroke();
+  }
+
+  private appendSteppedChunk(
+    context: CanvasRenderingContext2D,
+    chunk: SteppedChunk,
+    start: number,
+    xScaler: ValueScaler,
+    yScaler: ValueScaler,
+    y: number
+  ): number {
+    const { timestamps, values } = chunk;
+    for (let i = start; i < timestamps.length; i++) {
+      const x = xScaler.calculate(timestamps[i]);
+      context.lineTo(x, y);
+      y = yScaler.calculate(values[i]);
+      context.lineTo(x, y);
+    }
+    return y;
+  }
+
   render(command: LineGraphRendererCommand): void {
     inlineStatus(this.ROOT, command.message ?? "");
     // Commands carry the full lap extent; navigation belongs to this graph, including satellites.
@@ -202,21 +431,19 @@ export default class LineGraphRenderer implements TabRenderer {
       const hasScrolled =
         (window.preferences?.hasScrolledLineGraph ?? false) ||
         (this.hasController && this.scrollSensor.shouldHideHint());
-      this.HELP_OVERLAY.style.display = hasScrolled || command.message ? "none" : "flex";
+      setStyle(this.HELP_OVERLAY, "display", hasScrolled || command.message ? "none" : "flex");
       if (hasScrolled) {
         this.isFadingOut = false;
         this.zoomInAccumulator = 0;
-        this.HELP_OVERLAY.classList.remove("fading-out");
+        if (this.HELP_OVERLAY.classList.contains("fading-out")) this.HELP_OVERLAY.classList.remove("fading-out");
       }
     }
 
     // Initial setup and scaling
     const timeRange = command.timeRange;
     const devicePixelRatio = window.devicePixelRatio;
-    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
-    let width = this.CANVAS.clientWidth;
-    let height = this.CANVAS.clientHeight;
-    let light = !window.matchMedia("(prefers-color-scheme: dark)").matches;
+    let [width, height] = clientSize(this.CANVAS);
+    let light = !isDarkMode();
 
     // Exit if render state unchanged
     let renderState: any[] = [
@@ -249,15 +476,19 @@ export default class LineGraphRenderer implements TabRenderer {
       command.sectorBar,
       command.deltaStrip?.range,
       command.deltaStrip?.fields.map((f) => [f.values.length, f.color, f.size]),
-      command.leftFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
-      command.discreteFields.map((field) => [
-        field.values.length,
-        field.color,
-        field.type,
-        field.toggleReference,
-        field.colorMap ? field.values : null // Specific values affect color-mapped fields so serialize full state
-      ]),
-      command.rightFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
+      command.dataRevision,
+      command.dataRevision === undefined &&
+        command.leftFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
+      command.dataRevision === undefined &&
+        command.discreteFields.map((field) => [
+          field.values.length,
+          field.color,
+          field.type,
+          field.toggleReference,
+          field.colorMap ? field.values : null // Specific values affect color-mapped fields so serialize full state
+        ]),
+      command.dataRevision === undefined &&
+        command.rightFields.map((field) => [field.values.length, field.color, field.type, field.size, field.gaps]),
       command.alerts.map((row) => row.map((alert) => [alert.type, alert.text, alert.range]))
     ];
     let renderStateString = JSON.stringify(renderState);
@@ -267,10 +498,8 @@ export default class LineGraphRenderer implements TabRenderer {
     this.lastRenderState = renderStateString;
 
     // Apply setup and scaling
-    this.CANVAS.width = width * devicePixelRatio;
-    this.CANVAS.height = height * devicePixelRatio;
-    context.scale(devicePixelRatio, devicePixelRatio);
-    context.clearRect(0, 0, width, height);
+    let context = this.CANVAS.getContext("2d") as CanvasRenderingContext2D;
+    prepareCanvas(this.CANVAS, context, width, height, devicePixelRatio);
     const trackside = document.body.classList.contains("trackside-layout");
     context.font = `${trackside ? 14 : 12}px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont`;
 
@@ -283,7 +512,7 @@ export default class LineGraphRenderer implements TabRenderer {
     const sectorBlocks = command.sectorBar?.blocks ?? [];
     const barTop = 32 + (legendRows ? legendRows * LEGEND_ROW + 4 : 0);
     let graphTop = barTop + (sectorBlocks.length ? SECTOR_BAR + 2 : 0);
-    this.SCROLL_OVERLAY.style.top = graphTop.toString() + "px";
+    setStyle(this.SCROLL_OVERLAY, "top", graphTop.toString() + "px");
     let graphHeight = height - graphTop - 35;
     if (graphHeight < 1) graphHeight = 1;
     let discreteRowCount = command.discreteFields.length + command.alerts.length;
@@ -308,7 +537,15 @@ export default class LineGraphRenderer implements TabRenderer {
       let length = 0;
       let value = Math.floor(range[1] / stepSize) * stepSize;
       for (let ticks = 0; value > range[0] && ticks < 100; ticks++) {
-        length = Math.max(length, context.measureText(this.getAxisValueText(value, units, filter)).width);
+        const label = this.getAxisValueText(value, units, filter);
+        const key = context.font + label;
+        let width = this.axisTextWidths.get(key);
+        if (width === undefined) {
+          if (this.axisTextWidths.size >= 256) this.axisTextWidths.clear();
+          width = context.measureText(label).width;
+          this.axisTextWidths.set(key, width);
+        }
+        length = Math.max(length, width);
         value -= stepSize;
       }
       return Math.ceil(length / 10) * 10;
@@ -338,8 +575,8 @@ export default class LineGraphRenderer implements TabRenderer {
     let timeStepSize = calcAxisStepSize(displayTimeRange, graphWidth, this.X_STEP_TARGET_PX + extraDigits * 12);
 
     // Update scroll layout
-    this.SCROLL_OVERLAY.style.left = graphLeft.toString() + "px";
-    this.SCROLL_OVERLAY.style.right = graphRight.toString() + "px";
+    setStyle(this.SCROLL_OVERLAY, "left", graphLeft.toString() + "px");
+    setStyle(this.SCROLL_OVERLAY, "right", graphRight.toString() + "px");
 
     // Keep any message over the plot, clear of the axes (the scroll overlay itself scrolls)
     const status = this.ROOT.querySelector<HTMLElement>(":scope > .telemetry-status");
@@ -487,96 +724,176 @@ export default class LineGraphRenderer implements TabRenderer {
 
     // Render continuous data
     const xScaler = new ValueScaler(timeRange, [graphLeft, graphLeft + graphWidth]);
-    let drawNumericFields = (fields: LineGraphRendererCommand_NumericField[], yRange: [number, number]) => {
+    let drawNumericFields = (
+      fields: LineGraphRendererCommand_NumericField[],
+      yRange: [number, number],
+      paths: SteppedPaths[][]
+    ) => {
       const yScaler = new ValueScaler(yRange, [graphTop + graphHeightOpen, graphTop]);
-      fields.forEach((original) => {
-        const prepared = prepareTrace(original.timestamps, original.values, original.gaps ?? []);
+      const xScale = graphWidth / (timeRange[1] - timeRange[0]);
+      const yScale = -graphHeightOpen / (yRange[1] - yRange[0]);
+      paths.length = fields.length;
+      fields.forEach((original, fieldIndex) => {
+        context.strokeStyle = original.color;
+        context.fillStyle = original.color;
+        context.lineCap = "round";
+        context.lineWidth = original.size === "verybold" ? 6 : original.size === "bold" ? 3 : 1;
+
+        const samples = steppedWindows.get(original);
+        if (samples?.count === 0) return;
+        if (
+          samples?.finite &&
+          typeof Path2D === "function" &&
+          samples.count >= 50 &&
+          xScale <= graphWidth &&
+          Math.max(Math.abs(samples.min - yRange[0]), Math.abs(samples.max - yRange[0])) * -yScale < 50_000
+        ) {
+          if (samples.count <= graphWidth * devicePixelRatio) {
+            this.strokeSteppedWindow(
+              context,
+              samples,
+              xScaler,
+              yScaler,
+              xScale,
+              yScale,
+              graphLeft + graphWidth,
+              devicePixelRatio
+            );
+          } else {
+            this.strokeDenseSteppedWindow(context, samples, xScaler, yScaler, graphLeft + graphWidth, devicePixelRatio);
+          }
+          return;
+        }
+
         const runs: { timestamps: number[]; values: number[]; hold: boolean }[] = [];
-        let start = 0;
-        for (let i = 0; i < prepared.timestamps.length; i++) {
-          if (prepared.gapAfter[i] || i === prepared.timestamps.length - 1) {
-            runs.push({
-              timestamps: prepared.timestamps.slice(start, i + 1),
-              values: prepared.values.slice(start, i + 1),
-              hold: i === prepared.timestamps.length - 1 && !original.gaps?.some((g) => g.t1 > prepared.timestamps[i])
-            });
-            start = i + 1;
+        if (
+          // Points retain stock samples (including missing-value breaks).
+          original.type === "points" ||
+          original.gaps === undefined ||
+          // Without gaps or missing values the trace is one held run, drawn without copying it
+          (original.gaps.length === 0 && !original.values.some(Number.isNaN))
+        ) {
+          runs.push({ timestamps: original.timestamps, values: original.values, hold: true });
+        } else {
+          const prepared = prepareTrace(original.timestamps, original.values, original.gaps);
+          let start = 0;
+          for (let i = 0; i < prepared.timestamps.length; i++) {
+            if (prepared.gapAfter[i] || i === prepared.timestamps.length - 1) {
+              runs.push({
+                timestamps: prepared.timestamps.slice(start, i + 1),
+                values: prepared.values.slice(start, i + 1),
+                hold: i === prepared.timestamps.length - 1 && !original.gaps.some((g) => g.t1 > prepared.timestamps[i])
+              });
+              start = i + 1;
+            }
           }
         }
-        // Points retain stock samples (including missing-value breaks).
-        if (original.type === "points" || original.gaps === undefined) {
-          runs.splice(0, runs.length, { timestamps: original.timestamps, values: original.values, hold: true });
-        }
-        runs.forEach((run) => {
+        const fieldPaths = (paths[fieldIndex] ??= []);
+        fieldPaths.length = runs.length;
+        runs.forEach((run, runIndex) => {
           const field = { ...original, ...run };
           if (!field.timestamps.length) return;
-          context.strokeStyle = field.color;
-          context.fillStyle = field.color;
-          context.lineCap = "round";
-          switch (field.size) {
-            case "normal":
-              context.lineWidth = 1;
-              break;
-            case "bold":
-              context.lineWidth = 3;
-              break;
-            case "verybold":
-              context.lineWidth = 6;
-              break;
-          }
-
           switch (field.type) {
-            case "stepped":
-              context.beginPath();
-              context.moveTo(
-                field.hold ? graphLeft + graphWidth : xScaler.calculate(field.timestamps[field.timestamps.length - 1]),
-                yScaler.calculate(field.values[field.values.length - 1])
-              );
-              let i = field.values.length - 1;
-              while (true) {
-                let x = xScaler.calculate(field.timestamps[i]);
-
-                // Render start of current data point
-                let value = field.values[i];
-                context.lineTo(x, yScaler.calculate(value));
-
-                // Find previous data point and vertical range
-                let currentX = Math.floor(x * devicePixelRatio);
-                let newX = currentX;
-                let vertRange = [value, value];
-                do {
-                  i--;
-                  let value = field.values[i];
-                  if (value < vertRange[0]) vertRange[0] = value;
-                  if (value > vertRange[1]) vertRange[1] = value;
-                  newX = Math.floor(xScaler.calculate(field.timestamps[i]) * devicePixelRatio);
-                } while (i >= 0 && newX >= currentX); // Compile values to vertical range until the pixel changes
-                if (i < 0) break;
-
-                // Render vertical range
-                context.moveTo(x, yScaler.calculate(vertRange[0]));
-                context.lineTo(x, yScaler.calculate(vertRange[1]));
-
-                // Move to end of previous data point
-                context.moveTo(x, yScaler.calculate(field.values[i]));
+            case "stepped": {
+              context.lineJoin = "round";
+              const { timestamps, values } = field;
+              // Use the cached path for finite traces at typical live viewport sizes. Dense,
+              // fragmented and deeply zoomed views still group samples by device pixel.
+              if (
+                typeof Path2D === "function" &&
+                timestamps.length >= 50 &&
+                timestamps.length <= graphWidth * devicePixelRatio &&
+                xScale <= graphWidth &&
+                values.every((value) => Number.isFinite(value) && Math.abs((value - yRange[0]) * yScale) < 50_000)
+              ) {
+                const cache = (fieldPaths[runIndex] ??= new SteppedPaths());
+                const path = cache.project(timestamps, values, xScaler, yScaler, xScale, yScale);
+                if (field.hold) {
+                  const y = yScaler.calculate(values[values.length - 1]);
+                  path.moveTo(xScaler.calculate(timestamps[timestamps.length - 1]), y);
+                  path.lineTo(graphLeft + graphWidth, y);
+                }
+                context.stroke(path);
+                break;
               }
+              context.beginPath();
+              let x = xScaler.calculate(timestamps[0]);
+              let y = yScaler.calculate(values[0]);
+              context.moveTo(x, y);
+              for (let i = 1; i < timestamps.length; ) {
+                x = xScaler.calculate(timestamps[i]);
+                const column = Math.floor(x * devicePixelRatio);
+                let min = values[i];
+                let max = min;
+                let last = min;
+                i++;
+                while (
+                  i < timestamps.length &&
+                  Math.floor(xScaler.calculate(timestamps[i]) * devicePixelRatio) === column
+                ) {
+                  last = values[i++];
+                  if (last < min) min = last;
+                  if (last > max) max = last;
+                }
+                context.lineTo(x, y);
+                const minY = yScaler.calculate(min);
+                const maxY = yScaler.calculate(max);
+                const nextY = yScaler.calculate(last);
+                if (minY !== nextY && minY !== y) context.lineTo(x, minY);
+                if (maxY !== nextY && maxY !== y) context.lineTo(x, maxY);
+                context.lineTo(x, nextY);
+                y = nextY;
+              }
+              // Keep the last sample through the viewport edge unless the trace ends in a gap.
+              const endX = field.hold ? graphLeft + graphWidth : xScaler.calculate(timestamps[timestamps.length - 1]);
+              if (endX > x) context.lineTo(endX, y);
               context.stroke();
               break;
+            }
 
-            case "smooth":
+            case "smooth": {
+              // Samples that land in the same device pixel column draw as one vertical span (lowest,
+              // highest, then last value), so a dense live trace costs one segment per column.
               context.beginPath();
+              let column = NaN;
+              let columnX = 0;
+              let minY = 0;
+              let maxY = 0;
+              let lastY = 0;
+              let pending = false;
+              const flush = () => {
+                if (!pending) return;
+                pending = false;
+                context.lineTo(columnX, minY);
+                context.lineTo(columnX, maxY);
+                context.lineTo(columnX, lastY);
+              };
               for (let i = 0; i < field.timestamps.length; i++) {
                 let x = xScaler.calculate(field.timestamps[i]);
                 let y = yScaler.calculate(field.values[i]);
+                let pixel = Math.floor(x * devicePixelRatio);
                 if (i === 0 || isNaN(field.values[i - 1])) {
                   // NaN marks "no data" (e.g. CAN sentinels): leave a gap instead of bridging it
+                  flush();
                   context.moveTo(x, y);
+                } else if (pixel === column && !isNaN(y)) {
+                  minY = Math.min(minY, y);
+                  maxY = Math.max(maxY, y);
+                  lastY = y;
+                  pending = true;
+                  continue;
                 } else {
+                  flush();
                   context.lineTo(x, y);
                 }
+                column = isNaN(y) ? NaN : pixel;
+                columnX = x;
+                minY = maxY = lastY = y;
               }
+              flush();
               context.stroke();
               break;
+            }
 
             case "points":
               let deltaX = graphWidth / Math.max(1, field.timestamps.length - 1);
@@ -614,11 +931,11 @@ export default class LineGraphRenderer implements TabRenderer {
     context.rect(graphLeft, graphTop, graphWidth, graphHeightOpen);
     context.clip();
     if (command.priorityAxis === "left") {
-      drawNumericFields(command.rightFields, command.rightRange);
-      drawNumericFields(command.leftFields, command.leftRange);
+      drawNumericFields(command.rightFields, command.rightRange, this.rightSteppedPaths);
+      drawNumericFields(command.leftFields, command.leftRange, this.leftSteppedPaths);
     } else {
-      drawNumericFields(command.leftFields, command.leftRange);
-      drawNumericFields(command.rightFields, command.rightRange);
+      drawNumericFields(command.leftFields, command.leftRange, this.leftSteppedPaths);
+      drawNumericFields(command.rightFields, command.rightRange, this.rightSteppedPaths);
     }
 
     context.restore();
@@ -943,66 +1260,41 @@ export default class LineGraphRenderer implements TabRenderer {
     context.fillStyle = light ? "#222" : "#eee";
     context.textBaseline = "middle";
 
-    if (command.showLeftAxis) {
-      context.textAlign = "right";
-      let stepPos = Math.floor(command.leftRange[1] / leftStepSize) * leftStepSize;
-      let iterCount = 0;
-      while (iterCount++ < 100) {
-        let y = scaleValue(stepPos, command.leftRange, [graphTop + graphHeightOpen, graphTop]);
+    const horizontalGuides: number[] = [];
+    const drawYAxis = (side: "left" | "right", stepSize: number) => {
+      const left = side === "left";
+      const range = left ? command.leftRange : command.rightRange;
+      const x = left ? graphLeft : graphLeft + graphWidth;
+      const direction = left ? -1 : 1;
+      const units = left ? command.leftUnits : command.rightUnits;
+      const filter = left ? command.leftFilter : command.rightFilter;
+      const scaler = new ValueScaler(range, [graphTop + graphHeightOpen, graphTop]);
+      context.textAlign = left ? "right" : "left";
+      context.beginPath();
+      let value = Math.floor(range[1] / stepSize) * stepSize;
+      for (let tick = 0; tick < 100; tick++, value -= stepSize) {
+        const y = scaler.calculate(value);
         if (y > graphTop + graphHeightOpen) break;
-
-        context.globalAlpha = 1;
-        if (Math.abs(stepPos) < this.MAX_DECIMAL_VALUE || stepPos % 1 === 0) {
-          context.fillText(this.getAxisValueText(stepPos, command.leftUnits, command.leftFilter), graphLeft - 15, y);
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft - 5, y);
-          context.stroke();
+        if (Math.abs(value) < this.MAX_DECIMAL_VALUE || value % 1 === 0) {
+          context.fillText(this.getAxisValueText(value, units, filter), x + direction * 15, y);
+          context.moveTo(x, y);
+          context.lineTo(x + direction * 5, y);
         }
-
-        if (command.priorityAxis === "left") {
-          context.globalAlpha = 0.1;
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft + graphWidth, y);
-          context.stroke();
-        }
-
-        stepPos -= leftStepSize;
+        if (side === command.priorityAxis) horizontalGuides.push(y);
       }
-    }
-
-    if (command.showRightAxis) {
-      context.textAlign = "left";
-      let stepPos = Math.floor(command.rightRange[1] / rightStepSize) * rightStepSize;
-      let iterCount = 0;
-      while (iterCount++ < 100) {
-        let y = scaleValue(stepPos, command.rightRange, [graphTop + graphHeightOpen, graphTop]);
-        if (y > graphTop + graphHeightOpen) break;
-
-        context.globalAlpha = 1;
-        if (Math.abs(stepPos) < this.MAX_DECIMAL_VALUE || stepPos % 1 === 0) {
-          context.fillText(
-            this.getAxisValueText(stepPos, command.rightUnits, command.rightFilter),
-            graphLeft + graphWidth + 15,
-            y
-          );
-          context.beginPath();
-          context.moveTo(graphLeft + graphWidth, y);
-          context.lineTo(graphLeft + graphWidth + 5, y);
-          context.stroke();
-        }
-
-        if (command.priorityAxis === "right") {
-          context.globalAlpha = 0.1;
-          context.beginPath();
-          context.moveTo(graphLeft, y);
-          context.lineTo(graphLeft + graphWidth, y);
-          context.stroke();
-        }
-
-        stepPos -= rightStepSize;
+      context.stroke();
+    };
+    context.globalAlpha = 1;
+    if (command.showLeftAxis) drawYAxis("left", leftStepSize);
+    if (command.showRightAxis) drawYAxis("right", rightStepSize);
+    if (horizontalGuides.length) {
+      context.globalAlpha = 0.1;
+      context.beginPath();
+      for (const y of horizontalGuides) {
+        context.moveTo(graphLeft, y);
+        context.lineTo(graphLeft + graphWidth, y);
       }
+      context.stroke();
     }
 
     context.globalAlpha = 1;
@@ -1036,6 +1328,8 @@ export default class LineGraphRenderer implements TabRenderer {
     context.textAlign = "center";
     let stepPos = Math.ceil(cleanFloat(displayTimeRange[0] / timeStepSize)) * timeStepSize;
     let iterCount = 0;
+    const verticalGuides: number[] = [];
+    context.beginPath();
     while (iterCount++ < 100) {
       let x = scaleValue(stepPos, displayTimeRange, [graphLeft, graphLeft + graphWidth]);
 
@@ -1048,21 +1342,20 @@ export default class LineGraphRenderer implements TabRenderer {
 
       let text = cleanFloat(stepPos).toString() + (command.xUnit ?? "s");
 
-      context.globalAlpha = 1;
       context.fillText(text, x, graphTop + graphHeight + 15);
-      context.beginPath();
       context.moveTo(x, graphTop + graphHeight);
       context.lineTo(x, graphTop + graphHeight + 5);
-      context.stroke();
-
-      context.globalAlpha = 0.1;
-      context.beginPath();
-      context.moveTo(x, graphTop);
-      context.lineTo(x, graphTop + graphHeight);
-      context.stroke();
-
+      verticalGuides.push(x);
       stepPos += timeStepSize;
     }
+    context.stroke();
+    context.globalAlpha = 0.1;
+    context.beginPath();
+    for (const x of verticalGuides) {
+      context.moveTo(x, graphTop);
+      context.lineTo(x, graphTop + graphHeight);
+    }
+    context.stroke();
   }
 
   saveState(): unknown {
@@ -1073,6 +1366,8 @@ export default class LineGraphRenderer implements TabRenderer {
 }
 
 export type LineGraphRendererCommand = {
+  /** Changes when the controller rebuilds graph data, even if the sample counts stay the same. */
+  dataRevision?: string;
   message?: string;
   lapMode?: string;
   leftTitle?: string;

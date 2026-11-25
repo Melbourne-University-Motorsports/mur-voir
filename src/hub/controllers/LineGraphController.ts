@@ -6,16 +6,18 @@
 // at the root directory of this project.
 
 import { ensureThemeContrast } from "../../shared/Colors";
-import LineGraphFilter from "../../shared/LineGraphFilter";
-import { SelectionMode } from "../../shared/Selection";
-import { SourceListState } from "../../shared/SourceListConfig";
-import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
 import { axisDisplayUnit, formatChannelValue } from "../../shared/display/ChannelProfile";
+import { isDarkMode } from "../../shared/domWrite";
 import { formatSignedSeconds, heldValueAt, sectorDeltaText } from "../../shared/laps/LapAnalysis";
 import { interpolate, lapSamples, sectorBlocks } from "../../shared/laps/LapEngine";
+import LineGraphFilter from "../../shared/LineGraphFilter";
+import DecimatedSeries from "../../shared/log/DecimatedSeries";
+import LogField from "../../shared/log/LogField";
+import LoggableType from "../../shared/log/LoggableType";
 import { getLogValueText } from "../../shared/log/LogUtil";
 import { LogValueSetNumber } from "../../shared/log/LogValueSets";
 import { AKIT_TIMESTAMP_KEYS, getRobotStateRanges } from "../../shared/log/RobotState";
+import { SteppedSeries, steppedWindows } from "../../shared/log/SteppedSeries";
 import {
   LineGraphRendererCommand,
   LineGraphRendererCommand_Alert,
@@ -23,6 +25,9 @@ import {
   LineGraphRendererCommand_DiscreteField,
   LineGraphRendererCommand_NumericField
 } from "../../shared/renderers/LineGraphRenderer";
+import { SelectionMode } from "../../shared/Selection";
+import { SourceListState } from "../../shared/SourceListConfig";
+import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
 import { Units } from "../../shared/units";
 import { clampValue, createUUID, scaleValueClamped } from "../../shared/util";
 import { LAP_COLORS, lapService } from "../LapService";
@@ -32,6 +37,48 @@ import { previewNumberCommand } from "./NumberPreview";
 import TabController from "./TabController";
 
 type NumericCommandCacheValue = LineGraphRendererCommand_NumericField & { hasUnit: boolean };
+type ConvertedSamples = {
+  config: string;
+  history: number;
+  discard: number;
+  start: number;
+  timestamps: number[];
+  values: number[];
+};
+
+const graphSession = createUUID();
+let graphDataRevision = 0;
+
+/** Index of the first sample at or after `time` (binary search over sorted timestamps). */
+function sampleIndex(timestamps: number[], time: number): number {
+  let lo = 0;
+  let hi = timestamps.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (timestamps[mid] < time) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/** Inserts a sample in time order unless one already exists at that time. */
+function insertSample(data: LogValueSetNumber, time: number, value: number) {
+  const index = sampleIndex(data.timestamps, time);
+  if (data.timestamps[index] === time) return;
+  data.timestamps.splice(index, 0, time);
+  data.values.splice(index, 0, value);
+}
+
+/** The series value at `time`: exact when sampled, linear between neighbours, else the nearest end. */
+function valueAtTime(data: LogValueSetNumber, time: number): number {
+  const { timestamps, values } = data;
+  if (timestamps.length === 0) return NaN;
+  const index = sampleIndex(timestamps, time);
+  if (timestamps[index] === time) return values[index];
+  if (index === 0) return values[0];
+  if (index === timestamps.length) return values[index - 1];
+  return scaleValueClamped(time, [timestamps[index - 1], timestamps[index]], [values[index - 1], values[index]]);
+}
 
 export default class LineGraphController implements TabController {
   private events = new AbortController();
@@ -44,7 +91,12 @@ export default class LineGraphController implements TabController {
 
   UUID = createUUID();
 
-  private periodStats = new WeakMap<object, Map<string, TraceGapCache>>();
+  private periodStats = new WeakMap<LogField, TraceGapCache>();
+  private convertedSamples = new WeakMap<LogField, ConvertedSamples>();
+  private steppedSeries = new WeakMap<LogField, SteppedSeries>();
+  private fieldIds = new WeakMap<LogField, number>();
+  private nextFieldId = 0;
+  private lastGraph?: { log: typeof window.log; key: string; command: LineGraphRendererCommand };
 
   private RANGE_MARGIN = 0.05;
   private MIN_AXIS_RANGE = 1e-5;
@@ -63,11 +115,16 @@ export default class LineGraphController implements TabController {
   private rightFilter = LineGraphFilter.None;
 
   private leftNumericCommandCache: { [key: string]: NumericCommandCacheValue } = {};
+  /** Reduced fields for wide views, kept between frames so live data is reduced only once. */
+  private decimated = new Map<string, DecimatedSeries>();
+  /** Unit conversions of reduced commands, whose previews read the exact sample from the log. */
+  private rawPreviews = new WeakMap<NumericCommandCacheValue, (value: number) => number>();
   private rightNumericCommandCache: { [key: string]: NumericCommandCacheValue } = {};
   private leftUnitCache: Units.UnitConfig | null = null;
   private rightUnitCache: Units.UnitConfig | null = null;
   private showRobotMode = false;
   private lapMode = "time";
+  onLapModeChanged?: () => void;
   private lapSelect: HTMLSelectElement;
 
   constructor(root: HTMLElement) {
@@ -82,6 +139,7 @@ export default class LineGraphController implements TabController {
     ].forEach(([value, label]) => mode.add(new Option(label, value)));
     mode.onchange = () => {
       this.lapMode = mode.value;
+      this.onLapModeChanged?.();
       this.updateAxisLabels();
     };
     const controls = document.createElement("div");
@@ -261,6 +319,7 @@ export default class LineGraphController implements TabController {
     }
     if ("lapMode" in state && ["time", "lapTime", "distance"].includes(String(state.lapMode))) {
       this.lapMode = String(state.lapMode);
+      this.onLapModeChanged?.();
       this.lapSelect.value = this.lapMode;
     }
     this.updateAxisLabels();
@@ -393,12 +452,6 @@ export default class LineGraphController implements TabController {
   }
 
   refresh(): void {
-    const active = new Set(this.getActiveFields());
-    const caches = this.periodStats.get(window.log);
-    if (caches)
-      for (const key of caches.keys()) {
-        if (!active.has(key) || window.log.getType(key) === null) caches.delete(key);
-      }
     this.leftSourceList.refresh();
     this.discreteSourceList.refresh();
     this.rightSourceList.refresh();
@@ -422,6 +475,10 @@ export default class LineGraphController implements TabController {
     return false;
   }
 
+  followsLiveTime(): boolean {
+    return this.lapMode === "time";
+  }
+
   private getPreview(
     key: string,
     time: number,
@@ -430,7 +487,39 @@ export default class LineGraphController implements TabController {
     filter: LineGraphFilter
   ): string | null {
     if (!(key in commandCache)) return null;
-    return previewNumberCommand(key, time, commandCache[key], unitCache, filter);
+    const command = commandCache[key];
+    const convert = this.rawPreviews.get(command);
+    if (convert !== undefined) {
+      // Reduced data holds bucket extremes, not the sample at `time`
+      const sample = window.log.getNumber(key, time, time);
+      if (sample === undefined || sample.timestamps.length === 0) return null;
+      const value = clampValue(convert(sample.values[0]), -this.MAX_VALUE, this.MAX_VALUE);
+      return previewNumberCommand(
+        key,
+        time,
+        { timestamps: [sample.timestamps[0]], values: [value], hasUnit: command.hasUnit },
+        unitCache,
+        filter
+      );
+    }
+    const samples = steppedWindows.get(command);
+    if (samples) {
+      for (let i = samples.chunks.length - 1; i >= 0; i--) {
+        const { timestamps, values } = samples.chunks[i];
+        if (timestamps[0] <= time) {
+          const index = timestamps.findLastIndex((timestamp) => timestamp <= time);
+          return previewNumberCommand(
+            key,
+            time,
+            { timestamps: [timestamps[index]], values: [values[index]], hasUnit: command.hasUnit },
+            unitCache,
+            filter
+          );
+        }
+      }
+      return null;
+    }
+    return previewNumberCommand(key, time, command, unitCache, filter);
   }
 
   /** Returns the auto target type for an axis, based on a manual override or field selection. */
@@ -500,24 +589,105 @@ export default class LineGraphController implements TabController {
   }
 
   getCommand(liveTime?: number): LineGraphRendererCommand {
-    let leftDataRange: [number, number] = [Infinity, -Infinity];
-    let rightDataRange: [number, number] = [Infinity, -Infinity];
-    let leftFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
-    let rightFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
-    let discreteFieldsCommand: LineGraphRendererCommand_DiscreteField[] = [];
+    const log = window.log;
+    const logRange = log.getTimestampRange();
     const timeRange: [number, number] =
       liveTime === undefined
         ? this.lapMode === "time"
           ? window.selection.getTimelineRange()
-          : window.log.getTimestampRange()
-        : [Math.max(window.log.getTimestampRange()[0], liveTime - 30), liveTime];
+          : logRange
+        : [Math.max(logRange[0], liveTime - 30), liveTime];
+    const timeSpan = timeRange[1] - timeRange[0];
+    const selectionMode = liveTime === undefined ? window.selection.getMode() : SelectionMode.Locked;
+    const selectedTime = liveTime === undefined ? window.selection.getSelectedTime() : liveTime;
+    const hoveredTime = liveTime === undefined ? window.selection.getHoveredTime() : null;
+    const grabZoomRange = liveTime === undefined ? window.selection.getGrabZoomRange() : null;
+    const leftSources = this.leftSourceList.getState();
+    const rightSources = this.rightSourceList.getState();
+    const discreteSources = this.discreteSourceList.getState();
+    const akitTimestampField = AKIT_TIMESTAMP_KEYS.find((key) => log.getField(key) !== null);
+    const dark = isDarkMode();
+    const edge = Math.max(timeRange[1], logRange[1]);
+    const gapsByKey = new Map<string, ReturnType<TraceGapCache["update"]>>();
+    const gapState = [...leftSources, ...rightSources].map(({ logKey, type }) => {
+      const field = log.getField(logKey);
+      if (type === "points" || field === null) return undefined;
+      let stats = this.periodStats.get(field);
+      if (!stats) this.periodStats.set(field, (stats = new TraceGapCache()));
+      const freshness = window.liveStatus?.getFieldFreshness(logKey);
+      const gaps = stats.update(log, logKey, edge, freshness === "stale" || freshness === "offline");
+      gapsByKey.set(logKey, gaps);
+      return gaps;
+    });
+    const loadingFields = window.getLoadingFields();
+    const visibleNumericSources = [...leftSources, ...rightSources].filter((source) => source.visible);
+    const stillLoading = visibleNumericSources.some(({ logKey }) => loadingFields.has(logKey));
+    // Lap overlays and robot mode also depend on their own timeline inputs.
+    let cacheKey: string | undefined;
+    if (this.lapMode === "time" && !this.showRobotMode) {
+      const keys = [
+        ...leftSources.map(({ logKey }) => logKey),
+        ...rightSources.map(({ logKey }) => logKey),
+        ...discreteSources.flatMap(({ logKey, type, visible }) =>
+          !visible
+            ? []
+            : type === "alerts"
+            ? ["errors", "warnings", "infos"].map((level) => logKey + "/" + level)
+            : [logKey]
+        ),
+        ...(akitTimestampField === undefined ? [] : [akitTimestampField])
+      ];
+      const revisions = keys.map((key) => {
+        const field = log.getField(key);
+        if (!field) return null;
+        let id = this.fieldIds.get(field);
+        if (id === undefined) this.fieldIds.set(field, (id = ++this.nextFieldId));
+        return [id, field.getDataVersion(), field.getDiscardVersion()];
+      });
+      cacheKey = JSON.stringify([
+        timeRange,
+        log.getTimestampDisplayOffset(),
+        dark,
+        log.getMetadataVersion(),
+        revisions,
+        gapState,
+        leftSources,
+        rightSources,
+        discreteSources,
+        this.leftFilter,
+        this.rightFilter,
+        this.leftUnitConversion,
+        this.rightUnitConversion,
+        this.leftLockedRange,
+        this.rightLockedRange,
+        stillLoading
+      ]);
+      const cached = this.lastGraph;
+      if (cached?.log === log && cached.key === cacheKey) {
+        const command = cached.command;
+        if (
+          command.selectionMode === selectionMode &&
+          command.selectedTime === selectedTime &&
+          command.hoveredTime === hoveredTime &&
+          command.grabZoomRange?.[0] === grabZoomRange?.[0] &&
+          command.grabZoomRange?.[1] === grabZoomRange?.[1]
+        )
+          return command;
+        return (cached.command = { ...command, selectionMode, selectedTime, hoveredTime, grabZoomRange });
+      }
+    }
+
+    const leftDataRange: [number, number] = [Infinity, -Infinity];
+    const rightDataRange: [number, number] = [Infinity, -Infinity];
+    const leftFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
+    const rightFieldsCommand: LineGraphRendererCommand_NumericField[] = [];
+    let discreteFieldsCommand: LineGraphRendererCommand_DiscreteField[] = [];
 
     // Add numeric fields
     this.leftNumericCommandCache = {};
     this.rightNumericCommandCache = {};
     this.leftUnitCache = null;
     this.rightUnitCache = null;
-    const akitTimestampField = window.log.getFieldKeys().find((key) => AKIT_TIMESTAMP_KEYS.includes(key));
     const akitTimestamps =
       akitTimestampField === undefined
         ? undefined
@@ -541,31 +711,104 @@ export default class LineGraphController implements TabController {
 
       // Process fields
       source.forEach((fieldItem) => {
-        let data = window.log.getNumber(
-          fieldItem.logKey,
-          filter === LineGraphFilter.Integrate ? -Infinity : timeRange[0],
-          timeRange[1],
-          undefined,
-          filter === LineGraphFilter.Differentiate ? -1 : 0
-        );
-        if (data === undefined) return;
-
-        // Statistics always use the whole field, independent of viewport and lap selection.
-        let statsByKey = this.periodStats.get(window.log);
-        if (!statsByKey) this.periodStats.set(window.log, (statsByKey = new Map()));
-        let stats = statsByKey.get(fieldItem.logKey);
-        if (!stats) statsByKey.set(fieldItem.logKey, (stats = new TraceGapCache()));
-        const freshness = window.liveStatus?.getFieldFreshness(fieldItem.logKey);
-        const gaps =
-          fieldItem.type === "points"
-            ? undefined
-            : stats.update(
-                window.log,
-                fieldItem.logKey,
-                Math.max(timeRange[1], window.log.getTimestampRange()[1]),
-                freshness === "stale" || freshness === "offline"
-              );
+        // A wide view of a long field (a live graph spanning the session) draws from a reduced copy, so
+        // each frame costs the same however long the session runs
+        let decimated: LogValueSetNumber | null = null;
+        if (filter === LineGraphFilter.None && akitTimestamps === undefined && fieldItem.type !== "points") {
+          let series = this.decimated.get(fieldItem.logKey);
+          if (series === undefined) this.decimated.set(fieldItem.logKey, (series = new DecimatedSeries()));
+          decimated = series.get(window.log, fieldItem.logKey, timeRange[0], timeRange[1]);
+        }
+        const field = log.getField(fieldItem.logKey);
+        if (field?.getType() !== LoggableType.Number) return;
+        const gaps = fieldItem.type === "points" ? undefined : gapsByKey.get(fieldItem.logKey);
         let convertValue = (value: number) => value;
+
+        // Convert units
+        let hasUnit = false;
+        const sourceUnit = autoTargetResult.status === "success" ? log.getUnit(fieldItem.logKey) : null;
+        if (autoTargetResult.status === "success") {
+          if (
+            sourceUnit !== null &&
+            sourceUnit in Units.GROUP_BY_UNIT &&
+            autoTargetResult.unit in Units.GROUP_BY_UNIT &&
+            Units.GROUP_BY_UNIT[sourceUnit] === Units.GROUP_BY_UNIT[autoTargetResult.unit]
+          ) {
+            convertValue = (value) => Units.convert(value, sourceUnit, autoTargetResult.unit);
+            hasUnit = true;
+          }
+        } else if (unitConversion.preset !== undefined) {
+          convertValue = (value) =>
+            Units.convertWithPreset(
+              value,
+              unitConversion.preset === null ? Units.NoopUnitConversion : unitConversion.preset
+            );
+          hasUnit = true;
+        }
+
+        // Reuse the converted overlap when a live viewport slides or grows. The raw timestamps
+        // stay separate because clipping below can change the two boundary samples.
+        const identity = !hasUnit || (convertValue(0) === 0 && convertValue(1) === 1 && convertValue(-7.5) === -7.5);
+
+        const reusable = filter === LineGraphFilter.None && akitTimestamps === undefined && decimated === null;
+        const config = JSON.stringify([autoTargetResult, unitConversion, sourceUnit]);
+        const history = reusable ? log.getHistoryVersion(fieldItem.logKey) : -1;
+        const discard = field.getDiscardVersion();
+
+        const max = this.MAX_VALUE;
+        const convertSample = (value: number) => {
+          value = identity ? value : convertValue(value);
+          return value < -max ? -max : value > max ? max : value;
+        };
+        const fieldStyle = {
+          color: ensureThemeContrast(fieldItem.options.color, dark),
+          type: fieldItem.type as LineGraphRendererCommand_NumericField["type"],
+          size: (fieldItem.options.size ?? "normal") as LineGraphRendererCommand_NumericField["size"],
+          hasUnit
+        };
+        if (
+          fieldStyle.type === "stepped" &&
+          this.lapMode === "time" &&
+          reusable &&
+          !gaps?.some(({ t0, t1 }) => t0 < timeRange[1] && t1 > timeRange[0]) &&
+          timeSpan > 0 &&
+          timeSpan <= 600 &&
+          Number.isSafeInteger(Math.floor(timeRange[1]))
+        ) {
+          let series = this.steppedSeries.get(field);
+          if (series === undefined) this.steppedSeries.set(field, (series = new SteppedSeries()));
+          const samples = series.get(field, history, config, timeRange, convertSample);
+          let times: number[] | undefined;
+          let values: number[] | undefined;
+          const item: NumericCommandCacheValue = {
+            ...fieldStyle,
+            gaps: gaps && [],
+            get timestamps() {
+              return (times ??= samples.chunks.flatMap((chunk) => chunk.timestamps));
+            },
+            get values() {
+              return (values ??= samples.chunks.flatMap((chunk) => chunk.values));
+            }
+          };
+          steppedWindows.set(item, samples);
+          commandCache[fieldItem.logKey] = item;
+          if (fieldItem.visible) {
+            dataRange[0] = Math.min(dataRange[0], samples.min);
+            dataRange[1] = Math.max(dataRange[1], samples.max);
+            command.push(item);
+          }
+          return;
+        }
+        let data =
+          decimated ??
+          window.log.getNumber(
+            fieldItem.logKey,
+            filter === LineGraphFilter.Integrate ? -Infinity : timeRange[0],
+            timeRange[1],
+            undefined,
+            filter === LineGraphFilter.Differentiate ? -1 : 0
+          );
+        if (data === undefined) return;
 
         // Add AdvantageKit samples
         if (akitTimestamps !== undefined) {
@@ -589,6 +832,17 @@ export default class LineGraphController implements TabController {
               akitIndex++;
             }
             data = newData;
+          }
+        }
+
+        // A gap endpoint can be an arrival the compressed series lacks. Filters need it as a sample so
+        // the filtered trace and the gap agree there (an integral must stop growing at the gap start).
+        if (filter !== LineGraphFilter.None && gaps !== undefined && data.timestamps.length > 0) {
+          const first = data.timestamps[0];
+          const last = Math.max(timeRange[1], data.timestamps[data.timestamps.length - 1]);
+          for (const gap of gaps) {
+            if (gap.anchorStart && gap.t0 >= first && gap.t0 <= last) insertSample(data, gap.t0, gap.v0);
+            if (gap.anchorEnd && gap.t1 >= first && gap.t1 <= last) insertSample(data, gap.t1, gap.v1);
           }
         }
 
@@ -631,80 +885,93 @@ export default class LineGraphController implements TabController {
             break;
         }
 
-        // Convert units
-        let hasUnit = false;
-        if (autoTargetResult.status === "success") {
-          let sourceUnit = window.log.getUnit(fieldItem.logKey);
-          if (
-            sourceUnit !== null &&
-            sourceUnit in Units.GROUP_BY_UNIT &&
-            autoTargetResult.unit in Units.GROUP_BY_UNIT &&
-            Units.GROUP_BY_UNIT[sourceUnit] === Units.GROUP_BY_UNIT[autoTargetResult.unit]
-          ) {
-            convertValue = (value) => Units.convert(value, sourceUnit, autoTargetResult.unit);
-            data.values = data.values.map(convertValue);
-            hasUnit = true;
-          }
-        } else if (unitConversion.preset !== undefined) {
-          convertValue = (value) =>
-            Units.convertWithPreset(
-              value,
-              unitConversion.preset === null ? Units.NoopUnitConversion : unitConversion.preset
-            );
-          data.values = data.values.map(convertValue);
-          hasUnit = true;
+        const previous = reusable ? this.convertedSamples.get(field) : undefined;
+        const timestamps = data.timestamps;
+        let offset = -1;
+        if (previous?.config === config && previous.history === history && previous.discard === discard) {
+          offset = previous.start === timeRange[0] ? 0 : previous.timestamps.indexOf(timestamps[0]);
+        }
+        const overlap = offset < 0 ? 0 : Math.min(timestamps.length, previous!.timestamps.length - offset);
+        let values = overlap > 0 ? previous!.values.slice(offset, offset + overlap) : [];
+        for (let i = overlap; i < timestamps.length; i++) values.push(convertSample(data.values[i]));
+        if (reusable) {
+          this.convertedSamples.set(field, { config, history, discard, start: timeRange[0], timestamps, values });
+          data = { timestamps: timestamps.slice(), values: values.slice() };
+        } else {
+          data.values = values;
         }
 
-        // Clamp values
-        data.values = data.values.map((value) => clampValue(value, -this.MAX_VALUE, this.MAX_VALUE));
+        // Filtered gap endpoints come from the filtered, converted series (before the edges are trimmed)
+        const filteredGaps =
+          filter === LineGraphFilter.None || gaps === undefined
+            ? undefined
+            : gaps.map((gap) => ({
+                ...gap,
+                v0: valueAtTime(data!, gap.t0),
+                v1: Number.isFinite(gap.t1) ? valueAtTime(data!, gap.t1) : gap.v1
+              }));
 
         // Trim early point
-        if (!gaps?.length && data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
-          switch (fieldItem.type) {
-            case "stepped":
-              // Keep, adjust timestamp
-              data.timestamps[0] = timeRange[0];
-              break;
-            case "smooth":
-              // Interpolate to displayed value
-              if (data.timestamps.length >= 2) {
-                data.values[0] = scaleValueClamped(
-                  timeRange[0],
-                  [data.timestamps[0], data.timestamps[1]],
-                  [data.values[0], data.values[1]]
-                );
+        if (data.timestamps.length > 0 && data.timestamps[0] < timeRange[0]) {
+          if (gaps?.some(({ t0, t1 }) => t0 < timeRange[0] && timeRange[0] < t1)) {
+            data.timestamps.shift();
+            data.values.shift();
+          } else
+            switch (fieldItem.type) {
+              case "stepped":
+                // Keep, adjust timestamp
                 data.timestamps[0] = timeRange[0];
-              }
-              break;
-            case "points":
-              // Remove, no effect on displayed range
-              data.timestamps.shift();
-              data.values.shift();
-              break;
-          }
+                break;
+              case "smooth":
+                // Interpolate to displayed value
+                if (data.timestamps.length >= 2) {
+                  data.values[0] = scaleValueClamped(
+                    timeRange[0],
+                    [data.timestamps[0], data.timestamps[1]],
+                    [data.values[0], data.values[1]]
+                  );
+                }
+                data.timestamps[0] = timeRange[0];
+                break;
+              case "points":
+                // Remove, no effect on displayed range
+                data.timestamps.shift();
+                data.values.shift();
+                break;
+            }
         }
 
         // Trim late point
-        if (!gaps?.length && data.timestamps.length > 0 && data.timestamps[data.timestamps.length - 1] > timeRange[1]) {
-          switch (fieldItem.type) {
-            case "stepped":
-            case "points":
-              // Remove, no effect on displayed range
-              data.timestamps.pop();
-              data.values.pop();
-              break;
-            case "smooth":
-              // Interpolate to displayed value
-              if (data.timestamps.length >= 2) {
-                data.values[data.values.length - 1] = scaleValueClamped(
-                  timeRange[1],
-                  [data.timestamps[data.timestamps.length - 2], data.timestamps[data.timestamps.length - 1]],
-                  [data.values[data.values.length - 2], data.values[data.values.length - 1]]
-                );
-                data.timestamps[data.timestamps.length - 1] = timeRange[1];
-              }
-              break;
-          }
+        if (data.timestamps.length > 0 && data.timestamps[data.timestamps.length - 1] > timeRange[1]) {
+          if (
+            data.timestamps.at(-2) === timeRange[1] ||
+            gaps?.some(({ t0, t1 }) => t0 < timeRange[1] && timeRange[1] < t1)
+          ) {
+            data.timestamps.pop();
+            data.values.pop();
+          } else
+            switch (fieldItem.type) {
+              case "stepped":
+              case "points":
+                // Remove, no effect on displayed range
+                data.timestamps.pop();
+                data.values.pop();
+                break;
+              case "smooth":
+                // Interpolate to displayed value
+                if (data.timestamps.length >= 2) {
+                  data.values[data.values.length - 1] = scaleValueClamped(
+                    timeRange[1],
+                    [data.timestamps[data.timestamps.length - 2], data.timestamps[data.timestamps.length - 1]],
+                    [data.values[data.values.length - 2], data.values[data.values.length - 1]]
+                  );
+                  data.timestamps[data.timestamps.length - 1] = timeRange[1];
+                } else {
+                  data.timestamps.pop();
+                  data.values.pop();
+                }
+                break;
+            }
         } else if (
           !gaps?.some((gap) => gap.t1 === Infinity) &&
           fieldItem.type === "smooth" &&
@@ -726,20 +993,22 @@ export default class LineGraphController implements TabController {
 
         // Add field command
         let itemCommand: NumericCommandCacheValue = {
-          gaps: gaps?.map((gap) => ({
-            ...gap,
-            v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
-            v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
-          })),
+          gaps:
+            filteredGaps !== undefined
+              ? clipGaps(filteredGaps, timeRange[0], timeRange[1], (t) => t + timeRange[0])
+              : gaps &&
+                clipGaps(gaps, timeRange[0], timeRange[1], (t) => t + timeRange[0]).map((gap) => ({
+                  ...gap,
+                  v0: clampValue(convertValue(gap.v0), -this.MAX_VALUE, this.MAX_VALUE),
+                  v1: clampValue(convertValue(gap.v1), -this.MAX_VALUE, this.MAX_VALUE)
+                })),
           timestamps: data.timestamps,
           values: data.values,
-          color: ensureThemeContrast(fieldItem.options.color),
-          type: fieldItem.type as "smooth" | "stepped" | "points",
-          size: (fieldItem.options.size ?? "normal") as "normal" | "bold" | "verybold",
-          hasUnit: hasUnit
+          ...fieldStyle
         };
         if (fieldItem.visible) command.push(itemCommand);
         commandCache[fieldItem.logKey] = itemCommand;
+        if (decimated !== null) this.rawPreviews.set(itemCommand, convertValue);
       });
     };
     addNumeric(
@@ -846,7 +1115,7 @@ export default class LineGraphController implements TabController {
       discreteFieldsCommand.push({
         timestamps: data.timestamps,
         values: data.values,
-        color: ensureThemeContrast(fieldItem.options.color),
+        color: ensureThemeContrast(fieldItem.options.color, dark),
         type: fieldItem.type as "stripes" | "graph",
         toggleReference: toggleReference
       });
@@ -951,10 +1220,11 @@ export default class LineGraphController implements TabController {
       rightTitle: this.axisTitle(this.rightSourceList, this.rightUnitCache, this.rightFilter),
       timeRange: timeRange,
       displayOffset: window.log.getTimestampDisplayOffset(),
-      selectionMode: liveTime === undefined ? window.selection.getMode() : SelectionMode.Locked,
-      selectedTime: liveTime === undefined ? window.selection.getSelectedTime() : liveTime,
-      hoveredTime: liveTime === undefined ? window.selection.getHoveredTime() : null,
-      grabZoomRange: liveTime === undefined ? window.selection.getGrabZoomRange() : null,
+      selectionMode,
+      selectedTime,
+      hoveredTime,
+      grabZoomRange,
+      dataRevision: graphSession + ":" + ++graphDataRevision,
 
       leftRange: leftRange,
       rightRange: rightRange,
@@ -974,16 +1244,12 @@ export default class LineGraphController implements TabController {
       discreteFields: discreteFieldsCommand,
       alerts: alerts
     };
-    const hasNumericSamples = [...result.leftFields, ...result.rightFields].some(
-      (f) => f.timestamps.length && f.values.some(Number.isFinite)
-    );
-    const selectedKeys = [...this.leftSourceList.getState(), ...this.rightSourceList.getState()]
-      .filter((source) => source.visible)
-      .map((source) => source.logKey);
-    const loadingFields = window.getLoadingFields();
-    const stillLoading = selectedKeys.some((key) => loadingFields.has(key));
-    if (selectedKeys.length && !hasNumericSamples && !stillLoading && !result.discreteFields.length) {
-      result.message = "The selected fields have no numeric samples in this log.";
+    if (visibleNumericSources.length && !stillLoading && !result.discreteFields.length) {
+      const hasNumericSamples = [...result.leftFields, ...result.rightFields].some((field) => {
+        const samples = steppedWindows.get(field);
+        return samples ? Number.isFinite(samples.min) : field.values.some(Number.isFinite);
+      });
+      if (!hasNumericSamples) result.message = "The selected fields have no numeric samples in this log.";
     }
     if (this.lapMode !== "time") {
       lapService.update();
@@ -1126,6 +1392,7 @@ export default class LineGraphController implements TabController {
       result.discreteFields = [];
       result.alerts = [];
     }
+    if (cacheKey !== undefined) this.lastGraph = { log, key: cacheKey, command: result };
     return result;
   }
 
