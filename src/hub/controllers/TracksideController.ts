@@ -170,6 +170,9 @@ export default class TracksideController implements TabController {
   showTimeline() {
     return false;
   }
+  followsLiveTime() {
+    return this.hasGraph;
+  }
   getCommand(): TracksideRendererCommand {
     const liveTime = window.selection.getCurrentLiveTime();
     const time = liveTime ?? window.log.getTimestampRange()[1];

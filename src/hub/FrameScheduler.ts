@@ -14,7 +14,9 @@
  *   main, and during historical playback, so dragging, hovering and scrubbing stay smooth;
  * - after `invalidateFrames()`, which data sources and other non-input changes call. While live,
  *   these frames are capped at LIVE_FPS, so frames follow the data rate up to that cap;
- * - while live, also at LIVE_CLOCK_FPS, so the live edge keeps moving when no data arrives;
+ * - while live, also at LIVE_CLOCK_FPS, so the live edge keeps moving when no data arrives. A shown
+ *   view whose time axis scrolls with the live edge (pace "scroll") draws at LIVE_FPS instead, so a
+ *   stall in the incoming data does not make the axis step;
  * - otherwise never. A stable, disconnected window schedules no frames at all.
  *
  * Between frames nothing asks for an animation frame, so Chromium skips style, layout, paint and
@@ -23,7 +25,7 @@
 
 import { LAYOUT_SIZE_EVENT } from "../shared/domWrite";
 
-export type FramePace = "display" | "live" | "idle";
+export type FramePace = "display" | "scroll" | "live" | "idle";
 
 const INTERACTIVE_MS = 1000;
 const LIVE_FPS = 20;
@@ -95,6 +97,7 @@ export function isInteractive(): boolean {
 function frameDelay(now: number): number {
   const pace = paceSupplier();
   if (now < interactiveUntil || pace === "display") return 0;
+  if (pace === "scroll") return lastFrame + 1000 / LIVE_FPS - now;
   if (invalidated) return pace === "live" ? lastFrame + 1000 / LIVE_FPS - now : 0;
   if (pace === "live") return lastFrame + 1000 / LIVE_CLOCK_FPS - now;
   return Infinity;

@@ -134,7 +134,9 @@ setFramePaceSupplier(() =>
   window.selection.getMode() === SelectionMode.Playback
     ? "display"
     : liveActive && liveStatus === LiveDataSourceStatus.Active
-    ? "live"
+    ? window.tabs.followsLiveTime()
+      ? "scroll"
+      : "live"
     : "idle"
 );
 

@@ -1053,6 +1053,11 @@ export default class Tabs {
     this.updateControlsHeight();
   }
 
+  /** Whether the shown tab draws a time axis that scrolls with the live edge. */
+  followsLiveTime(): boolean {
+    return this.tabList[this.selectedTab]?.controller.followsLiveTime?.() ?? false;
+  }
+
   /** Hides or shows the timeline based on the controller request. */
   private updateTimelineVisibility() {
     let show = this.tabList[this.selectedTab].controller.showTimeline();

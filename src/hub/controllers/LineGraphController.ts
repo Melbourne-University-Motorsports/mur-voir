@@ -475,6 +475,10 @@ export default class LineGraphController implements TabController {
     return false;
   }
 
+  followsLiveTime(): boolean {
+    return this.lapMode === "time";
+  }
+
   private getPreview(
     key: string,
     time: number,
