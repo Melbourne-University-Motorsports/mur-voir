@@ -6,7 +6,7 @@
 // at the root directory of this project.
 
 import { HubState, TabState } from "./HubState";
-import TabType from "./TabType";
+import TabType, { getDefaultTabTitle } from "./TabType";
 import trackDay from "./layouts/default.json";
 
 /**
@@ -23,9 +23,14 @@ export function getDefaultLayout(id: string | null | undefined): DefaultLayout |
   return DEFAULT_LAYOUTS.find((layout) => layout.id === id);
 }
 
-/** True if every tab of the layout (except Documentation) is already open, matched by type and title. */
+/**
+ * True if every tab of the layout (except Documentation) is already open, matched by type and title.
+ * A tab named after its type saves its title as "", so a default title matches "" too.
+ */
 export function isLayoutOpen(layout: DefaultLayout, openTabs: Pick<TabState, "type" | "title">[]): boolean {
+  const title = (tab: Pick<TabState, "type" | "title">) =>
+    tab.title === getDefaultTabTitle(tab.type) ? "" : tab.title;
   return layout.state.tabs.tabs
     .filter((tab) => tab.type !== TabType.Documentation)
-    .every((tab) => openTabs.some((open) => open.type === tab.type && open.title === tab.title));
+    .every((tab) => openTabs.some((open) => open.type === tab.type && title(open) === title(tab)));
 }

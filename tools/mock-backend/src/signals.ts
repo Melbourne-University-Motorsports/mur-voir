@@ -372,6 +372,26 @@ export function buildSignals(opts: SignalOptions): SignalDef[] {
       },
       read: (c) => c.st.vsmState >= 5
     }),
+    ...Array.from({ length: 108 }, (_, index) => {
+      const cell = index + 1;
+      const signal = "ENNOID_CellV" + String(cell).padStart(3, "0");
+      return def({
+        path: "can0/ennoid_vcell/" + signal.toLowerCase(),
+        type: "float64",
+        unit: "V",
+        label: "Cell " + cell,
+        description: "Accumulator cell voltage (" + signal + ")",
+        source: "ennoid-bms",
+        rate: 1,
+        tags: ["accumulator", "cells"],
+        extra: { dbc: { signal, message: "ENNOID_VCell", database: "ENNOID_BMS.dbc" } },
+        read: (c) => {
+          if (cell === 37 && c.tSec >= 2) return undefined;
+          const voltage = c.st.cellMax - 0.017 + 0.016 * Math.sin(cell * 1.83 + c.tSec * 0.27);
+          return round(voltage - (cell === 18 ? 0.19 : 0), 3);
+        }
+      });
+    }),
     // ------------------------------------------------------------------ accumulator
     def({
       path: "accumulator/pack_voltage",
@@ -427,7 +447,7 @@ export function buildSignals(opts: SignalOptions): SignalDef[] {
         min: 2.8,
         max: 4.2
       },
-      read: (c) => round(c.st.cellMin + c.rng.gauss(0.001), 3)
+      read: (c) => round(c.st.cellMax - 0.207 + 0.016 * Math.sin(18 * 1.83 + c.tSec * 0.27), 3)
     }),
     def({
       path: "accumulator/cell_voltage_max",

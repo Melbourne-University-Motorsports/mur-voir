@@ -20,6 +20,7 @@ const VERSION = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
 
 // Bus ids are the Pi's logical buses (config/telem.toml), not its interface names:
 // 0 = Control/Tractive (physical can1), 1 = Telemetry (physical can0).
+const CELL_SIGNALS = Array.from({ length: 108 }, (_, i) => "ENNOID_CellV" + String(i + 1).padStart(3, "0"));
 const MESSAGES = {
   0: {
     ECU_Status: ["ECU_ECUState", "ECU_TSActive", "ECU_FaultFlags", "ECU_DashInputsStale", "ECU_BrakeTorqueCut"],
@@ -50,6 +51,7 @@ const MESSAGES = {
       "INV_CoolantTempLimiting"
     ],
     INV_FaultCodes: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => "INV_FaultByte" + i),
+    ENNOID_VCell: CELL_SIGNALS,
     ENNOID_VTot: ["ENNOID_PackVoltage"],
     ENNOID_Summary: ["ENNOID_CellVoltageMin", "ENNOID_CellVoltageMax", "ENNOID_SoC"]
   },
@@ -270,6 +272,23 @@ const TABS = [
     null
   )
 ];
+
+TABS.splice(2, 0, {
+  type: 18,
+  title: "Cells",
+  controller: {
+    voltages: {
+      sources: CELL_SIGNALS.map((signal) => item(signal, "number")),
+      options: { low: 2.5, high: 4.2, outlier: 150, segmentSize: 18 }
+    },
+    temperatures: { sources: [], options: { segmentSize: 18 } },
+    minimum: [item("ENNOID_CellVoltageMin", "number")],
+    maximum: [item("ENNOID_CellVoltageMax", "number")]
+  },
+  controllerUUID: "defaultview-cells",
+  renderer: "voltages",
+  controlsHeight: 0
+});
 
 fs.mkdirSync(OUT, { recursive: true });
 const state = { sidebar: { width: 300, expanded: [] }, tabs: { selected: 1, tabs: TABS } };

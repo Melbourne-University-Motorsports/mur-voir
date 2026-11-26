@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
+import { isEnnoidCellSignal } from "../../../shared/Cells";
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
 import { setMetadata } from "../ImporterUtil";
@@ -126,6 +127,7 @@ export function createMDFImporter() {
       const target = fields.get(key);
       if (!target || decoded.has(key)) continue;
       const { group, channel } = target;
+      if (isEnnoidCellSignal(channel.name)) log.getField(key)?.retainAllSamples();
       for (const record of group.records) {
         const t = timestamp(group, record);
         const value =

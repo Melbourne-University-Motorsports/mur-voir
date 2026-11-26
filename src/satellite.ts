@@ -14,6 +14,7 @@ import TabType, { getAllTabTypes, getTabIcon } from "./shared/TabType";
 import { applyTracksidePatch } from "./shared/Trackside";
 import { LAYOUT_SIZE_EVENT } from "./shared/domWrite";
 import CarDynamicsRenderer from "./shared/renderers/CarDynamicsRenderer";
+import CellsRenderer from "./shared/renderers/CellsRenderer";
 import ConsoleRenderer from "./shared/renderers/ConsoleRenderer";
 import DocumentationRenderer from "./shared/renderers/DocumentationRenderer";
 import DriverInputsRenderer from "./shared/renderers/DriverInputsRenderer";
@@ -94,6 +95,9 @@ function updateVisualizer() {
       break;
     case TabType.Video:
       renderer = new VideoRenderer(root);
+      break;
+    case TabType.Cells:
+      renderer = new CellsRenderer(root);
       break;
     case TabType.Trackside:
       renderer = new TracksideRenderer(root);
