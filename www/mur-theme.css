@@ -911,3 +911,89 @@ div.tab-centered {
   font-size: 13px;
   color: var(--mur-text-secondary);
 }
+
+/* Table & Console timestamp input height fix */
+
+table.data-table th:first-child input,
+table.console-table th:first-child input {
+  height: 22px;
+  top: 4px;
+  padding: 2px 5px;
+}
+
+/* Car Dynamics & Points canvas framing */
+
+canvas.car-dynamics-canvas,
+div.points-background {
+  background-color: var(--mur-surface-deep);
+  border: 1px solid var(--mur-border-subtle);
+}
+
+/* Download Runs popup (download.html) */
+
+div.file-list {
+  background-color: var(--mur-surface-deep);
+  box-shadow: none;
+  border-bottom: 1px solid var(--mur-border-subtle);
+}
+
+div.day {
+  background-color: var(--mur-surface-deep);
+  color: var(--mur-text-secondary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 8px 12px 4px;
+}
+
+div.run,
+div.filler {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 10px;
+  padding-right: 12px;
+  border-radius: var(--mur-radius);
+}
+
+div.run.even,
+div.filler.even {
+  background-color: var(--mur-surface-row);
+}
+
+div.run:not(.selected):not(.dim):hover,
+div.run.even:not(.selected):not(.dim):hover {
+  background-color: var(--mur-control-hover);
+}
+
+div.run.selected,
+div.run.selected.even {
+  background-color: var(--mur-accent-soft);
+  box-shadow: inset 3px 0 0 var(--mur-accent);
+}
+
+div.run input[type="checkbox"] {
+  accent-color: var(--mur-accent);
+  border-radius: var(--mur-radius);
+}
+
+select.filter {
+  bottom: 10px;
+  height: 26px;
+  padding: 2px 6px;
+  font-family: var(--mur-font-body);
+  font-size: 12px;
+  color: var(--mur-text);
+  background-color: var(--mv-control-bg);
+  border: 1px solid var(--mur-border-subtle);
+  border-radius: var(--mur-radius);
+}
+
+select.filter:focus {
+  border-color: var(--mur-accent);
+  outline: none;
+}
+
+div.progress-details {
+  font-family: var(--mur-font-mono);
+}
+
