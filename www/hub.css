@@ -2106,13 +2106,13 @@ body.mobile-layout button.mobile-menu-toggle svg {
 
 body.mobile-layout div.title-bar-text {
   left: 48px !important;
-  right: calc(50px + var(--show-lock-buttons) * 40px) !important;
+  right: 12px !important;
   line-height: 44px;
   font-size: 13px;
 }
 
 body.mobile-layout.has-run-link div.title-bar-text {
-  right: calc(90px + var(--show-lock-buttons) * 40px) !important;
+  right: 50px !important;
 }
 
 body.mobile-layout button.tab-control {
@@ -2126,18 +2126,36 @@ body.mobile-layout button.tab-control[hidden] {
   display: none !important;
 }
 
+body.mobile-layout button.copy-run-link {
+  right: 8px !important;
+}
+
+body.mobile-layout button.play,
+body.mobile-layout button.pause,
+body.mobile-layout button.lock,
+body.mobile-layout button.unlock {
+  position: fixed;
+  top: auto !important;
+  bottom: calc(7px + env(safe-area-inset-bottom)) !important;
+}
+
+body.mobile-layout:not(.mobile-has-timeline) button.play,
+body.mobile-layout:not(.mobile-has-timeline) button.pause,
+body.mobile-layout:not(.mobile-has-timeline) button.lock,
+body.mobile-layout:not(.mobile-has-timeline) button.unlock {
+  display: none !important;
+}
+
 body.mobile-layout button.play,
 body.mobile-layout button.pause {
-  right: calc(8px + var(--show-lock-buttons) * 40px) !important;
+  left: 6px !important;
+  right: auto !important;
 }
 
 body.mobile-layout button.lock,
 body.mobile-layout button.unlock {
-  right: 8px !important;
-}
-
-body.mobile-layout button.copy-run-link {
-  right: calc(48px + var(--show-lock-buttons) * 40px) !important;
+  right: 6px !important;
+  left: auto !important;
 }
 
 body.mobile-layout button.close,
@@ -2498,7 +2516,8 @@ body.mobile-layout div.timeline {
   right: auto !important;
   flex: 0 0 calc(38px * var(--show-timeline));
   height: calc(38px * var(--show-timeline));
-  margin: calc(4px * var(--show-timeline)) 8px calc((6px + env(safe-area-inset-bottom)) * var(--show-timeline));
+  margin: calc(4px * var(--show-timeline)) calc(8px + var(--show-lock-buttons) * 38px)
+    calc((6px + env(safe-area-inset-bottom)) * var(--show-timeline)) 46px;
   z-index: 10;
 }
 

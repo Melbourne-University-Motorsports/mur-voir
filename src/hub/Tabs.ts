@@ -1540,6 +1540,7 @@ export default class Tabs {
       show = this.tabList[this.selectedTab].controller.showTimeline();
     }
     setRootProperty("--show-timeline", show ? "1" : "0");
+    document.body.classList.toggle("mobile-has-timeline", isMobileLayout() && show);
     setHidden(this.TIMELINE_CONTAINER, !show);
   }
 }
