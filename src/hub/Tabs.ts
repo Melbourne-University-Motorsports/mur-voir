@@ -833,7 +833,7 @@ export default class Tabs {
     // Create title element
     let titleElement = document.createElement("div");
     titleElement.classList.add("tab");
-    titleElement.innerText = getTabIcon(type) + " " + getDefaultTabTitle(type);
+    this.renderTabTitle(titleElement, type, getDefaultTabTitle(type));
     titleElement.tabIndex = 0;
     titleElement.addEventListener("keydown", (event: KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -961,8 +961,64 @@ export default class Tabs {
       name = "";
     }
     tab.title = name;
-    tab.titleElement.innerText = getTabIcon(tab.type) + " " + (name === "" ? getDefaultTabTitle(tab.type) : name);
+    this.renderTabTitle(tab.titleElement, tab.type, name === "" ? getDefaultTabTitle(tab.type) : name);
     this.updateTabBarShadows();
+  }
+
+  /** Renders a crisp monochrome Lucide-style SVG glyph + text label for a tab. */
+  private renderTabTitle(element: HTMLElement, type: TabType, label: string) {
+    const iconSvg = this.getTabSvgMarkup(type);
+    element.replaceChildren();
+    if (iconSvg) {
+      const wrapper = document.createElement("span");
+      wrapper.style.display = "inline-flex";
+      wrapper.style.alignItems = "center";
+      wrapper.innerHTML = iconSvg;
+      element.appendChild(wrapper.firstElementChild!);
+    }
+    if (label) {
+      const text = document.createElement("span");
+      text.textContent = label;
+      element.appendChild(text);
+    }
+  }
+
+  private getTabSvgMarkup(type: TabType): string {
+    const attrs =
+      'class="tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true"';
+    switch (type) {
+      case TabType.Documentation:
+        return `<svg ${attrs}><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>`;
+      case TabType.LineGraph:
+        return `<svg ${attrs}><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>`;
+      case TabType.Field2d:
+        return `<svg ${attrs}><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>`;
+      case TabType.Table:
+        return `<svg ${attrs}><rect x="3" y="3" width="18" height="18"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>`;
+      case TabType.Console:
+        return `<svg ${attrs}><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`;
+      case TabType.Statistics:
+        return `<svg ${attrs}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`;
+      case TabType.Video:
+        return `<svg ${attrs}><rect x="2" y="4" width="20" height="16"/><polygon points="10 9 15 12 10 15"/></svg>`;
+      case TabType.Points:
+        return `<svg ${attrs}><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="7.5" r="2"/><circle cx="12" cy="16.5" r="2"/></svg>`;
+      case TabType.TrackMap:
+      case TabType.Laps:
+        return `<svg ${attrs}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`;
+      case TabType.Cells:
+        return `<svg ${attrs}><rect x="2" y="7" width="16" height="10"/><line x1="22" y1="11" x2="22" y2="13"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/></svg>`;
+      case TabType.Trackside:
+        return `<svg ${attrs}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+      case TabType.DriverInputs:
+        return `<svg ${attrs}><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="14" x2="12" y2="21"/><line x1="10" y1="12" x2="3.5" y2="9.5"/><line x1="14" y1="12" x2="20.5" y2="9.5"/></svg>`;
+      case TabType.CarDynamics:
+        return `<svg ${attrs}><circle cx="12" cy="12" r="9"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="15" cy="9" r="2" fill="currentColor"/></svg>`;
+      case TabType.Metadata:
+        return `<svg ${attrs}><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+      default:
+        return "";
+    }
   }
 
   /** Adjusts the locked range and unit conversion for an axis on the selected line graph. */
