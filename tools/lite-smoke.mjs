@@ -139,6 +139,14 @@ try {
   const tabTitles = () => frame.evaluate(() => window.tabs.saveState().tabs.map((tab) => tab.title));
   assert.deepEqual((await tabTitles()).slice(0, defaultTitles.length), defaultTitles);
   assert.equal((await tabTitles()).length, 11);
+  // A hidden tab's controls stay hidden (the Cells controls once showed on every tab).
+  const shownHiddenControls = await frame.evaluate(
+    () =>
+      [...document.querySelectorAll(".controls-content > [hidden], .renderer-content > [hidden]")].filter(
+        (e) => getComputedStyle(e).display !== "none"
+      ).length
+  );
+  assert.equal(shownHiddenControls, 0, "a hidden tab's controls or view still shows");
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
