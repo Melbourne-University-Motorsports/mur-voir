@@ -45,10 +45,11 @@ import TableController from "./controllers/TableController";
 import TracksideController from "./controllers/TracksideController";
 import VideoController from "./controllers/VideoController";
 
-import { setHidden, setRootProperty, setStyle } from "../shared/domWrite";
+import { setHidden, setRootProperty, setStyle, setText } from "../shared/domWrite";
 import LapRenderer from "../shared/renderers/LapRenderer";
 import { invalidateFrames, isInteractive, requestFrame } from "./FrameScheduler";
 import { lapService } from "./LapService";
+import { isMobileControlsOpen, isMobileLayout, onMobileLayoutChange, setMobileControlsOpen } from "./MobileLayout";
 import LapController from "./controllers/LapController";
 
 export default class Tabs {
@@ -70,6 +71,7 @@ export default class Tabs {
   private CLOSE_BUTTON = document.getElementsByClassName("close")[0] as HTMLElement;
   private POPUP_BUTTON = document.getElementsByClassName("popup")[0] as HTMLElement;
   private ADD_BUTTON = document.getElementsByClassName("add-tab")[0] as HTMLElement;
+  private MOBILE_ADD_BUTTON = document.getElementsByClassName("mobile-add-tab")[0] as HTMLElement | undefined;
 
   private FIXED_CONTROL_HEIGHTS: Map<TabType, number | undefined> = new Map();
 
@@ -82,11 +84,24 @@ export default class Tabs {
     titleElement: HTMLElement;
     controlsElement: HTMLElement;
     rendererElement: HTMLElement;
+    sectionElement: HTMLElement;
+    sectionTitleElement: HTMLElement;
+    sectionTimeElement: HTMLElement;
+    sectionReadoutElement: HTMLElement;
+    sectionBodyElement: HTMLElement;
+    expandButton: HTMLButtonElement;
+    collapseButton: HTMLButtonElement;
+    collapsed: boolean;
+    lastReadoutKey: string;
     controller: TabController;
     renderer: TabRenderer;
     controlsHeight: number;
   }[] = [];
   private selectedTab = 0;
+  private expandedTabIndex: number | null = null;
+  private visibleSections = new Set<HTMLElement>();
+  private sectionObserver: IntersectionObserver | null = null;
+  private suppressScrollSpyUntil = 0;
   private lastControlsLayout = "";
   private shownTabsRevision = 0;
   private lapTabs = new Set<TabController>();
@@ -260,6 +275,15 @@ export default class Tabs {
         height: rect.height
       });
     });
+    this.MOBILE_ADD_BUTTON?.addEventListener("click", () => {
+      const rect = this.MOBILE_ADD_BUTTON!.getBoundingClientRect();
+      window.sendMainMessage("ask-new-tab", {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      });
+    });
 
     // Drag handling
     window.addEventListener("drag-update", (event) => {
@@ -324,6 +348,90 @@ export default class Tabs {
       }
     });
 
+    // Mobile section visibility observer + scrollspy
+    if (typeof IntersectionObserver === "function") {
+      this.sectionObserver = new IntersectionObserver(
+        (entries) => {
+          let changed = false;
+          for (const entry of entries) {
+            const el = entry.target as HTMLElement;
+            if (entry.isIntersecting) {
+              if (!this.visibleSections.has(el)) {
+                this.visibleSections.add(el);
+                changed = true;
+              }
+            } else if (this.visibleSections.delete(el)) {
+              changed = true;
+            }
+          }
+          if (changed) {
+            this.shownTabsCache = null;
+            this.visibleFields = null;
+            invalidateFrames();
+          }
+        },
+        { root: this.RENDERER_CONTENT, rootMargin: "240px 0px", threshold: 0.01 }
+      );
+    }
+
+    let scrollSpyQueued = false;
+    this.RENDERER_CONTENT.addEventListener(
+      "scroll",
+      () => {
+        if (
+          !isMobileLayout() ||
+          this.expandedTabIndex !== null ||
+          scrollSpyQueued ||
+          performance.now() < this.suppressScrollSpyUntil
+        ) {
+          return;
+        }
+        scrollSpyQueued = true;
+        window.requestAnimationFrame(() => {
+          scrollSpyQueued = false;
+          if (!isMobileLayout() || this.expandedTabIndex !== null || performance.now() < this.suppressScrollSpyUntil) {
+            return;
+          }
+          const scrollTop = this.RENDERER_CONTENT.scrollTop;
+          let activeIndex = -1;
+          for (let i = 0; i < this.tabList.length; i++) {
+            const section = this.tabList[i].sectionElement;
+            if (section.hidden) continue;
+            if (activeIndex === -1 || section.offsetTop <= scrollTop + 32) {
+              activeIndex = i;
+            }
+          }
+          if (activeIndex >= 0 && activeIndex !== this.selectedTab) {
+            this.selectedTab = activeIndex;
+            this.updateSelectedTabClasses();
+            if (isMobileControlsOpen()) {
+              const activeTab = this.tabList[activeIndex];
+              setMobileControlsOpen(true, this.tabDisplayName(activeTab));
+              this.tabList.forEach((tab, i) => setHidden(tab.controlsElement, i !== activeIndex));
+            }
+            this.shownTabsCache = null;
+            this.visibleFields = null;
+            invalidateFrames();
+          }
+        });
+      },
+      { passive: true }
+    );
+
+    onMobileLayoutChange((mobile) => {
+      if (!mobile) {
+        this.expandedTabIndex = null;
+        this.tabList.forEach((tab) => {
+          tab.lastReadoutKey = "";
+          setText(tab.sectionTimeElement, "");
+          tab.sectionReadoutElement.replaceChildren();
+        });
+      }
+      this.shownTabsCache = null;
+      this.visibleFields = null;
+      this.updateElements();
+    });
+
     // Add default tabs
     this.addTab(TabType.Documentation);
     this.addTab(TabType.LineGraph);
@@ -351,6 +459,27 @@ export default class Tabs {
     alertElement.className = "trackside-alerts";
     alertElement.hidden = true;
     document.body.append(alertElement);
+    alertElement.addEventListener("click", () => {
+      if (!isMobileLayout()) return;
+      if (alertElement.classList.contains("has-detail") || alertElement.scrollWidth > alertElement.clientWidth) {
+        alertElement.classList.toggle("mobile-alerts-expanded");
+      }
+      const faultIndex = this.findFaultsTabIndex();
+      if (faultIndex >= 0) {
+        if (this.expandedTabIndex !== null) this.setExpandedTab(null);
+        const tab = this.tabList[faultIndex];
+        if (tab.collapsed) {
+          tab.collapsed = false;
+          this.updateSectionState(tab, faultIndex);
+          this.shownTabsCache = null;
+          this.visibleFields = null;
+        }
+        this.selectedTab = faultIndex;
+        this.updateSelectedTabClasses();
+        this.scrollToSection(tab.sectionElement);
+        invalidateFrames();
+      }
+    });
     let lastAlerts = 0;
     const periodicGuard = new RenderGuard();
     const guards = new WeakMap<object, RenderGuard>();
@@ -398,6 +527,9 @@ export default class Tabs {
               let command = tab.controller.getCommand();
               if (activeLocal) {
                 tab.renderer.render(command);
+                if (isMobileLayout() && tab.type === TabType.LineGraph) {
+                  this.updateLineGraphMobileUI(tab);
+                }
               }
               if (activeSatellite) {
                 let title =
@@ -432,6 +564,9 @@ export default class Tabs {
     return [
       window.innerHeight,
       this.selectedTab,
+      this.expandedTabIndex,
+      isMobileLayout(),
+      isMobileControlsOpen(),
       this.TIMELINE_CONTAINER.hidden,
       document.body.classList.contains("has-trackside-alerts")
     ].join("|");
@@ -439,6 +574,11 @@ export default class Tabs {
 
   private updateControlsHeight() {
     this.lastControlsLayout = this.controlsLayoutKey();
+    if (isMobileLayout()) {
+      setHidden(this.CONTROLS_HANDLE, true);
+      setHidden(this.CONTROLS_CONTENT, !isMobileControlsOpen());
+      return;
+    }
     let availableHeight = window.innerHeight - this.RENDERER_CONTENT.getBoundingClientRect().top;
     availableHeight -= 150;
     if (this.selectedTab < 0 || this.selectedTab >= this.tabList.length) return;
@@ -520,12 +660,15 @@ export default class Tabs {
     this.tabList.forEach((tab) => {
       tab.controller.dispose?.();
       tab.renderer.dispose?.();
-      this.RENDERER_CONTENT.removeChild(tab.rendererElement);
+      this.sectionObserver?.unobserve(tab.sectionElement);
+      this.visibleSections.delete(tab.sectionElement);
+      this.RENDERER_CONTENT.removeChild(tab.sectionElement);
       this.CONTROLS_CONTENT.removeChild(tab.controlsElement);
     });
     this.tabList = [];
     this.lapTabs.clear();
     this.shownTabsCache = null;
+    this.expandedTabIndex = null;
     this.selectedTab = 0;
     const restored = filterRestorableTabs(state.tabs, state.selected);
     restored.tabs.forEach((tabState, index) => {
@@ -561,22 +704,46 @@ export default class Tabs {
 
   private shownTabsCache: {
     selected: number;
+    mobile: boolean;
+    expanded: number | null;
     satellites: string[];
     tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[];
   } | null = null;
 
   /** The selected tab and tabs open in satellites. Rebuilt only when tabs, selection or satellites change. */
   private getShownTabs() {
+    const mobile = isMobileLayout();
     const cache = this.shownTabsCache;
-    if (cache && cache.selected === this.selectedTab && cache.satellites === this.activeSatellites) return cache.tabs;
+    if (
+      cache &&
+      cache.selected === this.selectedTab &&
+      cache.mobile === mobile &&
+      cache.expanded === this.expandedTabIndex &&
+      cache.satellites === this.activeSatellites
+    )
+      return cache.tabs;
     const tabs: { tab: Tabs["tabList"][number]; activeLocal: boolean; activeSatellite: boolean }[] = [];
     this.tabList.forEach((tab, index) => {
-      const activeLocal = index === this.selectedTab;
+      const activeLocal = mobile
+        ? this.expandedTabIndex !== null
+          ? index === this.expandedTabIndex
+          : !tab.sectionElement.hidden &&
+            !tab.collapsed &&
+            (this.visibleSections.has(tab.sectionElement) ||
+              index === this.selectedTab ||
+              this.visibleSections.size === 0)
+        : index === this.selectedTab;
       const activeSatellite = this.activeSatellites.includes(tab.controller.UUID);
       if (activeLocal || activeSatellite) tabs.push({ tab, activeLocal, activeSatellite });
     });
     this.shownTabsRevision++;
-    this.shownTabsCache = { selected: this.selectedTab, satellites: this.activeSatellites, tabs };
+    this.shownTabsCache = {
+      selected: this.selectedTab,
+      mobile,
+      expanded: this.expandedTabIndex,
+      satellites: this.activeSatellites,
+      tabs
+    };
     return tabs;
   }
 
@@ -727,9 +894,17 @@ export default class Tabs {
 
   /** Toggles the visibility of the tab controls. */
   getControlsVisible() {
+    if (isMobileLayout()) return isMobileControlsOpen();
     return this.tabList[this.selectedTab]?.controlsHeight > 0;
   }
   toggleControlsVisible() {
+    if (isMobileLayout()) {
+      const tab = this.tabList[this.selectedTab];
+      if (!tab || this.FIXED_CONTROL_HEIGHTS.get(tab.type) === 0) return;
+      setMobileControlsOpen(!isMobileControlsOpen(), this.tabDisplayName(tab));
+      this.updateControlsHeight();
+      return;
+    }
     let fixedHeight = this.FIXED_CONTROL_HEIGHTS.get(this.tabList[this.selectedTab].type);
     if (this.tabList[this.selectedTab].controlsHeight === 0) {
       this.tabList[this.selectedTab].controlsHeight =
@@ -741,7 +916,7 @@ export default class Tabs {
   }
 
   /** Creates a new tab. */
-  addTab(type: TabType) {
+  addTab(type: TabType, interactive = false) {
     // Select existing metadata tab
     if (type === TabType.Metadata) {
       let existingIndex = this.tabList.findIndex((tab) => tab.type === TabType.Metadata);
@@ -833,7 +1008,8 @@ export default class Tabs {
     // Create title element
     let titleElement = document.createElement("div");
     titleElement.classList.add("tab");
-    titleElement.innerText = getTabIcon(type) + " " + getDefaultTabTitle(type);
+    const displayText = getTabIcon(type) + " " + getDefaultTabTitle(type);
+    titleElement.innerText = displayText;
     titleElement.tabIndex = 0;
     titleElement.addEventListener("keydown", (event: KeyboardEvent) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -843,6 +1019,98 @@ export default class Tabs {
           this.setSelected(index);
         }
       }
+    });
+    titleElement.addEventListener("click", () => {
+      if (!isMobileLayout()) return;
+      const index = this.tabList.findIndex((t) => t.titleElement === titleElement);
+      if (index !== -1) {
+        this.setSelected(index);
+      }
+    });
+
+    // Create mobile section wrapper (pass-through on desktop, card in mobile feed)
+    const sectionElement = document.createElement("section");
+    sectionElement.className = "tab-section";
+    sectionElement.dataset.tabType = type.toString();
+
+    const sectionHeader = document.createElement("div");
+    sectionHeader.className = "tab-section-header";
+    const sectionTitleElement = document.createElement("div");
+    sectionTitleElement.className = "tab-section-title";
+    sectionTitleElement.textContent = displayText;
+
+    const sectionTimeElement = document.createElement("span");
+    sectionTimeElement.className = "tab-section-time";
+
+    const actions = document.createElement("div");
+    actions.className = "tab-section-actions";
+
+    const controlsBtn = document.createElement("button");
+    controlsBtn.type = "button";
+    controlsBtn.className = "tab-section-btn tab-section-controls";
+    controlsBtn.title = "Tab controls";
+    controlsBtn.setAttribute("aria-label", "Tab controls");
+    controlsBtn.hidden = this.FIXED_CONTROL_HEIGHTS.get(type) === 0;
+    const controlsIcon = document.createElement("img");
+    controlsIcon.src = "symbols/tune.svg";
+    controlsBtn.append(controlsIcon);
+
+    const expandButton = document.createElement("button");
+    expandButton.type = "button";
+    expandButton.className = "tab-section-btn tab-section-expand";
+    expandButton.title = "Expand section";
+    expandButton.setAttribute("aria-label", "Expand section");
+    const expandIcon = document.createElement("img");
+    expandIcon.src = "symbols/settingsoverscan.svg";
+    expandButton.append(expandIcon);
+
+    const collapseButton = document.createElement("button");
+    collapseButton.type = "button";
+    collapseButton.className = "tab-section-btn tab-section-collapse";
+    collapseButton.title = "Collapse section";
+    collapseButton.setAttribute("aria-label", "Collapse section");
+    collapseButton.innerHTML =
+      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    actions.append(controlsBtn, expandButton, collapseButton);
+    sectionHeader.append(sectionTitleElement, sectionTimeElement, actions);
+
+    const sectionReadoutElement = document.createElement("div");
+    sectionReadoutElement.className = "tab-section-readout";
+
+    const sectionBodyElement = document.createElement("div");
+    sectionBodyElement.className = "tab-section-body";
+    sectionBodyElement.appendChild(rendererElement);
+
+    sectionElement.append(sectionHeader, sectionReadoutElement, sectionBodyElement);
+
+    controlsBtn.addEventListener("click", () => {
+      const index = this.tabList.findIndex((item) => item.sectionElement === sectionElement);
+      if (index < 0) return;
+      this.selectedTab = index;
+      this.updateSelectedTabClasses();
+      this.tabList.forEach((t, i) => setHidden(t.controlsElement, i !== index));
+      setMobileControlsOpen(true, this.tabDisplayName(this.tabList[index]));
+      this.updateControlsHeight();
+    });
+    expandButton.addEventListener("click", () => {
+      const index = this.tabList.findIndex((item) => item.sectionElement === sectionElement);
+      if (index < 0) return;
+      this.setExpandedTab(this.expandedTabIndex === index ? null : index);
+    });
+    collapseButton.addEventListener("click", () => {
+      const index = this.tabList.findIndex((item) => item.sectionElement === sectionElement);
+      if (index < 0) return;
+      const tab = this.tabList[index];
+      tab.collapsed = !tab.collapsed;
+      if (tab.collapsed && this.expandedTabIndex === index) {
+        this.setExpandedTab(null);
+        return;
+      }
+      this.updateSectionState(tab, index);
+      this.shownTabsCache = null;
+      this.visibleFields = null;
+      invalidateFrames();
     });
 
     // Save to tab list
@@ -858,14 +1126,37 @@ export default class Tabs {
       titleElement: titleElement,
       controlsElement: controlsElement,
       rendererElement: rendererElement,
+      sectionElement: sectionElement,
+      sectionTitleElement: sectionTitleElement,
+      sectionTimeElement: sectionTimeElement,
+      sectionReadoutElement: sectionReadoutElement,
+      sectionBodyElement: sectionBodyElement,
+      expandButton: expandButton,
+      collapseButton: collapseButton,
+      collapsed: false,
+      lastReadoutKey: "",
       controller: controller,
       renderer: renderer,
       controlsHeight: controlsHeightConfig === undefined ? this.DEFAULT_CONTROLS_HEIGHT : controlsHeightConfig
     });
     this.selectedTab += 1;
     this.CONTROLS_CONTENT.appendChild(controlsElement);
-    this.RENDERER_CONTENT.appendChild(rendererElement);
+    this.RENDERER_CONTENT.appendChild(sectionElement);
+    this.sectionObserver?.observe(sectionElement);
+    if (interactive && isMobileLayout()) {
+      this.expandedTabIndex = null;
+    }
     this.updateElements();
+    if (interactive && isMobileLayout()) {
+      const added = this.tabList[this.selectedTab];
+      if (added && !added.sectionElement.hidden) {
+        this.scrollToSection(added.sectionElement);
+      }
+      if (added && this.FIXED_CONTROL_HEIGHTS.get(added.type) !== 0) {
+        setMobileControlsOpen(true, this.tabDisplayName(added));
+        this.updateControlsHeight();
+      }
+    }
   }
 
   /** Create new sallite for current tab. */
@@ -884,11 +1175,15 @@ export default class Tabs {
 
     this.tabList[index].controller.dispose?.();
     this.tabList[index].renderer.dispose?.();
-    this.RENDERER_CONTENT.removeChild(this.tabList[index].rendererElement);
+    this.sectionObserver?.unobserve(this.tabList[index].sectionElement);
+    this.visibleSections.delete(this.tabList[index].sectionElement);
+    this.RENDERER_CONTENT.removeChild(this.tabList[index].sectionElement);
     this.CONTROLS_CONTENT.removeChild(this.tabList[index].controlsElement);
     this.lapTabs.delete(this.tabList[index].controller);
     this.tabList.splice(index, 1);
     this.shownTabsCache = null;
+    if (this.expandedTabIndex === index) this.expandedTabIndex = null;
+    else if (this.expandedTabIndex !== null && this.expandedTabIndex > index) this.expandedTabIndex--;
     if (this.selectedTab > index) this.selectedTab--;
     if (this.selectedTab > this.tabList.length - 1) this.selectedTab = this.tabList.length - 1;
     this.updateElements();
@@ -907,6 +1202,27 @@ export default class Tabs {
   /** Changes which tab is currently selected. */
   setSelected(index: number) {
     if (index < 0 || index > this.tabList.length - 1) return;
+    if (isMobileLayout()) {
+      if (this.expandedTabIndex !== null) {
+        this.setExpandedTab(index);
+        return;
+      }
+      const tab = this.tabList[index];
+      if (tab.collapsed) {
+        tab.collapsed = false;
+        this.updateSectionState(tab, index);
+        this.shownTabsCache = null;
+        this.visibleFields = null;
+      }
+      this.selectedTab = index;
+      this.updateSelectedTabClasses();
+      this.tabList.forEach((item, i) => setHidden(item.controlsElement, i !== index));
+      if (!tab.sectionElement.hidden) {
+        this.scrollToSection(tab.sectionElement);
+      }
+      invalidateFrames();
+      return;
+    }
     this.selectedTab = index;
     this.updateElements();
   }
@@ -923,6 +1239,21 @@ export default class Tabs {
       this.selectedTab++;
     } else if (index < this.selectedTab && shift >= this.selectedTab - index) {
       this.selectedTab--;
+    }
+    if (this.expandedTabIndex === index) {
+      this.expandedTabIndex += shift;
+    } else if (
+      this.expandedTabIndex !== null &&
+      index > this.expandedTabIndex &&
+      shift <= this.expandedTabIndex - index
+    ) {
+      this.expandedTabIndex++;
+    } else if (
+      this.expandedTabIndex !== null &&
+      index < this.expandedTabIndex &&
+      shift >= this.expandedTabIndex - index
+    ) {
+      this.expandedTabIndex--;
     }
 
     let tab = this.tabList.splice(index, 1)[0];
@@ -961,7 +1292,9 @@ export default class Tabs {
       name = "";
     }
     tab.title = name;
-    tab.titleElement.innerText = getTabIcon(tab.type) + " " + (name === "" ? getDefaultTabTitle(tab.type) : name);
+    const text = getTabIcon(tab.type) + " " + (name === "" ? getDefaultTabTitle(tab.type) : name);
+    tab.titleElement.innerText = text;
+    if (tab.sectionTitleElement) setText(tab.sectionTitleElement, text);
     this.updateTabBarShadows();
   }
 
@@ -1032,26 +1365,150 @@ export default class Tabs {
     });
   }
 
+  private tabDisplayName(tab: Tabs["tabList"][number]): string {
+    return tab.title === "" ? getDefaultTabTitle(tab.type) : tab.title;
+  }
+
+  private findFaultsTabIndex(): number {
+    const faultTab = this.tabList.findIndex(
+      (tab) => !tab.sectionElement.hidden && tab.type === TabType.Trackside && /fault/i.test(this.tabDisplayName(tab))
+    );
+    if (faultTab >= 0) return faultTab;
+    return this.tabList.findIndex((tab) => !tab.sectionElement.hidden && tab.type === TabType.Trackside);
+  }
+
+  private scrollToSection(section: HTMLElement) {
+    this.suppressScrollSpyUntil = performance.now() + 150;
+    this.RENDERER_CONTENT.scrollTop = section.offsetTop;
+  }
+
+  private setExpandedTab(index: number | null) {
+    this.expandedTabIndex = index;
+    if (index !== null) {
+      this.selectedTab = index;
+      this.tabList[index].collapsed = false;
+    }
+    this.shownTabsCache = null;
+    this.visibleFields = null;
+    this.updateElements();
+    if (index === null && this.tabList[this.selectedTab] && !this.tabList[this.selectedTab].sectionElement.hidden) {
+      this.scrollToSection(this.tabList[this.selectedTab].sectionElement);
+    }
+    invalidateFrames();
+  }
+
+  private updateSelectedTabClasses() {
+    this.tabList.forEach((item, index) => {
+      const selected = index === this.selectedTab;
+      item.titleElement.classList.toggle("tab-selected", selected);
+      if (selected && isMobileLayout() && !item.titleElement.hidden) {
+        item.titleElement.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      }
+    });
+  }
+
+  private updateSectionState(tab: Tabs["tabList"][number], index: number) {
+    const mobile = isMobileLayout();
+    const expanded = mobile && this.expandedTabIndex === index;
+    tab.sectionElement.classList.toggle("mobile-expanded", expanded);
+    tab.sectionElement.classList.toggle("mobile-collapsed", mobile && !expanded && tab.collapsed);
+    const expandImg = tab.expandButton.firstElementChild as HTMLImageElement | null;
+    if (expandImg) {
+      expandImg.src = expanded ? "symbols/close.svg" : "symbols/settingsoverscan.svg";
+    }
+    tab.expandButton.title = expanded ? "Restore feed view" : "Expand section";
+    tab.expandButton.setAttribute("aria-label", tab.expandButton.title);
+    tab.collapseButton.setAttribute("aria-expanded", String(!tab.collapsed));
+    if (mobile) {
+      const hideDoc = tab.type === TabType.Documentation && this.tabList.length > 1;
+      const showSection = this.expandedTabIndex !== null ? expanded && !hideDoc : !hideDoc;
+      setHidden(tab.sectionElement, !showSection);
+      setHidden(tab.rendererElement, !showSection || (!expanded && tab.collapsed));
+    }
+  }
+
+  private updateLineGraphMobileUI(tab: Tabs["tabList"][number]) {
+    const controller = tab.controller as LineGraphController;
+    const info = controller.getMobileLayoutInfo();
+    const discreteOnly = info.discreteOnly ? "true" : "false";
+    if (tab.sectionElement.dataset.discreteOnly !== discreteOnly) {
+      tab.sectionElement.dataset.discreteOnly = discreteOnly;
+    }
+    const rowsStr = info.discreteRows.toString();
+    if (tab.sectionElement.style.getPropertyValue("--discrete-rows") !== rowsStr) {
+      tab.sectionElement.style.setProperty("--discrete-rows", rowsStr);
+    }
+    const readout = controller.getHeaderReadouts();
+    const key = JSON.stringify(readout);
+    if (key === tab.lastReadoutKey) return;
+    tab.lastReadoutKey = key;
+    setText(tab.sectionTimeElement, readout.timeText ? "@ " + readout.timeText : "");
+    if (readout.items.length === 0) {
+      if (tab.sectionReadoutElement.childNodes.length > 0) tab.sectionReadoutElement.replaceChildren();
+      delete tab.sectionReadoutElement.dataset.single;
+      return;
+    }
+    tab.sectionReadoutElement.dataset.single = readout.items.length === 1 ? "true" : "false";
+    const children: HTMLElement[] = readout.items.map((item) => {
+      const entry = document.createElement("span");
+      entry.className = "tab-readout-item";
+      const swatch = document.createElement("span");
+      swatch.className = "tab-readout-swatch";
+      swatch.style.backgroundColor = item.color;
+      const label = document.createElement("span");
+      label.className = "tab-readout-label";
+      label.textContent = item.label;
+      const value = document.createElement("span");
+      value.className = "tab-readout-value";
+      value.textContent = item.value;
+      entry.append(swatch, label, value);
+      return entry;
+    });
+    tab.sectionReadoutElement.replaceChildren(...children);
+  }
+
   /** Updates the displayed elements based on the tab list. */
   private updateElements() {
-    // Remove old tabs
+    const mobile = isMobileLayout();
+    document.body.classList.toggle("mobile-tab-expanded", mobile && this.expandedTabIndex !== null);
+
+    // Sync tab bar order
     while (this.TAB_BAR.firstChild) {
       this.TAB_BAR.removeChild(this.TAB_BAR.firstChild);
     }
 
-    // Add title elements
+    // Sync section DOM order only when out of order to keep scrollTop intact
+    const sectionsMatch =
+      this.RENDERER_CONTENT.children.length === this.tabList.length &&
+      this.tabList.every((item, index) => this.RENDERER_CONTENT.children[index] === item.sectionElement);
+    if (!sectionsMatch) {
+      this.tabList.forEach((item) => this.RENDERER_CONTENT.appendChild(item.sectionElement));
+    }
+
+    if (mobile && this.tabList[this.selectedTab]?.type === TabType.Documentation && this.tabList.length > 1) {
+      this.selectedTab = 1;
+    }
+
     this.tabList.forEach((item, index) => {
       this.TAB_BAR.appendChild(item.titleElement);
-      if (index === this.selectedTab) {
-        item.titleElement.classList.add("tab-selected");
-        item.rendererElement.hidden = false;
-        item.controlsElement.hidden = false;
+      const hideDoc = mobile && item.type === TabType.Documentation && this.tabList.length > 1;
+      setHidden(item.titleElement, hideDoc);
+      item.titleElement.classList.toggle("tab-selected", index === this.selectedTab);
+      if (mobile) {
+        this.updateSectionState(item, index);
+        setHidden(item.controlsElement, index !== this.selectedTab);
       } else {
-        item.titleElement.classList.remove("tab-selected");
-        item.rendererElement.hidden = true;
-        item.controlsElement.hidden = true;
+        item.sectionElement.classList.remove("mobile-expanded", "mobile-collapsed");
+        const selected = index === this.selectedTab;
+        setHidden(item.sectionElement, !selected);
+        setHidden(item.rendererElement, !selected);
+        setHidden(item.controlsElement, !selected);
       }
     });
+
+    if (mobile && isMobileControlsOpen() && this.tabList[this.selectedTab]) {
+      setMobileControlsOpen(true, this.tabDisplayName(this.tabList[this.selectedTab]));
+    }
 
     this.updateTabBarShadows();
     // Selection and topology can change the controls height and timeline.
@@ -1061,12 +1518,27 @@ export default class Tabs {
 
   /** Whether the shown tab draws a time axis that scrolls with the live edge. */
   followsLiveTime(): boolean {
-    return this.tabList[this.selectedTab]?.controller.followsLiveTime?.() ?? false;
+    return this.getShownTabs().some(
+      ({ tab, activeLocal }) => activeLocal && (tab.controller.followsLiveTime?.() ?? false)
+    );
   }
 
   /** Hides or shows the timeline based on the controller request. */
   private updateTimelineVisibility() {
-    let show = this.tabList[this.selectedTab].controller.showTimeline();
+    let show = false;
+    if (isMobileLayout()) {
+      const hasData = window.log.getFieldKeys().length > 0;
+      if (this.expandedTabIndex !== null) {
+        const expanded = this.tabList[this.expandedTabIndex];
+        show =
+          (expanded && expanded.type !== TabType.Documentation && expanded.type !== TabType.Metadata && hasData) ||
+          (expanded?.controller.showTimeline() ?? false);
+      } else {
+        show = hasData || this.tabList.some((tab) => !tab.sectionElement.hidden && tab.controller.showTimeline());
+      }
+    } else {
+      show = this.tabList[this.selectedTab].controller.showTimeline();
+    }
     setRootProperty("--show-timeline", show ? "1" : "0");
     setHidden(this.TIMELINE_CONTAINER, !show);
   }

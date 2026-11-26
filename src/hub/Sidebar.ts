@@ -18,6 +18,7 @@ import { SelectionMode } from "../shared/Selection";
 import { arraysEqual, htmlEncode, setsEqual } from "../shared/util";
 import CustomSchemas from "./dataSources/schema/CustomSchemas";
 import { invalidateFrames, isTextFrame, requestFrame } from "./FrameScheduler";
+import { isMobileFieldPickerActive, isMobileLayout, pickMobileField } from "./MobileLayout";
 import { attachResizeHandle } from "./ResizeHandle";
 
 export default class Sidebar {
@@ -852,6 +853,7 @@ export default class Sidebar {
           }
         });
         label.addEventListener("touchstart", (event) => {
+          if (isMobileLayout()) return;
           let touch = event.targetTouches[0];
           dragEvent(
             touch.clientX,
@@ -859,6 +861,16 @@ export default class Sidebar {
             touch.clientX - label.getBoundingClientRect().x,
             touch.clientY - label.getBoundingClientRect().y
           );
+        });
+        label.addEventListener("click", (event) => {
+          if (!isMobileFieldPickerActive() || field.fullKey === null) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const added = pickMobileField(field.fullKey);
+          const feedbackClass = added ? "picker-added" : "picker-rejected";
+          fieldElementContainer.classList.remove("picker-added", "picker-rejected");
+          fieldElementContainer.classList.add(feedbackClass);
+          window.setTimeout(() => fieldElementContainer.classList.remove(feedbackClass), 500);
         });
       }
 
@@ -1189,6 +1201,11 @@ export default class Sidebar {
       };
       closedIcon.addEventListener("click", () => toggle(true));
       openIcon.addEventListener("click", () => toggle(false));
+      if (field.fullKey === null) {
+        label.addEventListener("click", () => {
+          if (isMobileLayout()) toggle(!currentlyExpanded);
+        });
+      }
       if (this.filterResult !== null) {
         if (this.filterExpanded.get(fullTitle) ?? this.filterResult.expand.has(fullTitle)) setExpanded(true);
       } else if (this.expandedFields.has(fullTitle)) {
