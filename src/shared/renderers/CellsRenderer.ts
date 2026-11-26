@@ -262,8 +262,11 @@ export default class CellsRenderer implements TabRenderer {
       const mapY = (value: number) => base - plotHeight * Math.max(0, Math.min(1, (value - low) / (high - low)));
       context.fillStyle = color("muted");
       context.textAlign = "right";
-      context.fillText(high.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, top + 4);
-      context.fillText(low.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, base);
+      // With nothing at the cursor the fitted range is a placeholder, so it gets no numbers.
+      if (values.length > 0 || references.length > 0 || options.lockedRange) {
+        context.fillText(high.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, top + 4);
+        context.fillText(low.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, base);
+      }
       context.textAlign = "left";
       context.fillRect(left, base, plotWidth, 1);
       const end = Math.min(cells.length, start + CELLS_PER_ROW);
