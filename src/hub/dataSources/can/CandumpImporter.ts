@@ -5,6 +5,7 @@
 // license that can be found in the LICENSE file
 // at the root directory of this project.
 
+import { isEnnoidCellSignal } from "../../../shared/Cells";
 import Log from "../../../shared/log/Log";
 import LoggableType from "../../../shared/log/LoggableType";
 import { sendProgress, setMetadata } from "../ImporterUtil";
@@ -350,6 +351,7 @@ export function createCandumpImporter() {
   }
 
   function decodeSignalField(key: string, parts: SignalPart[], enumRaw: boolean) {
+    if (isEnnoidCellSignal(parts[0]?.signal.name ?? "")) log.getField(key)?.retainAllSamples();
     // Parts from different buses (and DBC sets) are merged in time order
     const frames: [number, SignalPart][] = parts.flatMap((part) =>
       part.frames.map((frame): [number, SignalPart] => [frame, part])

@@ -23,7 +23,8 @@ enum TabType {
   Laps = 14,
   Trackside = 15,
   DriverInputs = 16,
-  CarDynamics = 17
+  CarDynamics = 17,
+  Cells = 18
   // 20-22 were Raw Messages, Log and Image. These values stay reserved for saved layouts.
 }
 
@@ -41,6 +42,7 @@ export const NEW_TAB_TYPES = [
   TabType.Console,
   TabType.Video,
   TabType.Trackside,
+  TabType.Cells,
   TabType.Points,
   TabType.DriverInputs,
   TabType.CarDynamics,
@@ -59,7 +61,8 @@ export const LITE_COMPATIBLE_TABS = [
   TabType.TrackMap,
   TabType.Laps,
   TabType.DriverInputs,
-  TabType.CarDynamics
+  TabType.CarDynamics,
+  TabType.Cells
 ];
 
 export function getDefaultTabTitle(type: TabType): string {
@@ -84,6 +87,8 @@ export function getDefaultTabTitle(type: TabType): string {
       return "Track and laps";
     case TabType.Laps:
       return "Laps";
+    case TabType.Cells:
+      return "Cells";
     case TabType.Trackside:
       return "Trackside";
     case TabType.DriverInputs:
@@ -119,6 +124,8 @@ export function getTabIcon(type: TabType): string {
       return "🏁";
     case TabType.Laps:
       return "";
+    case TabType.Cells:
+      return "🔋";
     case TabType.Trackside:
       return "🚦";
     case TabType.DriverInputs:
@@ -152,6 +159,8 @@ export function getTabAccelerator(type: TabType): string {
           return "P";
         case TabType.DriverInputs:
           return "J";
+        case TabType.Cells:
+          return "B";
         case TabType.CarDynamics:
           return "D";
         case TabType.Metadata:

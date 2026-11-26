@@ -1183,3 +1183,132 @@ table.metadata-table td.no-data {
 .trackside-graph .line-graph-help {
   display: none !important;
 }
+
+.cells-monitor {
+  --cells-normal: #527292;
+  --cells-limit: #b3261e;
+  --cells-outlier: #a46100;
+  --cells-stale: #a8a8a8;
+  --cells-muted: #62666e;
+  --cells-1: #79599e;
+  --cells-2: #197a75;
+  position: absolute;
+  inset: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  overflow: auto;
+  font-variant-numeric: tabular-nums;
+}
+.cells-monitor:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cells-heading,
+.cells-stats,
+.cells-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+.cells-heading {
+  justify-content: space-between;
+}
+/* The Track and laps toolbar buttons, joined into one two-way switch */
+.cells-view-switch {
+  display: flex;
+}
+.cells-view-switch button {
+  min-height: 22px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--mv-control-fg);
+  background: var(--mv-control-bg);
+  border: 1px solid var(--mv-control-border);
+  border-radius: 0;
+  cursor: pointer;
+}
+.cells-view-switch button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.cells-view-switch button:last-child {
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+}
+.cells-view-switch button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--mv-control-accent);
+  border-color: var(--mv-control-accent);
+}
+.cells-monitor canvas {
+  display: block;
+  flex: 1 0 0;
+  width: 100%;
+  min-height: 240px;
+}
+.cells-monitor canvas[hidden],
+.cells-legend[hidden] {
+  display: none;
+}
+.cells-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cells-swatch {
+  width: 10px;
+  height: 7px;
+  display: inline-block;
+}
+.cells-normal {
+  background: var(--cells-normal);
+}
+.cells-limit {
+  background: var(--cells-limit);
+}
+.cells-outlier {
+  background: var(--cells-outlier);
+}
+.cells-stale {
+  background: var(--cells-stale);
+}
+.cells-1 {
+  border-top: 2px dotted var(--cells-1);
+  height: 0;
+}
+.cells-2 {
+  border-top: 2px dashed var(--cells-2);
+  height: 0;
+}
+.cells-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--cells-muted);
+}
+.cells-tooltip {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  padding: 6px 8px;
+  border: 1px solid var(--trackside-border);
+  border-radius: 4px;
+  background: var(--trackside-background);
+  font-size: 12px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-width: calc(100% - 24px);
+}
+@media (prefers-color-scheme: dark) {
+  .cells-monitor {
+    --cells-normal: #83a5c5;
+    --cells-limit: #ff7b72;
+    --cells-outlier: #ffb938;
+    --cells-stale: #777;
+    --cells-muted: #aaa;
+    --cells-1: #c4a6df;
+    --cells-2: #66c9bb;
+  }
+}

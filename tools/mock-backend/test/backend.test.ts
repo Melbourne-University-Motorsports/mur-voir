@@ -36,7 +36,9 @@ test("hello: snapshot first, then availability for every signal, before any samp
   const avail = ops.slice(1) as AvailabilityOp[];
   assert.deepEqual(avail.map((a) => a.path).sort(), snap.signals.map((s: any) => s.path).sort());
   assert.ok(avail.every((a) => a.op === "availability"));
-  const n = snap.signals.length;
+  const cells = snap.signals.filter((signal: { path: string }) => signal.path.includes("/ennoid_vcell/"));
+  assert.equal(cells.length, 108);
+  const n = snap.signals.length - cells.length;
   assert.ok(n >= 40 && n <= 80, `${n} signals`);
 });
 

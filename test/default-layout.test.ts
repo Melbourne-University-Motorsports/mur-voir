@@ -42,7 +42,13 @@ const BUS_DBCS: { [bus: string]: string[] } = {
 
 function sources(controller: any): SourceListItemState[] {
   if (controller === null || typeof controller !== "object") return [];
-  return ["sources", "leftSources", "rightSources", "discreteSources"].flatMap((key) => controller[key] ?? []);
+  return [
+    ...["sources", "leftSources", "rightSources", "discreteSources", "minimum", "maximum"].flatMap(
+      (key) => controller[key] ?? []
+    ),
+    ...(controller.voltages?.sources ?? []),
+    ...(controller.temperatures?.sources ?? [])
+  ];
 }
 
 test("the default layout starts with the documentation tab and opens on Track day", () => {
@@ -60,6 +66,7 @@ test("the default layout starts with the documentation tab and opens on Track da
     tabs.slice(1).map((tab) => tab.title),
     [
       "Track day",
+      "Cells",
       "Faults",
       "States",
       "HV voltage",
@@ -101,7 +108,7 @@ test("every default layout field is a cellular path whose DBC signal exists on t
         dbcMessage.signals.some((s) => s.name === item.dbcSignal),
         "no signal for " + item.logKey
       );
-      const types = configs[tab.type]?.types.map((type) => type.key) ?? [];
+      const types = tab.type === TabType.Cells ? ["number"] : configs[tab.type]?.types.map((type) => type.key) ?? [];
       assert.ok(types.includes(item.type), `${tab.title}: ${item.type}`);
     }
   }
@@ -224,6 +231,10 @@ test("the ?layout= link skips a layout whose tabs are already open, the menu alw
   assert.equal(isLayoutOpen(layout, [...saved, { type: TabType.LineGraph, title: "" }]), true);
   assert.equal(isLayoutOpen(layout, saved.slice(0, -1)), false);
   assert.equal(isLayoutOpen(layout, [{ type: TabType.Documentation, title: "" }]), false);
+  // The hub saves a tab named after its type (the Cells tab) with the title "".
+  const restored = saved.map((tab) => (tab.type === TabType.Cells ? { ...tab, title: "" } : tab));
+  assert.ok(saved.some((tab) => tab.type === TabType.Cells && tab.title === "Cells"));
+  assert.equal(isLayoutOpen(layout, restored), true);
 });
 
 test("live fields the publisher converted to SI display in their DBC unit, with limits in that unit", () => {

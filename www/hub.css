@@ -1971,3 +1971,53 @@ div.source-list button.show-in-graph[aria-pressed="false"] {
 div.source-list .has-graph-toggle div.key-container {
   max-width: calc(100% - 31px - var(--type-width) - 80px);
 }
+
+.cells-controls {
+  position: absolute;
+  inset: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr minmax(180px, 0.55fr);
+  gap: 8px;
+  overflow: auto;
+}
+.cells-controls section {
+  display: flex;
+  flex-direction: column;
+  min-height: 100px;
+  min-width: 0;
+}
+.cells-controls div.source-list {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  flex: 1;
+}
+.cells-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  font-size: 11px;
+}
+.cells-options label {
+  white-space: nowrap;
+}
+.cells-options input {
+  width: 4em;
+  color: var(--mv-control-fg);
+  background: var(--mv-control-bg);
+  border: 1px solid var(--mv-control-border);
+  border-radius: 3px;
+}
+/* Sized like the stock video timeline lock; the global button style centres the icon */
+.cells-options button {
+  width: 24px;
+  height: 24px;
+}
+@media (max-width: 750px) {
+  .cells-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -140,7 +140,7 @@ test("a different length keeps the attached definition", () => {
 test("a bus without attachments decodes with the default set and lists no overrides", () => {
   const { cells, values, meta, log } = open(["can0", "can1"], { can0: { "bus0_ENNOID_BMS.dbc": OLD_ENNOID } });
   assert.deepEqual(cells, ALL_CELLS, "Both buses share the multiplexed fields");
-  assert.deepEqual(values(cellKey(4)), [3.304]);
+  assert.deepEqual(values(cellKey(4)), [3.304, 3.304], "Repeated readings preserve both sample times");
   assert.equal(JSON.parse(log.getMetadataString(cellKey(4))).buses, "can0, can1");
   assert.deepEqual(meta.dbcsByBus.can0.overrides, ["ENNOID_VCell"]);
   assert.deepEqual(Object.keys(meta.dbcsByBus.can1), ["from", "files"]);

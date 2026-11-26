@@ -134,10 +134,11 @@ try {
   await hub.locator(".side-bar-search").fill("");
   await hub.locator(".side-bar-title", { hasText: /^\d+ fields/ }).waitFor();
   // A browser with no saved layout opens with the bundled default layout.
-  const defaultTitles = ["", "Track day", "Faults", "States", "HV voltage", "Accu temp and current"];
+  // The Cells tab keeps its default title, which saves as "".
+  const defaultTitles = ["", "Track day", "", "Faults", "States", "HV voltage", "Accu temp and current"];
   const tabTitles = () => frame.evaluate(() => window.tabs.saveState().tabs.map((tab) => tab.title));
   assert.deepEqual((await tabTitles()).slice(0, defaultTitles.length), defaultTitles);
-  assert.equal((await tabTitles()).length, 10);
+  assert.equal((await tabTitles()).length, 11);
   assert.ok(await frame.evaluate(() => window.tabs.saveState().tabs.some((tab) => tab.type === 1)));
   await frame.evaluate(() => window.tabs.setSelected(window.tabs.tabList.findIndex((tab) => tab.type === 1)));
   await hub.locator(".timeline").waitFor({ state: "hidden" });
@@ -173,7 +174,7 @@ try {
   const beforeDefault = (await tabTitles()).length;
   await hub.getByText("File", { exact: true }).click();
   await page.getByText("Add Track Day Layout", { exact: true }).click();
-  await frame.waitForFunction((count) => window.tabs.saveState().tabs.length === count + 9, beforeDefault);
+  await frame.waitForFunction((count) => window.tabs.saveState().tabs.length === count + 10, beforeDefault);
   assert.equal((await tabTitles())[beforeDefault], "Track day");
 
   // ?layout=default in a fresh browser loads the layout once and leaves the URL.
@@ -185,21 +186,21 @@ try {
   const linkFrame = linkPage.frames().find((frame) => frame.url().endsWith("hub.html"));
   await linkFrame.waitForFunction(() => window.tabs.saveState().tabs.some((tab) => tab.title === "Track day"));
   await linkPage.waitForTimeout(500);
-  assert.equal(await linkFrame.evaluate(() => window.tabs.saveState().tabs.length), 10);
+  assert.equal(await linkFrame.evaluate(() => window.tabs.saveState().tabs.length), 11);
   assert.equal(new URL(linkPage.url()).searchParams.has("layout"), false);
   // Opening the link again in that browser, with its layout saved (plus a tab of its own), adds nothing.
   await linkFrame.evaluate(() => window.tabs.addTab(15));
   await linkPage.waitForFunction(() =>
     Object.keys(localStorage).some(
-      (key) => key.endsWith("/state") && JSON.parse(localStorage.getItem(key)).tabs.tabs.length === 11
+      (key) => key.endsWith("/state") && JSON.parse(localStorage.getItem(key)).tabs.tabs.length === 12
     )
   );
   await linkPage.goto(`http://127.0.0.1:${port}/?layout=default`);
   await linkPage.frameLocator(".hub-frame").locator(".connect-source").waitFor({ state: "attached" });
   const reopenedFrame = linkPage.frames().find((frame) => frame.url().endsWith("hub.html"));
-  await reopenedFrame.waitForFunction(() => window.tabs.saveState().tabs.length === 11);
+  await reopenedFrame.waitForFunction(() => window.tabs.saveState().tabs.length === 12);
   await linkPage.waitForTimeout(500);
-  assert.equal(await reopenedFrame.evaluate(() => window.tabs.saveState().tabs.length), 11);
+  assert.equal(await reopenedFrame.evaluate(() => window.tabs.saveState().tabs.length), 12);
   await linkContext.close();
 
   // The hosted server forwards the archive API, including Range requests, to the backend.

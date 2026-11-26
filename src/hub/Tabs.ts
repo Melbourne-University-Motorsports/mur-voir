@@ -12,6 +12,7 @@ import TabType, { filterRestorableTabs, getDefaultTabTitle, getTabIcon } from ".
 import { dbcDefinition, diffTrackside } from "../shared/Trackside";
 import { getAutonomousKey, getEnabledKey, getUtilityKey } from "../shared/log/RobotState";
 import CarDynamicsRenderer from "../shared/renderers/CarDynamicsRenderer";
+import CellsRenderer from "../shared/renderers/CellsRenderer";
 import ConsoleRenderer from "../shared/renderers/ConsoleRenderer";
 import DocumentationRenderer from "../shared/renderers/DocumentationRenderer";
 import DriverInputsRenderer from "../shared/renderers/DriverInputsRenderer";
@@ -31,6 +32,7 @@ import ScrollSensor, { ScrollSensorMouseControl } from "./ScrollSensor";
 import Timeline, { TimelineBand } from "./Timeline";
 import { updateTracksideAlerts } from "./TracksideAlerts";
 import CarDynamicsController from "./controllers/CarDynamicsController";
+import CellsController from "./controllers/CellsController";
 import ConsoleController from "./controllers/ConsoleController";
 import DriverInputsController from "./controllers/DriverInputsController";
 import Field2dController from "./controllers/Field2dController";
@@ -790,6 +792,10 @@ export default class Tabs {
       case TabType.Video:
         controller = new VideoController(controlsElement);
         renderer = new VideoRenderer(rendererElement);
+        break;
+      case TabType.Cells:
+        controller = new CellsController(controlsElement);
+        renderer = new CellsRenderer(rendererElement);
         break;
       case TabType.Trackside:
         controller = new TracksideController(controlsElement);

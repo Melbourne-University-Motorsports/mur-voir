@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.4.0",
   "hubs": [
     {
       "sidebar": {
@@ -226,6 +226,915 @@
             "controllerUUID": "defaultview1",
             "renderer": null,
             "controlsHeight": 260
+          },
+          {
+            "type": 18,
+            "title": "Cells",
+            "controller": {
+              "voltages": {
+                "sources": [
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv001",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV001",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv002",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV002",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv003",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV003",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv004",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV004",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv005",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV005",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv006",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV006",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv007",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV007",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv008",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV008",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv009",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV009",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv010",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV010",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv011",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV011",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv012",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV012",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv013",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV013",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv014",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV014",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv015",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV015",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv016",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV016",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv017",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV017",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv018",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV018",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv019",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV019",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv020",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV020",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv021",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV021",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv022",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV022",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv023",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV023",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv024",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV024",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv025",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV025",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv026",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV026",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv027",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV027",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv028",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV028",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv029",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV029",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv030",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV030",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv031",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV031",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv032",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV032",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv033",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV033",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv034",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV034",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv035",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV035",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv036",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV036",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv037",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV037",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv038",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV038",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv039",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV039",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv040",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV040",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv041",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV041",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv042",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV042",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv043",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV043",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv044",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV044",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv045",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV045",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv046",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV046",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv047",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV047",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv048",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV048",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv049",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV049",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv050",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV050",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv051",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV051",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv052",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV052",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv053",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV053",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv054",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV054",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv055",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV055",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv056",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV056",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv057",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV057",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv058",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV058",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv059",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV059",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv060",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV060",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv061",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV061",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv062",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV062",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv063",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV063",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv064",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV064",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv065",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV065",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv066",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV066",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv067",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV067",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv068",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV068",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv069",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV069",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv070",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV070",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv071",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV071",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv072",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV072",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv073",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV073",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv074",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV074",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv075",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV075",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv076",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV076",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv077",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV077",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv078",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV078",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv079",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV079",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv080",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV080",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv081",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV081",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv082",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV082",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv083",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV083",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv084",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV084",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv085",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV085",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv086",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV086",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv087",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV087",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv088",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV088",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv089",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV089",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv090",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV090",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv091",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV091",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv092",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV092",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv093",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV093",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv094",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV094",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv095",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV095",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv096",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV096",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv097",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV097",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv098",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV098",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv099",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV099",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv100",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV100",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv101",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV101",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv102",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV102",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv103",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV103",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv104",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV104",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv105",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV105",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv106",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV106",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv107",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV107",
+                    "visible": true,
+                    "options": {}
+                  },
+                  {
+                    "type": "number",
+                    "logKey": "/vehicles/mur27/can0/ennoid_vcell/ennoid_cellv108",
+                    "logType": "Number",
+                    "dbcSignal": "ENNOID_CellV108",
+                    "visible": true,
+                    "options": {}
+                  }
+                ],
+                "options": {
+                  "low": 2.5,
+                  "high": 4.2,
+                  "outlier": 150,
+                  "segmentSize": 18
+                }
+              },
+              "temperatures": {
+                "sources": [],
+                "options": {
+                  "segmentSize": 18
+                }
+              },
+              "minimum": [
+                {
+                  "type": "number",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemin",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMin",
+                  "visible": true,
+                  "options": {}
+                }
+              ],
+              "maximum": [
+                {
+                  "type": "number",
+                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemax",
+                  "logType": "Number",
+                  "dbcSignal": "ENNOID_CellVoltageMax",
+                  "visible": true,
+                  "options": {}
+                }
+              ]
+            },
+            "controllerUUID": "defaultview-cells",
+            "renderer": "voltages",
+            "controlsHeight": 0
           },
           {
             "type": 15,
