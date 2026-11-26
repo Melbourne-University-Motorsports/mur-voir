@@ -1972,7 +1972,8 @@ div.source-list .has-graph-toggle div.key-container {
   max-width: calc(100% - 31px - var(--type-width) - 80px);
 }
 
-.cells-controls {
+/* :not([hidden]) so the tab bar can hide these controls when another tab is selected */
+.cells-controls:not([hidden]) {
   position: absolute;
   inset: 8px;
   display: grid;
