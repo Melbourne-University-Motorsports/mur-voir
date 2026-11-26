@@ -9,6 +9,7 @@ The user works on this machine while agents run, so every app run you start stay
 - Reaching a state the flags do not cover: `--eval` runs JavaScript in the hub page (`window.tabs`, `window.log`, `window.selection`, and `window.messagePort.onmessage({ data: { name, data } })` for any main-process message). A returned value prints as `[eval] <json>`.
 - Lines starting `[headless] suppressed` are dialogs, file pickers or links that would have opened. They are part of the result: an unexpected one means the code tried to interrupt the user.
 - Renderer-only checks can also use `npm run lite-smoke`, which drives the Lite build in headless Chromium.
+- A change that adds or restyles a tab: also screenshot a different tab with its controls open, so you see whether your tab's controls or view leak onto others. For example, `--eval 'const t = window.tabs; t.setSelected(1); t.tabList[1].controlsHeight = 340; t.updateControlsHeight()'`.
 - The macOS sidebar vibrancy captures as a solid grey, because a hidden window has no desktop behind it.
 
 New main-process code needs no headless checks of its own: `src/main/electron/headless.ts` patches `show`, `focus`, dialogs and `shell.open*` centrally.
