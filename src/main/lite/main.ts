@@ -1470,7 +1470,7 @@ window.addEventListener("load", () => {
 
   // Set up too small warning
   let updateTooSmallWarning = () => {
-    TOO_SMALL_WARNING.hidden = window.innerWidth >= 800 && window.innerHeight >= 400;
+    TOO_SMALL_WARNING.hidden = window.innerWidth >= 320 && window.innerHeight >= 280;
     let userAgent = navigator.userAgent.toLowerCase();
     MOBILE_WARNING.hidden =
       !userAgent.includes("iphone") && !userAgent.includes("android") && !userAgent.includes("mobile");

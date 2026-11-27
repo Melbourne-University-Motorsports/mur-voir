@@ -19,7 +19,7 @@
       http-equiv="X-Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src ws: http: file: blob:"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <link rel="stylesheet" href="global.css" />
     <link rel="stylesheet" href="hub.css" />
     <link rel="stylesheet" href="renderers.css" />
@@ -29,6 +29,13 @@
 
   <body>
     <div class="title-bar" hidden>
+      <button class="mobile-menu-toggle" title="Open menu and fields" aria-label="Open menu and fields">
+        <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
+          <rect x="2" y="3.5" width="14" height="1.8" rx="0.9"></rect>
+          <rect x="2" y="8.1" width="14" height="1.8" rx="0.9"></rect>
+          <rect x="2" y="12.7" width="14" height="1.8" rx="0.9"></rect>
+        </svg>
+      </button>
       <div class="title-bar-text">mur-voir</div>
     </div>
     <div class="title-bar-menu">
@@ -67,6 +74,8 @@
       <img src="symbols/add.svg" />
     </button>
 
+    <div class="mobile-drawer-backdrop" hidden></div>
+
     <div class="side-bar-background"></div>
     <div class="side-bar-shadow"></div>
     <div class="viewer-background"></div>
@@ -77,6 +86,14 @@
     <div class="loading-glow"></div>
 
     <div class="side-bar">
+      <div class="mobile-picker-banner" hidden>
+        <div class="mobile-picker-info">
+          <span class="mobile-picker-target"></span>
+          <span class="mobile-picker-status"></span>
+        </div>
+        <button class="mobile-picker-done" type="button">Done</button>
+      </div>
+
       <div class="side-bar-title">Open a log or connect to view data</div>
 
       <div class="side-bar-search-container">
@@ -116,6 +133,9 @@
 
     <div class="viewer">
       <div class="tab-bar"></div>
+      <button class="mobile-add-tab" type="button" title="Add tab" aria-label="Add tab">
+        <img src="symbols/add.svg" />
+      </button>
       <div class="tab-bar-shadow-left"></div>
       <div class="tab-bar-shadow-right"></div>
       <div class="tab-bar-drag-highlight" hidden></div>
@@ -124,7 +144,14 @@
       </div>
 
       <div class="renderer-content"></div>
-      <div class="controls-content"></div>
+      <div class="controls-content">
+        <div class="mobile-controls-header">
+          <span class="mobile-controls-title"></span>
+          <button class="mobile-controls-close" title="Close controls" aria-label="Close controls">
+            <img src="symbols/close.svg" />
+          </button>
+        </div>
+      </div>
       <div class="controls-handle"></div>
 
       <div class="timeline">

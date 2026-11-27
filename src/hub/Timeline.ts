@@ -4,8 +4,11 @@
 // Use of this source code is governed by a BSD
 // license that can be found in the LICENSE file
 // at the root directory of this project.
+import { SelectionMode } from "../shared/Selection";
 import { clientSize, prepareCanvas } from "../shared/domWrite";
 import { calcAxisStepSize, clampValue, cleanFloat, scaleValue } from "../shared/util";
+import { wakeFrames } from "./FrameScheduler";
+import { isMobileLayout } from "./MobileLayout";
 import ScrollSensor from "./ScrollSensor";
 
 /** A colored range drawn behind the timeline (e.g. a lap). Times are in log seconds. */
@@ -34,6 +37,9 @@ export default class Timeline {
   private scrollTime: number | null = null;
   private zoomInAccumulator = 0;
   private bandSupplier: () => TimelineBand[] = () => [];
+  private touchMode: "none" | "scrub" | "pinch" = "none";
+  private lastPinchMidX = 0;
+  private lastPinchDist = 0;
 
   constructor(container: HTMLElement) {
     this.CONTAINER = container;
@@ -93,6 +99,72 @@ export default class Timeline {
     this.SCROLL_OVERLAY.addEventListener("contextmenu", () => {
       window.selection.goIdle();
     });
+
+    // Touch scrub (1 finger) and pan/pinch-zoom (2 fingers)
+    const scrubToClientX = (clientX: number) => {
+      const rect = this.SCROLL_OVERLAY.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const x = clampValue(clientX - rect.x, 0, rect.width);
+      const timeRange = window.selection.getTimelineRange();
+      const time = scaleValue(x, [0, rect.width], timeRange);
+      if (window.selection.getMode() === SelectionMode.Locked) {
+        window.selection.unlock();
+      }
+      window.selection.setSelectedTime(time);
+    };
+    this.SCROLL_OVERLAY.addEventListener(
+      "touchstart",
+      (event) => {
+        if (this.isHidden()) return;
+        event.preventDefault();
+        wakeFrames();
+        if (event.touches.length === 1) {
+          this.touchMode = "scrub";
+          scrubToClientX(event.touches[0].clientX);
+        } else if (event.touches.length >= 2) {
+          this.touchMode = "pinch";
+          const x0 = event.touches[0].clientX;
+          const x1 = event.touches[1].clientX;
+          this.lastPinchMidX = (x0 + x1) / 2;
+          this.lastPinchDist = Math.abs(x1 - x0);
+        }
+      },
+      { passive: false }
+    );
+    this.SCROLL_OVERLAY.addEventListener(
+      "touchmove",
+      (event) => {
+        if (this.isHidden()) return;
+        event.preventDefault();
+        wakeFrames();
+        if (event.touches.length === 1 && this.touchMode === "scrub") {
+          scrubToClientX(event.touches[0].clientX);
+        } else if (event.touches.length >= 2) {
+          const x0 = event.touches[0].clientX;
+          const x1 = event.touches[1].clientX;
+          const midX = (x0 + x1) / 2;
+          const dist = Math.abs(x1 - x0);
+          if (this.touchMode !== "pinch") {
+            this.touchMode = "pinch";
+            this.lastPinchMidX = midX;
+            this.lastPinchDist = dist;
+            return;
+          }
+          const width = Math.max(1, this.SCROLL_OVERLAY.clientWidth);
+          const dx = -(midX - this.lastPinchMidX);
+          const dy = -(dist - this.lastPinchDist) * 4;
+          window.selection.applyTimelineScroll(dx, dy, width);
+          this.lastPinchMidX = midX;
+          this.lastPinchDist = dist;
+        }
+      },
+      { passive: false }
+    );
+    const endTouch = (event: TouchEvent) => {
+      if (event.touches.length <= 1) this.touchMode = "none";
+    };
+    this.SCROLL_OVERLAY.addEventListener("touchend", endTouch);
+    this.SCROLL_OVERLAY.addEventListener("touchcancel", endTouch);
 
     // Scroll handling
     this.scrollSensor = new ScrollSensor(this.SCROLL_OVERLAY, (dx: number, dy: number) => {
@@ -158,7 +230,8 @@ export default class Timeline {
     let light = !Timeline.darkQuery.matches;
     let timeRange = window.selection.getTimelineRange();
     const bands = this.bandSupplier();
-    const helpTextOpacity = this.getHelpTextOpacity();
+    const mobile = isMobileLayout();
+    const helpTextOpacity = mobile ? 0 : this.getHelpTextOpacity();
 
     const hoveredTime = window.selection.getHoveredTime();
     const selectedTime = window.selection.getSelectedTime();
@@ -174,6 +247,7 @@ export default class Timeline {
       height,
       devicePixelRatio,
       light,
+      mobile,
       window.log.getTimestampDisplayOffset(),
       bands,
       window.selection.getGrabZoomRange(),
@@ -207,7 +281,8 @@ export default class Timeline {
     let timeSpan = displayTimeRange[1] - displayTimeRange[0];
     let decDigits = timeSpan < 1 && timeSpan > 0 ? -Math.log10(timeSpan) : 0;
     let extraDigits = Math.max(0, intDigits + decDigits - 3);
-    let stepSize = calcAxisStepSize(displayTimeRange, width, this.STEP_TARGET_PX + extraDigits * 12);
+    const stepTarget = mobile && width < 500 ? 85 : this.STEP_TARGET_PX;
+    let stepSize = calcAxisStepSize(displayTimeRange, width, stepTarget + extraDigits * 12);
 
     // Draw bands (e.g. laps)
     const bandsLabelled = bands.some((b) => b.label);

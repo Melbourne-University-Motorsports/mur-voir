@@ -120,6 +120,11 @@ export default class LineGraphRenderer implements TabRenderer {
   private lastHoveredTime: number | null = null;
   private lastCursorInRect = false;
   private didClearHoveredTime = false;
+  private lastCommandTimeRange: [number, number] | null = null;
+  private lastPlotBounds: { left: number; width: number } | null = null;
+  private touchMode: "none" | "scrub" | "pinch" = "none";
+  private lastPinchMidX = 0;
+  private lastPinchDist = 0;
   private sectorBarHits?: {
     top: number;
     bottom: number;
@@ -243,6 +248,82 @@ export default class LineGraphRenderer implements TabRenderer {
         }
       }
     );
+
+    // Touch scrub and pinch-zoom inside expanded mobile graph view;
+    // when inline in the vertical feed, let CSS touch-action: pan-y handle page scrolling.
+    const isExpandedMobile = () => this.ROOT.closest?.(".tab-section.mobile-expanded") !== null;
+    const scrubToTouchX = (clientX: number) => {
+      if (!this.lastCommandTimeRange || !this.lastPlotBounds || this.lastPlotBounds.width <= 0) return;
+      const localX = clientX - this.ROOT.getBoundingClientRect().x;
+      const { left, width } = this.lastPlotBounds;
+      const clampedX = clampValue(localX, left, left + width);
+      const time = scaleValue(clampedX, [left, left + width], this.lastCommandTimeRange);
+      if (this.lapViewport.active) {
+        this.lastCursorX = clampedX;
+      } else {
+        if (window.selection.getMode() === SelectionMode.Locked) window.selection.unlock();
+        window.selection.setSelectedTime(time);
+      }
+    };
+    this.SCROLL_OVERLAY.addEventListener(
+      "touchstart",
+      (event) => {
+        if (this.ROOT.hidden || !isExpandedMobile()) return;
+        event.preventDefault();
+        if (event.touches.length === 1) {
+          this.touchMode = "scrub";
+          scrubToTouchX(event.touches[0].clientX);
+        } else if (event.touches.length >= 2) {
+          this.touchMode = "pinch";
+          const x0 = event.touches[0].clientX;
+          const x1 = event.touches[1].clientX;
+          this.lastPinchMidX = (x0 + x1) / 2;
+          this.lastPinchDist = Math.abs(x1 - x0);
+        }
+      },
+      { passive: false }
+    );
+    this.SCROLL_OVERLAY.addEventListener(
+      "touchmove",
+      (event) => {
+        if (this.ROOT.hidden || !isExpandedMobile()) return;
+        event.preventDefault();
+        if (event.touches.length === 1 && this.touchMode === "scrub") {
+          scrubToTouchX(event.touches[0].clientX);
+        } else if (event.touches.length >= 2) {
+          const x0 = event.touches[0].clientX;
+          const x1 = event.touches[1].clientX;
+          const midX = (x0 + x1) / 2;
+          const dist = Math.abs(x1 - x0);
+          if (this.touchMode !== "pinch") {
+            this.touchMode = "pinch";
+            this.lastPinchMidX = midX;
+            this.lastPinchDist = dist;
+            return;
+          }
+          const overlayWidth = Math.max(1, this.SCROLL_OVERLAY.clientWidth);
+          const dx = -(midX - this.lastPinchMidX);
+          const dy = -(dist - this.lastPinchDist) * 4;
+          if (this.lapViewport.active) {
+            const cursorRatio = clampValue((midX - this.SCROLL_OVERLAY.getBoundingClientRect().x) / overlayWidth, 0, 1);
+            this.lapViewport.scroll(dx, dy, overlayWidth, cursorRatio);
+          } else {
+            window.selection.applyTimelineScroll(dx, dy, overlayWidth);
+          }
+          this.lastPinchMidX = midX;
+          this.lastPinchDist = dist;
+        }
+      },
+      { passive: false }
+    );
+    const endTouch = (event: TouchEvent) => {
+      if (event.touches.length <= 1) {
+        this.touchMode = "none";
+        if (this.lapViewport.active) this.lastCursorX = null;
+      }
+    };
+    this.SCROLL_OVERLAY.addEventListener("touchend", endTouch);
+    this.SCROLL_OVERLAY.addEventListener("touchcancel", endTouch);
   }
 
   getAspectRatio(): number | null {
@@ -427,8 +508,10 @@ export default class LineGraphRenderer implements TabRenderer {
     this.scrollSensor.periodic();
 
     // Update help overlay
+    const isMobile = typeof document !== "undefined" && document.body?.classList?.contains?.("mobile-layout");
     if (this.HELP_OVERLAY) {
       const hasScrolled =
+        isMobile ||
         (window.preferences?.hasScrolledLineGraph ?? false) ||
         (this.hasController && this.scrollSensor.shouldHideHint());
       setStyle(this.HELP_OVERLAY, "display", hasScrolled || command.message ? "none" : "flex");
@@ -505,12 +588,15 @@ export default class LineGraphRenderer implements TabRenderer {
 
     // Calculate vertical layout (based on discrete fields)
     // Lap legend: one opaque row per lap above the plot, so it can never sit on traces
+    const compactWidth = width < 500;
+    const hasHeaderTitle = !!(command.leftTitle || command.rightTitle);
     const LEGEND_ROW = 15;
     const legendRows = command.lapLabels?.length ?? 0;
     // Split bar: one block per sector between the legend and the plot
     const SECTOR_BAR = 16;
     const sectorBlocks = command.sectorBar?.blocks ?? [];
-    const barTop = 32 + (legendRows ? legendRows * LEGEND_ROW + 4 : 0);
+    const baseTop = compactWidth ? (hasHeaderTitle ? 24 : 8) : 32;
+    const barTop = baseTop + (legendRows ? legendRows * LEGEND_ROW + 4 : 0);
     let graphTop = barTop + (sectorBlocks.length ? SECTOR_BAR + 2 : 0);
     setStyle(this.SCROLL_OVERLAY, "top", graphTop.toString() + "px");
     let graphHeight = height - graphTop - 35;
@@ -550,16 +636,27 @@ export default class LineGraphRenderer implements TabRenderer {
       }
       return Math.ceil(length / 10) * 10;
     };
+    const hidePlaceholderLeftAxis =
+      isMobile &&
+      !command.leftFields.length &&
+      !command.rightFields.length &&
+      command.discreteFields.length > 0 &&
+      !command.leftTitle;
+    const showLeftAxis = command.showLeftAxis && !hidePlaceholderLeftAxis;
+    const sidePadding = compactWidth ? 12 : 25;
+    const axisLabelOffset = compactWidth ? 9 : 15;
     let graphLeft =
-      25 +
-      (command.showLeftAxis ? getTextWidth(command.leftRange, leftStepSize, command.leftUnits, command.leftFilter) : 0);
+      sidePadding +
+      (showLeftAxis ? getTextWidth(command.leftRange, leftStepSize, command.leftUnits, command.leftFilter) : 0);
     let graphRight =
-      25 +
+      sidePadding +
       (command.showRightAxis
         ? getTextWidth(command.rightRange, rightStepSize, command.rightUnits, command.rightFilter)
         : 0);
     let graphWidth = width - graphLeft - graphRight;
     if (graphWidth < 1) graphWidth = 1;
+    this.lastCommandTimeRange = command.timeRange;
+    this.lastPlotBounds = { left: graphLeft, width: graphWidth };
 
     // Calculate X step size
     let displayOffset = command.displayOffset;
@@ -572,7 +669,8 @@ export default class LineGraphRenderer implements TabRenderer {
     let timeSpan = displayTimeRange[1] - displayTimeRange[0];
     let decDigits = timeSpan < 1 && timeSpan > 0 ? -Math.log10(timeSpan) : 0;
     let extraDigits = Math.max(0, intDigits + decDigits - 3);
-    let timeStepSize = calcAxisStepSize(displayTimeRange, graphWidth, this.X_STEP_TARGET_PX + extraDigits * 12);
+    const xStepTarget = compactWidth ? 75 : this.X_STEP_TARGET_PX;
+    let timeStepSize = calcAxisStepSize(displayTimeRange, graphWidth, xStepTarget + extraDigits * 12);
 
     // Update scroll layout
     setStyle(this.SCROLL_OVERLAY, "left", graphLeft.toString() + "px");
@@ -1276,7 +1374,7 @@ export default class LineGraphRenderer implements TabRenderer {
         const y = scaler.calculate(value);
         if (y > graphTop + graphHeightOpen) break;
         if (Math.abs(value) < this.MAX_DECIMAL_VALUE || value % 1 === 0) {
-          context.fillText(this.getAxisValueText(value, units, filter), x + direction * 15, y);
+          context.fillText(this.getAxisValueText(value, units, filter), x + direction * axisLabelOffset, y);
           context.moveTo(x, y);
           context.lineTo(x + direction * 5, y);
         }
@@ -1285,7 +1383,7 @@ export default class LineGraphRenderer implements TabRenderer {
       context.stroke();
     };
     context.globalAlpha = 1;
-    if (command.showLeftAxis) drawYAxis("left", leftStepSize);
+    if (showLeftAxis) drawYAxis("left", leftStepSize);
     if (command.showRightAxis) drawYAxis("right", rightStepSize);
     if (horizontalGuides.length) {
       context.globalAlpha = 0.1;
@@ -1304,10 +1402,11 @@ export default class LineGraphRenderer implements TabRenderer {
       const x = xScaler.calculate(mark.x);
       if (x >= graphLeft && x <= graphLeft + graphWidth) context.fillText(mark.label, x, graphTop + graphHeight + 29);
     }
+    const titleY = compactWidth ? 11 : 15;
     context.textAlign = "left";
-    context.fillText(command.leftTitle ?? "", graphLeft, 15);
+    context.fillText(command.leftTitle ?? "", graphLeft, titleY);
     context.textAlign = "right";
-    context.fillText(command.rightTitle ?? "", graphLeft + graphWidth, 15);
+    context.fillText(command.rightTitle ?? "", graphLeft + graphWidth, titleY);
     if (command.lapLabels?.length) {
       // One row per lap above the plot: label on the left, value at the cursor on the right
       context.textBaseline = "middle";

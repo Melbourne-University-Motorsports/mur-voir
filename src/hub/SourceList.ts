@@ -30,6 +30,7 @@ import LoggableType from "../shared/log/LoggableType";
 import { Units } from "../shared/units";
 import { createUUID, jsonCopy } from "../shared/util";
 import { invalidateFrames, isTextFrame, requestFrame } from "./FrameScheduler";
+import { startMobileFieldPicker } from "./MobileLayout";
 
 export default class SourceList {
   private events = new AbortController();
@@ -104,6 +105,7 @@ export default class SourceList {
   private ITEM_TEMPLATE = document.getElementById("sourceListItemTemplate")?.firstElementChild as HTMLElement;
   private ROOT: HTMLElement;
   private TITLE: HTMLElement;
+  private ADD_BUTTON: HTMLButtonElement;
   private EDIT_BUTTON: HTMLButtonElement;
   private CLEAR_BUTTON: HTMLButtonElement;
   private HELP_BUTTON: HTMLButtonElement;
@@ -168,6 +170,23 @@ export default class SourceList {
     this.TITLE.innerText = config.title;
     this.TITLE.style.left = editButtonCallback === undefined ? "55px" : "30px";
     this.TITLE.style.right = editButtonCallback === undefined ? "55px" : "30px";
+
+    this.ADD_BUTTON = document.createElement("button");
+    this.ROOT.appendChild(this.ADD_BUTTON);
+    this.ADD_BUTTON.type = "button";
+    this.ADD_BUTTON.classList.add("mobile-add-field");
+    this.ADD_BUTTON.title = "Add field";
+    this.ADD_BUTTON.setAttribute?.("aria-label", "Add field");
+    const addIcon = document.createElement("img");
+    this.ADD_BUTTON.appendChild(addIcon);
+    addIcon.src = "symbols/add.svg";
+    this.ADD_BUTTON.addEventListener(
+      "click",
+      () => {
+        startMobileFieldPicker(this.TITLE.innerText || this.config.title, (logKey) => this.addField(logKey));
+      },
+      { signal: this.events.signal }
+    );
 
     this.EDIT_BUTTON = document.createElement("button");
     this.ROOT.appendChild(this.EDIT_BUTTON);
@@ -593,8 +612,8 @@ export default class SourceList {
   hoveredKey: string | null = null;
   private lastSingleField = "";
 
-  addField(logKey: string, parentIndex?: number) {
-    if (this.beforeAdd && !this.beforeAdd(logKey)) return;
+  addField(logKey: string, parentIndex?: number): boolean {
+    if (this.beforeAdd && !this.beforeAdd(logKey)) return false;
     let logType = window.log.getType(logKey);
     let logTypeString = logType === null ? null : LoggableType[logType];
     let structuredType = window.log.getStructuredType(logKey);
@@ -636,7 +655,7 @@ export default class SourceList {
     }
 
     // Find best type
-    if (possibleTypes.length === 0) return;
+    if (possibleTypes.length === 0) return false;
     if (this.config.autoAdvance === true) {
       // Roles holding one field take turns once they are all full.
       let types = this.config.types;
@@ -711,6 +730,7 @@ export default class SourceList {
     } else {
       this.addListItem(state);
     }
+    return true;
   }
 
   /** Processes a item drag event, including rearranging fields if necessary. */

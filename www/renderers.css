@@ -1312,3 +1312,59 @@ table.metadata-table td.no-data {
     --cells-2: #66c9bb;
   }
 }
+
+/* Mobile stacked feed overrides */
+
+body.mobile-layout .trackside-grid {
+  position: static;
+  overflow: visible;
+  padding: 8px;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(74px, auto);
+}
+
+body.mobile-layout .trackside-tile {
+  padding: 6px 10px;
+}
+
+body.mobile-layout .trackside-reading {
+  font-size: clamp(18px, 14cqw, 30px);
+}
+
+body.mobile-layout .trackside-grid.with-graph {
+  bottom: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(74px, auto);
+}
+
+body.mobile-layout .trackside-graph {
+  position: relative;
+  inset: auto;
+  height: 200px;
+}
+
+body.mobile-layout .tab-section:not(.mobile-expanded) .line-graph-scroll {
+  touch-action: pan-y;
+}
+
+body.mobile-layout .tab-section.mobile-expanded .line-graph-scroll {
+  touch-action: none;
+}
+
+body.mobile-layout .cells-monitor {
+  padding: 8px;
+}
+
+body.mobile-layout .cells-monitor canvas {
+  min-height: 220px;
+}
+
+body.mobile-layout .graph-inline-controls {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  padding: 8px 10px;
+  background: transparent;
+  justify-content: space-between;
+}

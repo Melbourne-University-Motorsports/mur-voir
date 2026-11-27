@@ -28,6 +28,7 @@ import {
 import { SelectionMode } from "../../shared/Selection";
 import { SourceListState } from "../../shared/SourceListConfig";
 import { clipGaps, TraceGapCache } from "../../shared/TraceGaps";
+import { tileLabel } from "../../shared/Trackside";
 import { Units } from "../../shared/units";
 import { clampValue, createUUID, scaleValueClamped } from "../../shared/util";
 import { LAP_COLORS, lapService } from "../LapService";
@@ -37,6 +38,12 @@ import { previewNumberCommand } from "./NumberPreview";
 import TabController from "./TabController";
 
 type NumericCommandCacheValue = LineGraphRendererCommand_NumericField & { hasUnit: boolean };
+export type LineGraphHeaderReadout = {
+  label: string;
+  color: string;
+  value: string;
+  axis: "left" | "right" | "discrete";
+};
 type ConvertedSamples = {
   config: string;
   history: number;
@@ -477,6 +484,68 @@ export default class LineGraphController implements TabController {
 
   followsLiveTime(): boolean {
     return this.lapMode === "time";
+  }
+
+  getMobileLayoutInfo(): { discreteOnly: boolean; discreteRows: number } {
+    const hasNumeric =
+      this.leftSourceList.getState().some((item) => item.visible) ||
+      this.rightSourceList.getState().some((item) => item.visible);
+    const discreteRows =
+      this.discreteSourceList.getState().filter((item) => item.visible && item.type !== "alerts").length +
+      (this.showRobotMode ? 1 : 0);
+    return { discreteOnly: !hasNumeric && discreteRows > 0, discreteRows };
+  }
+
+  getHeaderReadouts(): { timeText: string | null; items: LineGraphHeaderReadout[] } {
+    const log = window.log;
+    const renderTime = window.selection.getRenderTime();
+    const timelineRange = window.selection.getTimelineRange();
+    const logRange = log.getTimestampRange();
+    const time = renderTime ?? Math.min(logRange[1], timelineRange[1]);
+    const mode = window.selection.getMode();
+    const hovered = window.selection.getHoveredTime();
+    const timeText =
+      renderTime !== null &&
+      Number.isFinite(time) &&
+      (mode === SelectionMode.Static || mode === SelectionMode.Playback || hovered !== null)
+        ? (renderTime + log.getTimestampDisplayOffset()).toFixed(1) + "s"
+        : null;
+    const items: LineGraphHeaderReadout[] = [];
+    const addNumeric = (
+      sourceList: SourceList,
+      cache: { [key: string]: NumericCommandCacheValue },
+      unitCache: Units.UnitConfig | null,
+      filter: LineGraphFilter,
+      axis: "left" | "right"
+    ) => {
+      for (const item of sourceList.getState()) {
+        if (!item.visible) continue;
+        const label = tileLabel(log.getMetadataString(item.logKey), item.logKey, item.dbcSignal);
+        const color = ensureThemeContrast(item.options.color);
+        const value = Number.isFinite(time) ? this.getPreview(item.logKey, time, cache, unitCache, filter) ?? "—" : "—";
+        items.push({ label, color, value, axis });
+      }
+    };
+    addNumeric(this.leftSourceList, this.leftNumericCommandCache, this.leftUnitCache, this.leftFilter, "left");
+    addNumeric(this.rightSourceList, this.rightNumericCommandCache, this.rightUnitCache, this.rightFilter, "right");
+    for (const item of this.discreteSourceList.getState()) {
+      if (!item.visible || item.type === "alerts") continue;
+      const label = tileLabel(log.getMetadataString(item.logKey), item.logKey, item.dbcSignal);
+      const color = ensureThemeContrast(item.options.color);
+      let value = "—";
+      if (Number.isFinite(time)) {
+        const range = log.getRange(item.logKey, time, time);
+        const logType = log.getType(item.logKey);
+        const index = range ? range.timestamps.findLastIndex((t) => t <= time) : -1;
+        if (index >= 0 && logType !== null) {
+          const raw = range!.values[index];
+          const profile = log.getChannelProfile(item.logKey);
+          value = profile.enumLabels ? formatChannelValue(raw, profile) : getLogValueText(raw, logType);
+        }
+      }
+      items.push({ label, color, value, axis: "discrete" });
+    }
+    return { timeText, items };
   }
 
   private getPreview(

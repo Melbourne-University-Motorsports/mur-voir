@@ -7,6 +7,7 @@
 
 import { alertLine, dbcDefinition, isTracksideLive, Limits, tileLabel, tileState } from "../shared/Trackside";
 import { setHidden, setText } from "../shared/domWrite";
+import { isMobileLayout } from "./MobileLayout";
 
 export type TracksideAlertSource = { key: string; dbcSignal?: string; low?: number; high?: number };
 
@@ -35,6 +36,8 @@ let cache:
       result?: ReturnType<typeof alertLine>;
     }
   | undefined;
+
+let lastMobileState: string | null = null;
 
 function alertEntries(configs: TracksideAlertSource[][]) {
   const log = window.log;
@@ -125,14 +128,74 @@ export function updateTracksideAlerts(element: HTMLElement, configs: TracksideAl
       changed = true;
     }
   }
-  if (!changed) return;
-  const result = (state.result = alertLine(state.entries.flatMap(({ item }) => (item ? [item] : []))));
-  setHidden(element, !result.text);
-  setText(element, result.text);
-  const title = result.detail ? result.text + "\n" + result.detail : result.text;
+
+  const mobile = isMobileLayout();
+  if (!mobile) {
+    if (lastMobileState !== null) {
+      lastMobileState = null;
+      changed = true;
+      element.classList?.remove?.("mobile-alerts-expanded");
+    }
+    if (!changed) return;
+    const result = (state.result = alertLine(state.entries.flatMap(({ item }) => (item ? [item] : []))));
+    setHidden(element, !result.text);
+    setText(element, result.text);
+    const title = result.detail ? result.text + "\n" + result.detail : result.text;
+    if (element.title !== title) element.title = title;
+    if (element.dataset.severity !== result.severity) element.dataset.severity = result.severity;
+    const active = !!result.text;
+    if (document.body.classList.contains("has-trackside-alerts") !== active) {
+      document.body.classList.toggle("has-trackside-alerts", active);
+    }
+    return;
+  }
+
+  const result = changed
+    ? (state.result = alertLine(state.entries.flatMap(({ item }) => (item ? [item] : []))))
+    : state.result!;
+  let hidden = true;
+  let severity = "ok";
+  let mainText = "";
+  let detailText = "";
+  if (result.text) {
+    hidden = false;
+    severity = result.severity;
+    mainText = result.text;
+    detailText = result.detail ?? "";
+  } else if (summary?.backend === "connected" && !summary.hasFreshData) {
+    hidden = false;
+    severity = "muted";
+    mainText = "Base connected, no car data";
+  } else if (state.entries.length > 0 || window.log.getFieldKeys().length > 0) {
+    hidden = false;
+    severity = "ok";
+    mainText = "All clear — 0 active faults";
+  }
+
+  const mobileKey = JSON.stringify([hidden, severity, mainText, detailText]);
+  if (!changed && lastMobileState === mobileKey) return;
+  lastMobileState = mobileKey;
+
+  setHidden(element, hidden);
+  if (element.dataset.severity !== severity) element.dataset.severity = severity;
+  const title = detailText ? mainText + "\n" + detailText : mainText;
   if (element.title !== title) element.title = title;
-  if (element.dataset.severity !== result.severity) element.dataset.severity = result.severity;
-  const active = !!result.text;
+
+  if (detailText) {
+    element.classList?.toggle?.("has-detail", true);
+    const summaryEl = document.createElement("div");
+    summaryEl.className = "trackside-alerts-summary";
+    summaryEl.textContent = mainText;
+    const detailEl = document.createElement("div");
+    detailEl.className = "trackside-alerts-detail";
+    detailEl.textContent = detailText;
+    element.replaceChildren(summaryEl, detailEl);
+  } else {
+    element.classList?.remove?.("has-detail", "mobile-alerts-expanded");
+    setText(element, mainText);
+  }
+
+  const active = !hidden;
   if (document.body.classList.contains("has-trackside-alerts") !== active) {
     document.body.classList.toggle("has-trackside-alerts", active);
   }

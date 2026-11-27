@@ -29,6 +29,7 @@ import {
   wakeFrames
 } from "./FrameScheduler";
 import { ConnectDialog } from "./LiveConnectionUI";
+import { closeMobileDrawers, initMobileLayout, isMobileLayout, toggleMobileSidebar } from "./MobileLayout";
 import SelectionImpl from "./SelectionImpl";
 import Sidebar from "./Sidebar";
 import SourceList from "./SourceList";
@@ -102,6 +103,7 @@ window.sidebar = new Sidebar(() =>
     return components[components.length - 1];
   })
 );
+initMobileLayout();
 window.tabs = new Tabs();
 window.tuner = null;
 window.liveStatus = null;
@@ -781,6 +783,7 @@ async function handleMainMessage(message: NamedMessage) {
       break;
 
     case "restore-state":
+      if (isMobileLayout()) closeMobileDrawers();
       restoreState(message.data);
       break;
 
@@ -956,6 +959,7 @@ async function handleMainMessage(message: NamedMessage) {
       break;
 
     case "open-files":
+      if (isMobileLayout()) closeMobileDrawers();
       let files: string[] = message.data.files;
       let merge: boolean = message.data.merge;
 
@@ -1006,6 +1010,7 @@ async function handleMainMessage(message: NamedMessage) {
           content: "Please wait for the export to finish, then try again."
         });
       } else {
+        if (isMobileLayout()) closeMobileDrawers();
         connectDialog.show();
       }
       break;
@@ -1027,7 +1032,8 @@ async function handleMainMessage(message: NamedMessage) {
       break;
 
     case "toggle-sidebar":
-      window.sidebar.toggleVisible();
+      if (isMobileLayout()) toggleMobileSidebar();
+      else window.sidebar.toggleVisible();
       break;
 
     case "toggle-controls":
@@ -1035,7 +1041,8 @@ async function handleMainMessage(message: NamedMessage) {
       break;
 
     case "new-tab":
-      window.tabs.addTab(message.data);
+      if (isMobileLayout()) closeMobileDrawers();
+      window.tabs.addTab(message.data, true);
       break;
 
     case "new-satellite":
