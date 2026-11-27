@@ -956,6 +956,13 @@ div.timeline-scroll-content {
 
 /* Tab layout */
 
+/* The tab bar hides unselected tabs with the hidden attribute. A tab's own display rule
+   must never undo that (0.5.0 showed the Cells controls on every tab this way). */
+div.renderer-content > [hidden],
+div.controls-content > [hidden] {
+  display: none !important;
+}
+
 div.renderer-content {
   position: absolute;
   left: 0%;
@@ -1972,8 +1979,7 @@ div.source-list .has-graph-toggle div.key-container {
   max-width: calc(100% - 31px - var(--type-width) - 80px);
 }
 
-/* :not([hidden]) so the tab bar can hide these controls when another tab is selected */
-.cells-controls:not([hidden]) {
+.cells-controls {
   position: absolute;
   inset: 8px;
   display: grid;
