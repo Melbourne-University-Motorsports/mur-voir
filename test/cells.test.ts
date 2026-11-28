@@ -7,50 +7,60 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cellSlot, cellsRange, classifyCell, fitCellAxis } from "../src/shared/Cells";
+import { CELLS_PER_ROW, cellSlot, cellsRange, classifyCell, voltageColor } from "../src/shared/Cells";
 
-test("cell axis fits the data with at least 200 mV of span and headroom at both ends", () => {
-  const [low, high] = fitCellAxis([3.912, 3.941], 0.2);
-  assert.ok(Math.abs(high - low - 0.2) < 1e-12);
-  assert.ok(low < 3.912 && high > 3.941);
-  const [wideLow, wideHigh] = fitCellAxis([3.09, 4.275], 0.2);
-  assert.ok(wideLow < 3.09 && wideHigh > 4.275);
+test("the voltage axis stays fixed with changing samples and saved locks", () => {
   const options = { segmentSize: 18, lockedRange: [3.5, 4] as [number, number] };
+  const cell = { number: 1, key: "cell" };
+  for (const value of [undefined, 1.9, 3.912, 4.5]) {
+    assert.deepEqual(cellsRange({ cells: [{ ...cell, value }], options }, "voltages"), [2, 4.35]);
+  }
+  assert.deepEqual(cellsRange({ cells: [], options }, "voltages"), [2, 4.35]);
+});
+
+test("the temperature axis still fits the data and supports a lock", () => {
   assert.deepEqual(
-    cellsRange({ cells: [], options, references: [{ label: "Max ref", value: 4.338 }] }, "voltages"),
-    [3.5, 4]
+    cellsRange({ cells: [{ number: 1, key: "temp", value: 29 }], options: { segmentSize: 18 } }, "temperatures"),
+    [28, 30]
   );
-  assert.ok(
-    cellsRange(
-      { cells: [], options: { segmentSize: 18 }, references: [{ label: "Max ref", value: 4.338 }] },
-      "voltages"
-    )[1] > 4.338
+  assert.deepEqual(
+    cellsRange({ cells: [], options: { segmentSize: 18, lockedRange: [25, 40] } }, "temperatures"),
+    [25, 40]
   );
 });
 
-test("cell colours respect limit, deviation and stale precedence", () => {
-  const options = { low: 2.5, high: 4.2, outlier: 150, segmentSize: 18 };
+test("voltage shading uses the axis bounds and clamps readings outside them", () => {
+  const [low, high] = cellsRange({ cells: [], options: { segmentSize: 18 } }, "voltages");
+  assert.equal(voltageColor(low), "rgb(218 30 40)");
+  assert.equal(voltageColor(low - 1), voltageColor(low));
+  assert.equal(voltageColor((low + high) / 2), "rgb(241 194 27)");
+  assert.equal(voltageColor(3.9), "rgb(168 217 111)");
+  assert.equal(voltageColor(4), "rgb(139 205 102)");
+  assert.equal(voltageColor(high), "rgb(36 161 72)");
+  assert.equal(voltageColor(high + 1), voltageColor(high));
+});
+
+test("stale temperature colours take precedence over limit colours", () => {
+  const options = { low: 25, high: 50, segmentSize: 18 };
   const color = (value?: number, staleAge?: number) =>
-    classifyCell({ number: 1, key: "cell", value, staleAge }, 4, options, "voltages");
+    classifyCell({ number: 1, key: "temp", value, staleAge }, options);
   assert.equal(color(), "missing");
-  assert.equal(color(4.1), "normal");
-  assert.equal(color(3.85), "normal");
-  assert.equal(color(3.849), "outlier");
-  assert.equal(color(4.201), "limit");
-  assert.equal(color(2.499), "limit");
-  assert.equal(color(2.499, 4), "stale");
-  assert.equal(
-    classifyCell({ number: 1, key: "temp", value: 35 }, 29, { segmentSize: 18, outlier: 5 }, "temperatures"),
-    "outlier"
-  );
+  assert.equal(color(25), "normal");
+  assert.equal(color(50), "normal");
+  assert.equal(color(51), "limit");
+  assert.equal(color(24), "limit");
+  assert.equal(color(24, 4), "stale");
 });
 
 test("segment gaps repeat within each row and start over at the next row", () => {
-  const slot = (index: number) => cellSlot(index, 556, 18, 8);
+  assert.equal(CELLS_PER_ROW, 36);
+  const width = 368;
+  const slot = (index: number) => cellSlot(index, width, 18, 8);
   assert.equal(slot(0).width, 10);
   assert.equal(slot(17).x, 170);
   assert.equal(slot(18).x, 188);
-  assert.equal(slot(36).x, 376);
-  assert.equal(slot(53).x + slot(53).width, 556);
-  assert.deepEqual(slot(54), slot(0));
+  assert.equal(slot(35).x + slot(35).width, width);
+  assert.deepEqual(slot(36), slot(0));
+  assert.deepEqual(slot(72), slot(0));
+  assert.deepEqual(slot(107), slot(35));
 });

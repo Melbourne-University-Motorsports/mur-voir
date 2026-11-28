@@ -10,7 +10,6 @@ export type CellRange = [number, number];
 export type CellsOptions = {
   low?: number;
   high?: number;
-  outlier?: number;
   segmentSize: number;
   lockedRange?: CellRange;
 };
@@ -18,12 +17,18 @@ export type Cell = { number: number; key: string; value?: number; staleAge?: num
 export type CellsView = {
   cells: Cell[];
   options: CellsOptions;
-  references: { label: string; value: number }[];
 };
 export type CellsCommand = Record<CellsMode, CellsView>;
 
-export const CELLS_PER_ROW = 54;
+export const CELLS_PER_ROW = 36;
 export const CELLS_MODES = ["voltages", "temperatures"] as const;
+const VOLTAGE_RANGE: CellRange = [2, 4.35];
+export const VOLTAGE_COLOR_STOPS = [
+  { value: VOLTAGE_RANGE[0], rgb: [218, 30, 40] },
+  { value: 3.175, rgb: [241, 194, 27] },
+  { value: 3.9, rgb: [168, 217, 111] },
+  { value: VOLTAGE_RANGE[1], rgb: [36, 161, 72] }
+] as const;
 
 export function isEnnoidCellSignal(signal: string): boolean {
   return /^ENNOID_(?:CellV\d+|Temp\d+|CellTemp\d+)$/i.test(signal);
@@ -39,25 +44,33 @@ export function fitCellAxis(values: number[], minimumSpan: number): CellRange {
 }
 
 export function cellsRange(view: CellsView, mode: CellsMode): CellRange {
+  if (mode === "voltages") return VOLTAGE_RANGE;
   return (
     view.options.lockedRange ??
     fitCellAxis(
-      [
-        ...view.cells.flatMap(({ value }) => (value === undefined ? [] : [value])),
-        ...view.references.map(({ value }) => value)
-      ],
-      mode === "voltages" ? 0.2 : 2
+      view.cells.flatMap(({ value }) => (value === undefined ? [] : [value])),
+      2
     )
   );
 }
 
-export function classifyCell(cell: Cell, mean: number, options: CellsOptions, mode: CellsMode) {
+export function voltageColor(voltage: number): string {
+  const [low, high] = VOLTAGE_RANGE;
+  const clamped = Math.max(low, Math.min(high, voltage));
+  let stop = 0;
+  while (stop < VOLTAGE_COLOR_STOPS.length - 2 && clamped > VOLTAGE_COLOR_STOPS[stop + 1].value) stop++;
+  const from = VOLTAGE_COLOR_STOPS[stop];
+  const to = VOLTAGE_COLOR_STOPS[stop + 1];
+  const ratio = (clamped - from.value) / (to.value - from.value);
+  const mix = from.rgb.map((channel, index) => Math.round(channel + (to.rgb[index] - channel) * ratio));
+  return `rgb(${mix.join(" ")})`;
+}
+
+export function classifyCell(cell: Cell, options: CellsOptions) {
   const { value, staleAge } = cell;
   if (value === undefined) return "missing";
   if (staleAge !== undefined) return "stale";
   if (value < (options.low ?? -Infinity) || value > (options.high ?? Infinity)) return "limit";
-  const delta = Math.abs(value - mean) * (mode === "voltages" ? 1000 : 1);
-  if (delta - (options.outlier ?? Infinity) > 1e-9) return "outlier";
   return "normal";
 }
 
