@@ -279,11 +279,9 @@ TABS.splice(2, 0, {
   controller: {
     voltages: {
       sources: CELL_SIGNALS.map((signal) => item(signal, "number")),
-      options: { low: 2.5, high: 4.2, outlier: 150, segmentSize: 18 }
+      options: { segmentSize: 18 }
     },
-    temperatures: { sources: [], options: { segmentSize: 18 } },
-    minimum: [item("ENNOID_CellVoltageMin", "number")],
-    maximum: [item("ENNOID_CellVoltageMax", "number")]
+    temperatures: { sources: [], options: { segmentSize: 18 } }
   },
   controllerUUID: "defaultview-cells",
   renderer: "voltages",

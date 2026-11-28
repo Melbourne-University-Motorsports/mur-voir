@@ -1099,9 +1099,6 @@
                   }
                 ],
                 "options": {
-                  "low": 2.5,
-                  "high": 4.2,
-                  "outlier": 150,
                   "segmentSize": 18
                 }
               },
@@ -1110,27 +1107,7 @@
                 "options": {
                   "segmentSize": 18
                 }
-              },
-              "minimum": [
-                {
-                  "type": "number",
-                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemin",
-                  "logType": "Number",
-                  "dbcSignal": "ENNOID_CellVoltageMin",
-                  "visible": true,
-                  "options": {}
-                }
-              ],
-              "maximum": [
-                {
-                  "type": "number",
-                  "logKey": "/vehicles/mur27/can0/ennoid_summary/ennoid_cellvoltagemax",
-                  "logType": "Number",
-                  "dbcSignal": "ENNOID_CellVoltageMax",
-                  "visible": true,
-                  "options": {}
-                }
-              ]
+              }
             },
             "controllerUUID": "defaultview-cells",
             "renderer": "voltages",

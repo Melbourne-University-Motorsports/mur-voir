@@ -12,18 +12,13 @@ import {
   CellsCommand,
   CellsMode,
   CellsView,
+  VOLTAGE_COLOR_STOPS,
   cellSlot,
   cellsRange,
-  classifyCell
+  classifyCell,
+  voltageColor
 } from "../Cells";
 import TabRenderer from "./TabRenderer";
-
-const LEGEND = [
-  ["normal", "Normal"],
-  ["limit", "Outside limits"],
-  ["outlier", "Outlier"],
-  ["stale", "Stale"]
-] as const;
 
 export default class CellsRenderer implements TabRenderer {
   private mode: CellsMode = "voltages";
@@ -113,10 +108,6 @@ export default class CellsRenderer implements TabRenderer {
     const previous = this.drawn;
     if (
       previous?.options === view.options &&
-      previous.references.length === view.references.length &&
-      previous.references.every(
-        ({ value, label }, i) => value === view.references[i].value && label === view.references[i].label
-      ) &&
       previous.cells.length === view.cells.length &&
       previous.cells.every((cell, i) => {
         const next = view.cells[i];
@@ -181,7 +172,7 @@ export default class CellsRenderer implements TabRenderer {
     if (!view) return;
     this.drawn = view;
     this.hits = [];
-    const { cells, options, references } = view;
+    const { cells, options } = view;
     const hasSources = cells.length > 0;
     this.empty.hidden = hasSources;
     this.canvas.hidden = !hasSources;
@@ -192,11 +183,13 @@ export default class CellsRenderer implements TabRenderer {
       this.empty.textContent =
         this.mode === "voltages"
           ? "Drag numeric fields into Voltages."
-          : "No temperature fields configured. Add ENNOID temperature channels (ENNOID_Temp0, ENNOID_Temp1, ENNOID_Temp2) when available.";
+          : "Drag per-sensor temperature fields into Temperatures.";
       return;
     }
 
+    const voltage = this.mode === "voltages";
     const values = cells.filter((cell): cell is Cell & { value: number } => cell.value !== undefined);
+    const [low, high] = cellsRange(view, this.mode);
     if (values.length) {
       const minimum = values.reduce((a, b) => (b.value < a.value ? b : a));
       const maximum = values.reduce((a, b) => (b.value > a.value ? b : a));
@@ -226,8 +219,21 @@ export default class CellsRenderer implements TabRenderer {
       item.append(swatch, label);
       this.legend.append(item);
     };
-    LEGEND.forEach(([kind, label]) => legendItem(label, kind));
-    references.forEach(({ label, value }, index) => legendItem(`${label} ${this.format(value)}`, String(index + 1)));
+    if (voltage) {
+      const range = document.createElement("span");
+      const ramp = document.createElement("i");
+      ramp.className = "cells-gradient";
+      const stops = VOLTAGE_COLOR_STOPS.map(
+        ({ value, rgb }) => `rgb(${rgb.join(" ")}) ${((value - low) / (high - low)) * 100}%`
+      );
+      ramp.style.background = `linear-gradient(90deg, ${stops.join(", ")})`;
+      range.append(`${low.toFixed(2)} V`, ramp, `${high.toFixed(2)} V`);
+      this.legend.append(range);
+    } else {
+      legendItem("Normal", "normal");
+      if (options.low !== undefined || options.high !== undefined) legendItem("Outside limits", "limit");
+    }
+    legendItem("Stale", "stale");
 
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
@@ -240,76 +246,109 @@ export default class CellsRenderer implements TabRenderer {
     context.scale(scale, scale);
     const style = getComputedStyle(this.root);
     const color = (name: string) => style.getPropertyValue("--cells-" + name).trim();
-    const colors = { normal: color("normal"), limit: color("limit"), outlier: color("outlier"), stale: color("stale") };
-    const [low, high] = cellsRange(view, this.mode);
+    const colors = { normal: color("normal"), limit: color("limit"), stale: color("stale") };
+    const muted = color("muted");
     const plotWidth = width - left - 2;
-    context.font = `10px ${style.fontFamily}`;
+    const readingFont = `10px ${style.fontFamily}`;
     context.textBaseline = "middle";
-    const labelText = (cell: Cell) => [`[ ${cell.number} ] `, cell.value === undefined ? "—" : this.format(cell.value)];
-    // The band under each row fits the longest label, so 3-digit cell numbers never run into the bars.
-    const labelHeight =
-      Math.ceil(
-        cells.reduce((longest, cell) => Math.max(longest, context.measureText(labelText(cell).join("")).width), 0)
-      ) + 8;
+    const readingText = (cell: Cell) => (cell.value === undefined ? "[Missing Data]" : this.format(cell.value));
+    const compact = plotWidth / CELLS_PER_ROW < 11;
+    const segmentGap = compact ? 2 : 7;
+    const slotWidth = cellSlot(0, plotWidth, options.segmentSize, segmentGap).width;
+    if (slotWidth <= 0) return;
+    const inset = compact ? 0.5 : 1.5;
+    const barWidth = Math.max(1, slotWidth - inset * 2);
+    const voltageFontSize = Math.min(10, barWidth);
+    const voltageFont = `600 ${voltageFontSize}px ${style.fontFamily}`;
+    const labelWidth = slotWidth * (compact ? 5 : 1) - 2;
+    context.font = `600 12px ${style.fontFamily}`;
+    const widestNumber = cells.reduce(
+      (widest, { number }) => Math.max(widest, context.measureText(String(number)).width),
+      0
+    );
+    const numberSize = Math.max(9, Math.min(12, (12 * labelWidth) / widestNumber));
+    const numberFont = `600 ${numberSize}px ${style.fontFamily}`;
+    const readingOffset = 22;
+    context.font = readingFont;
+    const labelHeight = voltage
+      ? readingOffset
+      : readingOffset +
+        Math.ceil(cells.reduce((longest, cell) => Math.max(longest, context.measureText(readingText(cell)).width), 0)) +
+        4;
     const rowHeight = height / Math.ceil(cells.length / CELLS_PER_ROW);
     const plotHeight = rowHeight - labelHeight - 8;
-    const compact = plotWidth / CELLS_PER_ROW < 11;
     if (plotHeight <= 0) return;
+    const padding = Math.min(4, plotHeight / 4);
 
     for (let start = 0; start < cells.length; start += CELLS_PER_ROW) {
       const top = (start / CELLS_PER_ROW) * rowHeight + 6;
       const base = top + plotHeight;
       const mapY = (value: number) => base - plotHeight * Math.max(0, Math.min(1, (value - low) / (high - low)));
-      context.fillStyle = color("muted");
+      context.font = readingFont;
+      context.fillStyle = muted;
       context.textAlign = "right";
-      // With nothing at the cursor the fitted range is a placeholder, so it gets no numbers.
-      if (values.length > 0 || references.length > 0 || options.lockedRange) {
-        context.fillText(high.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, top + 4);
-        context.fillText(low.toFixed(this.mode === "voltages" ? 3 : 1), left - 5, base);
+      if (voltage || values.length > 0 || options.lockedRange) {
+        context.fillText(high.toFixed(voltage ? 2 : 1), left - 5, top + 4);
+        context.fillText(low.toFixed(voltage ? 2 : 1), left - 5, base);
       }
-      context.textAlign = "left";
-      context.fillRect(left, base, plotWidth, 1);
       const end = Math.min(cells.length, start + CELLS_PER_ROW);
       for (let index = start; index < end; index++) {
         const cell = cells[index];
-        const slot = cellSlot(index, plotWidth, options.segmentSize, compact ? 2 : 7);
+        const slot = cellSlot(index, plotWidth, options.segmentSize, segmentGap);
         const x = left + slot.x;
-        const kind = classifyCell(cell, this.mean, options, this.mode);
+        const center = x + slot.width / 2;
+        const showLabel = !compact || cell.number % 5 === 0;
+        const kind = classifyCell(cell, options);
+        const barTop = cell.value === undefined ? base : Math.min(base - 1, mapY(cell.value));
         if (kind !== "missing" && cell.value !== undefined) {
-          const y = Math.min(base - 1, mapY(cell.value));
-          const inset = compact ? 0.5 : 1.5;
-          context.fillStyle = colors[kind];
-          context.fillRect(x + inset, y, Math.max(1, slot.width - inset * 2), base - y);
+          context.fillStyle = voltage && kind !== "stale" ? voltageColor(cell.value) : colors[kind];
+          context.fillRect(x + inset, barTop, barWidth, base - barTop);
         }
-        if (!compact || cell.number % 5 === 0) {
-          // Rotated to read bottom to top, ending just under the bar
-          const [number, reading] = labelText(cell);
+        if (voltage) {
+          context.font = voltageFont;
+          const reading = readingText(cell);
+          const readingWidth = Math.min(context.measureText(reading).width, plotHeight - padding * 2);
+          const fitsInside = readingWidth + padding * 2 <= base - barTop;
+          const labelBottom = fitsInside ? base - padding : Math.max(barTop - padding, top + padding + readingWidth);
+          if (kind !== "missing" && !fitsInside && labelBottom + 2 > barTop) {
+            // On short rows, clear the part of the bar under the label for contrast.
+            const backingWidth = Math.min(barWidth, voltageFontSize + 4);
+            context.clearRect(
+              center - backingWidth / 2,
+              labelBottom - readingWidth - 2,
+              backingWidth,
+              readingWidth + 4
+            );
+          }
+          let ink = kind === "missing" ? muted : style.color;
+          if (fitsInside && cell.value !== undefined) ink = kind !== "stale" && cell.value < 2.15 ? "#fff" : "#000";
           context.save();
-          context.translate(x + slot.width / 2, base + 4);
+          context.translate(center, labelBottom);
           context.rotate(-Math.PI / 2);
-          context.textAlign = "right";
-          context.fillStyle = style.color;
-          context.fillText(reading, 0, 0);
-          context.fillStyle = color("muted");
-          context.fillText(number, -context.measureText(reading).width, 0);
+          context.textAlign = "left";
+          context.fillStyle = ink;
+          context.fillText(reading, 0, 0, readingWidth);
           context.restore();
+        }
+        if (showLabel) {
+          context.font = numberFont;
+          context.textAlign = "center";
+          context.fillStyle = style.color;
+          const numberWidth = Math.min(labelWidth, (width - center) * 2 - 2);
+          context.fillText(String(cell.number), center, base + 12, numberWidth);
+          if (!voltage) {
+            context.save();
+            context.translate(center, base + readingOffset);
+            context.rotate(-Math.PI / 2);
+            context.font = readingFont;
+            context.textAlign = "right";
+            context.fillStyle = muted;
+            context.fillText(readingText(cell), 0, 0);
+            context.restore();
+          }
         }
         this.hits.push({ x, y: top, width: slot.width, height: plotHeight + labelHeight, index });
       }
-
-      const line = (value: number | undefined, stroke: string, dash: number[]) => {
-        if (value === undefined || value < low || value > high) return;
-        const y = Math.round(mapY(value)) + 0.5;
-        context.strokeStyle = stroke;
-        context.setLineDash(dash);
-        context.beginPath();
-        context.moveTo(left, y);
-        context.lineTo(width - 2, y);
-        context.stroke();
-      };
-      line(options.low, colors.limit, [4, 3]);
-      line(options.high, colors.limit, [4, 3]);
-      references.forEach(({ value }, index) => line(value, color(String(index + 1)), index === 0 ? [2, 3] : [7, 3]));
     }
     this.updateTooltip();
   }
